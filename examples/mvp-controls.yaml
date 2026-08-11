@@ -1,0 +1,118 @@
+contract: control_set.v1
+version: "0.1"
+controls:
+  - control_id: data_privacy_and_permissions.personal_loan_prohibited_permissions
+    module_id: data_privacy_and_permissions
+    title: Personal loan App 不应访问 Google Play 禁止的敏感权限/数据
+    severity: critical
+    applicability_expression: business_type includes personal_loan
+    required_surfaces: [android_native, frontend_h5]
+    minimum_evidence_strength:
+      android_native: static_proof
+      frontend_h5: static_proof
+    missing_evidence_policy: block
+    source_refs:
+      - url: https://support.google.com/googleplay/android-developer/answer/10144311
+    reuse_invalidation_keys: [control_version, applicability_profile, android_native_revision, frontend_h5_revision]
+
+  - control_id: data_privacy_and_permissions.data_disclosure_and_minimization
+    module_id: data_privacy_and_permissions
+    title: 数据收集、存储、共享、用途必须全面披露并限制在贷款必要范围
+    severity: critical
+    applicability_expression: self_lending == true
+    required_surfaces: [frontend_h5, android_native, backend_code]
+    minimum_evidence_strength:
+      frontend_h5: static_proof
+      android_native: static_proof
+      backend_code: server_code
+    missing_evidence_policy: block
+    source_refs:
+      - url: https://support.google.com/googleplay/android-developer/answer/10144311
+    reuse_invalidation_keys: [control_version, applicability_profile, frontend_h5_revision, android_native_revision, backend_code_revision]
+
+  - control_id: data_privacy_and_permissions.runtime_permission_prominent_disclosure
+    module_id: data_privacy_and_permissions
+    title: 敏感数据访问前必须有突出披露、运行时权限和明确同意
+    severity: high
+    applicability_expression: jurisdiction == Pakistan
+    required_surfaces: [frontend_h5, android_native]
+    minimum_evidence_strength:
+      frontend_h5: static_proof
+      android_native: static_proof
+    missing_evidence_policy: warn
+    source_refs:
+      - url: https://support.google.com/googleplay/android-developer/answer/10144311
+    reuse_invalidation_keys: [control_version, applicability_profile, frontend_h5_revision, android_native_revision]
+
+  - control_id: consent_and_user_notice.explicit_consent_before_registration
+    module_id: consent_and_user_notice
+    title: 注册前必须取得明确用户同意
+    severity: high
+    applicability_expression: self_lending == true
+    required_surfaces: [frontend_h5, backend_code]
+    minimum_evidence_strength:
+      frontend_h5: static_proof
+      backend_code: server_code
+    missing_evidence_policy: block
+    source_refs:
+      - url: https://support.google.com/googleplay/android-developer/answer/10144311
+    reuse_invalidation_keys: [control_version, applicability_profile, frontend_h5_revision, backend_code_revision]
+
+  - control_id: cybersecurity_and_sdk.sdk_inventory_and_data_disclosure
+    module_id: cybersecurity_and_sdk
+    title: 第三方 SDK 的数据采集必须纳入隐私披露和 Data Safety
+    severity: high
+    applicability_expression: jurisdiction == Pakistan
+    required_surfaces: [android_native, frontend_h5, play_console]
+    minimum_evidence_strength:
+      android_native: static_proof
+      frontend_h5: static_proof
+      play_console: declared
+    missing_evidence_policy: warn
+    source_refs:
+      - url: https://support.google.com/googleplay/android-developer/answer/10144311
+    reuse_invalidation_keys: [control_version, applicability_profile, android_native_revision, frontend_h5_revision, play_console_revision]
+
+  - control_id: cybersecurity_and_sdk.no_untrusted_jsbridge_or_http_webview
+    module_id: cybersecurity_and_sdk
+    title: WebView/JSBridge 不应加载不可信内容或 HTTP URL
+    severity: high
+    applicability_expression: frontend_h5 in evidence_surfaces
+    required_surfaces: [frontend_h5, android_native]
+    minimum_evidence_strength:
+      frontend_h5: static_proof
+      android_native: static_proof
+    missing_evidence_policy: block
+    source_refs:
+      - url: https://developer.android.com/privacy-and-security/risks/insecure-webview-native-bridges
+    reuse_invalidation_keys: [control_version, applicability_profile, frontend_h5_revision, android_native_revision]
+
+  - control_id: loan_disclosure_and_pricing.no_short_term_60_days_or_less
+    module_id: loan_disclosure_and_pricing
+    title: 不得推广 60 天及以下全额还款的 short-term personal loan
+    severity: critical
+    applicability_expression: business_type includes personal_loan
+    required_surfaces: [frontend_h5, backend_api_doc, backend_code, play_console]
+    minimum_evidence_strength:
+      frontend_h5: static_proof
+      backend_api_doc: server_doc
+      backend_code: server_code
+      play_console: declared
+    missing_evidence_policy: block
+    source_refs:
+      - url: https://support.google.com/googleplay/android-developer/answer/13486822
+    reuse_invalidation_keys: [control_version, applicability_profile, frontend_h5_revision, backend_api_doc_revision, backend_code_revision, play_console_revision]
+
+  - control_id: loan_disclosure_and_pricing.kfs_before_disbursement
+    module_id: loan_disclosure_and_pricing
+    title: 放款前必须展示 Key Fact Statement
+    severity: critical
+    applicability_expression: self_lending == true
+    required_surfaces: [frontend_h5, backend_code]
+    minimum_evidence_strength:
+      frontend_h5: static_proof
+      backend_code: server_code
+    missing_evidence_policy: block
+    source_refs:
+      - url: https://www.secp.gov.pk/
+    reuse_invalidation_keys: [control_version, applicability_profile, frontend_h5_revision, backend_code_revision]

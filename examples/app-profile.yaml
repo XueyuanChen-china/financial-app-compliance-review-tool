@@ -1,0 +1,20 @@
+contract: applicability_profile.v1
+version: "0.1"
+app_name: ForiQarz
+package_name: com.foriqarz.cash.online.easy
+jurisdiction: Pakistan
+business_type:
+  - digital_lending
+  - personal_loan
+self_lending: true
+evidence_surfaces:
+  - frontend_h5
+  - android_native
+  - backend_api_doc
+  - play_console
+  - regulator_external
+review_scope: multi_surface_static_review
+roots:
+  frontend_h5: ../pak-web-009
+  android_native: ../pakistan-android-009
+  backend_api_doc: compliance/backend_api

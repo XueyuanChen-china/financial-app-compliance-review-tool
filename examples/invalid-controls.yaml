@@ -1,0 +1,13 @@
+contract: control_set.v1
+version: "0.1"
+controls:
+  - control_id: invalid control id
+    module_id: invalid
+    title: Invalid fixture
+    severity: urgent
+    applicability_expression: "true"
+    required_surfaces: [frontend_h5]
+    minimum_evidence_strength: {}
+    missing_evidence_policy: maybe
+    source_refs: []
+    reuse_invalidation_keys: []
