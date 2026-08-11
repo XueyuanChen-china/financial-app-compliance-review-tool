@@ -1,9 +1,11 @@
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Optional
 
 import typer
 
 from compliance_review import __version__
+from compliance_review.code_map import CodeMapQuery, GraphifyCodeMapProvider
+from compliance_review.code_map.provider import command_from_string
 from compliance_review.config.loader import ConfigLoadError, load_controls, load_profile
 
 app = typer.Typer(
@@ -49,3 +51,23 @@ def validate(
         f"valid: profile={loaded_profile.app_name} "
         f"controls={len(loaded_controls.controls)}"
     )
+
+
+@app.command("code-map-query")
+def code_map_query(
+    repo: Annotated[Path, typer.Option(help="Repository to query")],
+    query: Annotated[str, typer.Option(help="Business or Control-oriented query")],
+    surface: Annotated[Optional[str], typer.Option(help="Optional evidence surface")] = None,
+    graphify_command: Annotated[
+        str, typer.Option(help="Graphify executable command; no shell is used")
+    ] = "graphify",
+) -> None:
+    """Query Graphify through the stable local Code Map provider boundary."""
+    try:
+        command = command_from_string(graphify_command)
+        request = CodeMapQuery.model_validate({"query": query, "surface": surface})
+        result = GraphifyCodeMapProvider(repo, command=command).query(request)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    typer.echo(result.model_dump_json(indent=2))

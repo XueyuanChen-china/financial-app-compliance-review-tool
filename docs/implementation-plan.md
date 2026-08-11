@@ -39,6 +39,7 @@ Work Item 只是上下文与调度容器。即使一个 Work Item 包含多个�
 
 职责划分如下：
 
+- Code Map Provider 帮助定位代码节点和关系。
 - Collector 提取可重复的技术事实。
 - Reviewer Agent 调查代码并提出建议。
 - Verifier Agent 对疑点进行质检。
@@ -225,7 +226,7 @@ Reviewer 是 Multi-Agent 能力的主体。不同 Work Items 可以并发执行�
 
 Reviewer 可以：
 
-- 查看本 Work Item 的 Controls、Collector Facts 和 Planner Hints。
+- 查看本 Work Item 的 Controls、Collector Facts 和 Code Map candidates。
 - 使用受限的 `list_files`、`search_code`、`read_file`、`get_collector_evidence`。
 - 跨文件理解同一业务流程。
 - 为每个 Control-Surface row 返回 observations、anchors、missing evidence 和 recommended status。
@@ -254,18 +255,60 @@ Verifier 只读取疑点相关的结构化结果与最小代码范围，输出 o
 
 ### 6.4 Planner 的处理
 
-第一版不为所有 Work Items 固定运行 Planner Agent。Parent 先使用 Controls、Collector Facts 和路径规则生成确定性 hints。只有以下情况才按需调用 Scope Planner：
+第一版不实现 Planner Agent。Parent 根据 Control、Surface、Collector Facts 和 Code Map 查询结果直接生成 Work Item。需要更复杂的范围缩小时，先通过限制 `code_map_query` 的候选数、`read_file` 行数和工具轮次解决。后续如果真实运行数据显示范围规划成为瓶颈，再单独评估 Planner。
 
-- 候选文件过多。
-- 需要跨多个目录定位入口。
-- 同一 Control 涉及复杂业务流程。
-- Reviewer 上一 attempt 因范围不足而失败。
+## 7. Code Map 与代码读取工具
 
-Planner 只能缩小调查范围，不能决定 Coverage 或 Control 状态。
+代码地图和合规事实是两个不同层次：
 
-## 7. 代码读取工具
+- Graphify 负责“代码在哪里、代码之间如何关联”。
+- Collector 负责“普通程序可以确定性证明哪些事实”。
+- Reviewer 负责解释这些代码关系和事实对某个 Control 的意义。
 
-第一版提供四个只读工具：
+第一版使用本地 Graphify CLI，但只通过项目自己的 `CodeMapProvider` 暴露统一接口：
+
+```python
+class CodeMapProvider:
+    def query(self, request: CodeMapQuery) -> CodeMapQueryResult:
+        ...
+```
+
+第一阶段只实现 `code_map_query`。`code_map_path` 留到查询链路稳定后再实现。
+
+Reviewer 的目标工具集合如下；第一阶段只实现其中的 `code_map_query`：
+
+```text
+code_map_query
+code_map_path       # planned, not implemented in Day 2
+list_files(root, pattern, limit)
+search_code(query, roots, file_globs, limit)
+read_file(path, start_line, line_count)
+get_collector_evidence(fact_ids)
+```
+
+第一阶段实际只接入 `code_map_query`、`search_code`、`read_file` 和 `get_collector_evidence`。不能因为 Graphify 没返回候选，就证明代码不存在；关键 absence 判断仍必须 fallback 到 `search_code`、文件搜索和定向读取。
+
+Graphify Wrapper 的返回必须是紧凑结构，不向 Reviewer 传递完整 graph 或 Graphify Skill：
+
+```json
+{
+  "status": "available",
+  "provider": "graphify",
+  "candidates": [
+    {
+      "symbol": "AccountController.deleteAccount",
+      "path": "backend/account/AccountController.kt",
+      "start_line": 82,
+      "end_line": 96
+    }
+  ],
+  "relations": []
+}
+```
+
+允许的 Code Map 状态为 `available`、`unavailable`、`degraded`。Graphify 缺失、超时、命令失败或输出无法解析，只能影响代码导航，不能直接生成 PASS、FAIL 或 coverage 结论。
+
+第一版保留以下只读工具约束：
 
 ```text
 list_files(root, pattern, limit)
@@ -285,7 +328,9 @@ get_collector_evidence(fact_ids)
 - 返回内容的 secret redaction。
 - 不向 Agent 暴露 `.env`、密钥、签名文件和凭据。
 
-## 8. Generic Collectors
+## 8. Generic Evidence Collectors
+
+Collector 不再承担建立整个 Repository Code Map 的职责。代码关系由 Graphify 提供；Collector 只解析稳定、低成本、可重复的 Compliance/Technical Facts。
 
 ### 8.1 Android Manifest Collector
 
@@ -519,6 +564,10 @@ src/compliance_review/
     android_manifest.py
     dependencies.py
     routes_and_apis.py
+  code_map/
+    models.py
+    provider.py
+    graphify.py
   repository/
     sandbox.py
     git.py
@@ -569,14 +618,17 @@ examples/
 
 验收：错误 schema 会被确定性拒绝，示例配置可以加载。
 
-### Day 2 - Repository Tools and Collectors
+### Day 2 - Graphify Code Map and Collectors
 
 - 实现 target root sandbox、Git metadata 和只读工具。
-- 实现 Manifest、Dependency、Route/API Collectors。
+- 实现 `CodeMapProvider` 接口和 `GraphifyCodeMapProvider`。
+- 先跑通 `code_map_query`，只返回 Top 3-5 个候选节点和紧凑关系。
+- 保留 `search_code`、`read_file` 作为 fallback 和 exact verification。
+- 再实现 Manifest、Dependency、Route/API Collectors。
 - 输出 parser status、coverage status、limitations 和 facts。
-- 建立 fixture tests，包括 parser success、fallback 和 failure。
+- 建立 Graphify unavailable/degraded 和 Collector parser success/fallback/failure fixtures。
 
-验收：无 LLM 时也能稳定输出相同 Facts。
+验收：Graphify 缺失时审查链路仍能得到结构化 degraded 状态；无 LLM 时 Collectors 仍能稳定输出相同 Facts。
 
 ### Day 3 - Parallel Reviewer Pipeline
 
@@ -693,7 +745,7 @@ Git Diff
 | 旧 PASS 被错误复用 | 严重回归漏报 | 完整 reuse fingerprint，默认保守失效 |
 | Collector 正则漏检 | 错误宣称完整 | parser/coverage status 和 limitations |
 | 上下文过大 | Agent 偷懒或超限 | Work Item 隔离、读取限制、独立 Context |
-| 多 Agent 成本高 | 延迟和预算增加 | Reviewer 并行，Planner/Verifier 按需执行 |
+| 多 Agent 成本高 | 延迟和预算增加 | Reviewer 并行，Verifier 按需执行 |
 | 敏感源码或密钥泄露 | 安全风险 | 只读 sandbox、redaction、provider policy |
 | 一周范围过满 | 质量下降 | 每日纵向验收，优先守住核心闭环 |
 
@@ -724,7 +776,7 @@ Git Diff
 当前正式采用以下路线：
 
 ```text
-Generic Collectors
+Graphify Code Map + Generic Collectors
 -> Parallel Reviewer Agents
 -> Deterministic Validation
 -> Single Targeted Verifier

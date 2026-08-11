@@ -4,6 +4,8 @@ A Python-based, CI-oriented compliance review system for financial applications.
 
 The project combines deterministic collectors and validators with parallel AI reviewers. Its coverage unit is `Control x Required Evidence Surface`; AI agents investigate and recommend, while ordinary program logic owns coverage, final resolution, snapshots, regression comparison, and CI gating.
 
+Repository navigation uses a local Graphify CLI behind the project's `CodeMapProvider` boundary. Graphify helps locate related symbols and relationships; it is not a compliance scanner or a final evidence authority. `search_code` and `read_file` remain the verification and fallback tools.
+
 ## Status
 
 The repository is in architecture and foundation setup. See [the implementation plan](docs/implementation-plan.md) for the full design and delivery roadmap.

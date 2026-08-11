@@ -259,11 +259,14 @@ valid: profile=ForiQarz controls=8
 
 ## 11. 下一步 Day 2
 
-Day 2 将实现 repository sandbox 和三个 Generic Collectors：
+最新架构决定先实现 `GraphifyCodeMapProvider + code_map_query`，再实现三个 Generic Collectors：
 
-1. Android Manifest Collector。
-2. Dependency/SDK Collector。
-3. Route/API Collector。
+1. Graphify Code Map Provider 和紧凑的 `code_map_query`。
+2. Android Manifest Collector。
+3. Dependency/SDK Collector。
+4. Route/API Collector。
+
+Graphify 只负责定位代码节点和关系，不负责合规结论。它不可用时，后续仍要使用 `search_code`、文件搜索和 `read_file` 做 fallback；Graphify 没命中不能证明代码不存在。
 
 每个 Collector 都必须输出：
 
