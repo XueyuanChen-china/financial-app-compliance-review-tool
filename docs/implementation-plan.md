@@ -347,16 +347,21 @@ Collector 不再承担建立整个 Repository Code Map 的职责。代码关系�
 
 提取 Android 与前端依赖、版本和可能的 SDK 身份。Collector 只报告声明事实，不直接判断 SDK 合规性。
 
-### 8.3 Route/API Collector
+### 8.3 API Document Collector
 
-提取 H5 路由、API 路径、HTTP method、调用位置以及后端 API 文档中声明的 endpoint 和字段。
+只提取 OpenAPI/Swagger JSON 或 YAML 中声明的 endpoint、HTTP method 和 `operationId`。
 
-这个 Collector 支持两种输入，但输出必须保留不同的 `source_surface`：
+这个 Collector 只服务于 `backend_api_doc`，输出的最低证据强度是 `server_doc`。它证明“接口文档声明了某个能力”，不能证明后端代码已经实现，也不能证明运行时可达、鉴权或数据库写入。
 
-- `backend_api_doc`：读取 OpenAPI/Swagger JSON 或 YAML 的 `paths`，证明“文档声明了哪些接口”，最低证据强度为 `server_doc`。
-- `backend_code`：读取后端 controller/router 等源码中的路由声明，证明“源码中出现了哪些候选 endpoint”，但不自动证明运行时可达、鉴权或数据库写入行为。
+源码中的路由不再由通用 Collector 跨语言解析。对于 `frontend_h5`、`android_native` 和 `backend_code`：
 
-两者不能合并成一个“后端已实现”结论。API 文档是声明层证据，后端代码是实现层候选证据；最终是否满足 Control 仍由 Validator 根据要求的 Surface 和证据强度判断。
+```text
+Graphify 定位候选 controller/router/handler
+  -> search_code/read_file 做精确核验
+  -> Reviewer 解释业务语义
+```
+
+这样避免维护 Python、Java、Kotlin、JavaScript 等框架各自不同的路由正则，同时避免把“出现了路由字符串”误当成运行时行为证明。
 
 字符串或正则分析不能声称完整覆盖。每个 Collector 必须返回：
 
@@ -570,7 +575,7 @@ src/compliance_review/
     base.py
     android_manifest.py
     dependencies.py
-    routes_and_apis.py
+    api_documents.py
   code_map/
     models.py
     provider.py
@@ -631,7 +636,7 @@ examples/
 - 实现 `CodeMapProvider` 接口和 `GraphifyCodeMapProvider`。
 - 先跑通 `code_map_query`，只返回 Top 3-5 个候选节点和紧凑关系。
 - 保留 `search_code`、`read_file` 作为 fallback 和 exact verification。
-- 再实现 Manifest、Dependency、Route/API Collectors；Route/API Collector 同时支持后端 API 文档和真实后端代码仓库，但保持两种 Surface 分离。
+- 再实现 Manifest、Dependency、API Document Collector；源码路由由 Graphify + 只读工具 + Reviewer 处理，不再维护跨语言源码路由 Collector。
 - 输出 parser status、coverage status、limitations 和 facts。
 - 建立 Graphify unavailable/degraded 和 Collector parser success/fallback/failure fixtures。
 

@@ -21,7 +21,7 @@ RepositorySandbox
     |
     +-- ManifestCollector
     +-- DependencyCollector
-    +-- RouteApiCollector
+    +-- ApiDocumentCollector
 ```
 
 ## 3. Repository Sandbox
@@ -149,9 +149,9 @@ Graphify 没找到节点，不等于代码不存在。
 
 输出依赖名称、版本和声明组。它只说明“项目声明了某个依赖”，不直接判断该依赖是否合规。
 
-### 7.3 Route/API Collector
+### 7.3 API Document Collector
 
-该 Collector 同时支持源码路由和 API 文档，但必须区分证据面。
+该 Collector 只支持 `backend_api_doc` 的 OpenAPI/Swagger 文档。
 
 `backend_api_doc`：
 
@@ -160,21 +160,16 @@ Graphify 没找到节点，不等于代码不存在。
 - 输出 `evidence_strength=server_doc`。
 - 只能证明 API 文档声明了某个接口。
 
-`backend_code`：
+`backend_code`、`frontend_h5` 和 `android_native` 的源码路由不再由通用 Collector 跨语言解析。由 Graphify 定位候选 controller/router/handler，再由 `search_code`、`read_file` 和 Reviewer 做精确核验。
 
-- 读取 Python、Java、Kotlin、JavaScript 等源码中的路由声明。
-- 输出候选 endpoint、HTTP method 和源码位置。
-- 输出 `evidence_strength=static_proof`。
-- 不能自动证明运行时可达、鉴权逻辑或数据库写入行为。
-
-两者不能合并成“后端已经实现”的结论。
+这样避免维护多种框架的路由规则，也避免把“源码中出现了某个路径字符串”误认为运行时行为证明。
 
 ## 8. Collector 统一输出
 
 每个 Collector 返回统一结构：
 
 ```yaml
-collector_id: route_api_inventory
+collector_id: api_document_inventory
 source_surface: backend_api_doc
 parser_status: ok | fallback | failed
 coverage_status: complete | partial | unknown
@@ -187,9 +182,9 @@ metadata: {}
 每条 Fact 至少包含：
 
 ```yaml
-fact_id: fact.backend_api_doc.route.1
+fact_id: fact.backend_api_doc.endpoint.1
 source_surface: backend_api_doc
-fact_type: route_or_api_endpoint
+fact_type: declared_api_endpoint
 observed_value:
   method: POST
   route: /v1/auth/login
@@ -212,7 +207,7 @@ evidence_strength: server_doc
 - Manifest 解析失败：输出 `failed/unknown`。
 - OpenAPI 文档正常解析：输出 `server_doc` endpoint facts。
 - OpenAPI 文档解析失败：输出 `fallback/unknown`。
-- 后端源码路由解析：输出 `backend_code` endpoint facts。
+- 源码路由不由 Collector 生成；通过 Graphify + 只读工具进行定位和核验。
 - 目标目录越界和敏感文件读取：被 Sandbox 拒绝。
 
 验证命令：
@@ -247,20 +242,12 @@ evidence_strength: server_doc
 ```bash
 .venv/bin/compliance-review collect \
   --repo /path/to/repository \
-  --collector routes \
+  --collector api-doc \
   --surface backend_api_doc \
   --root api-doc
 ```
 
-提取后端代码路由：
-
-```bash
-.venv/bin/compliance-review collect \
-  --repo /path/to/repository \
-  --collector routes \
-  --surface backend_code \
-  --root backend
-```
+源码路由不再单独运行 Collector。使用 `code-map-query` 定位，再由 Reviewer 通过 `search-code` 和 `read_file` 核验。
 
 ## 11. Day 2 结论
 

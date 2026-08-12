@@ -12,7 +12,11 @@ from compliance_review.code_map import (
     GraphifyLifecycle,
 )
 from compliance_review.code_map.provider import command_from_string
-from compliance_review.collectors import DependencyCollector, ManifestCollector, RouteApiCollector
+from compliance_review.collectors import (
+    ApiDocumentCollector,
+    DependencyCollector,
+    ManifestCollector,
+)
 from compliance_review.config.loader import ConfigLoadError, load_controls, load_profile
 from compliance_review.domain.models import Surface
 from compliance_review.repository import GitRepository, ReadOnlyRepositoryTools, RepositorySandbox
@@ -162,9 +166,9 @@ def search_code(
 @app.command("collect")
 def collect(
     repo: Annotated[Path, typer.Option(help="Repository to collect facts from")],
-    collector: Annotated[str, typer.Option(help="manifest, dependencies, or routes")],
+    collector: Annotated[str, typer.Option(help="manifest, dependencies, or api-doc")],
     surface: Annotated[Optional[str], typer.Option(help="Evidence surface override")] = None,
-    root: Annotated[str, typer.Option(help="Relative route/API scan root")] = "src",
+    root: Annotated[str, typer.Option(help="Relative API document scan root")] = "src",
 ) -> None:
     """Run one deterministic Collector and print its structured result."""
     try:
@@ -179,14 +183,12 @@ def collect(
                 sandbox,
                 source_surface=parsed_surface or "android_native",
             )
-        elif collector == "routes":
-            result = RouteApiCollector().collect(
-                sandbox,
-                roots=(root,),
-                source_surface=parsed_surface or "frontend_h5",
-            )
+        elif collector == "api-doc":
+            if parsed_surface is not None and parsed_surface != "backend_api_doc":
+                raise ValueError("api-doc collector only supports backend_api_doc")
+            result = ApiDocumentCollector().collect(sandbox, roots=(root,))
         else:
-            raise ValueError("collector must be manifest, dependencies, or routes")
+            raise ValueError("collector must be manifest, dependencies, or api-doc")
     except (OSError, ValueError, ValidationError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.echo(result.model_dump_json(indent=2))

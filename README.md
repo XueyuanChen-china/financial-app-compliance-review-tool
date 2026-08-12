@@ -45,7 +45,7 @@ compliance-review code-map-query \
   --surface backend_code
 ```
 
-`init` 默认会在缺少 Graphify CLI 时执行 `uv tool install graphifyy`，然后在目标仓库中执行 `graphify extract . --code-only`。API 文档不走 Graphify，而由 `backend_api_doc` Collector 解析。
+`init` 默认会在缺少 Graphify CLI 时执行 `uv tool install graphifyy`，然后在目标仓库中执行 `graphify extract . --code-only`。API 文档不走 Graphify，而由 `backend_api_doc` 的 API Document Collector 解析；源码路由由 Graphify 定位并由 Reviewer 精确核验。
 
 ## Core Principles
 

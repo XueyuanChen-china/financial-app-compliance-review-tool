@@ -1,9 +1,9 @@
 from pathlib import Path
 
 from compliance_review.collectors import (
+    ApiDocumentCollector,
     DependencyCollector,
     ManifestCollector,
-    RouteApiCollector,
 )
 from compliance_review.repository import RepositorySandbox
 
@@ -56,42 +56,15 @@ def test_dependency_collector_extracts_backend_gradle_dependencies() -> None:
     assert result.facts[0].observed_value["name"] == "com.example:loan-service"
 
 
-def test_route_api_collector_distinguishes_backend_code_surface() -> None:
-    result = RouteApiCollector().collect(
-        RepositorySandbox(FIXTURES),
-        roots=("backend",),
-        source_surface="backend_code",
-        file_globs=("*.py",),
-    )
-
-    assert result.parser_status == "ok"
-    assert result.facts[0].source_surface == "backend_code"
-    assert result.facts[0].observed_value["route"] == "/api/loan/disburse"
-
-
-def test_route_api_collector_extracts_frontend_candidates() -> None:
-    result = RouteApiCollector().collect(
-        RepositorySandbox(FIXTURES),
-        roots=("frontend/src",),
-        source_surface="frontend_h5",
-        file_globs=("*.js",),
-    )
-
-    routes = {fact.observed_value["route"] for fact in result.facts}
-    assert result.coverage_status == "complete"
-    assert {"/login", "/loan/apply", "/api/loan/detail"} <= routes
-
-
-def test_route_api_collector_extracts_backend_api_document() -> None:
-    result = RouteApiCollector().collect(
+def test_api_document_collector_extracts_declared_endpoints() -> None:
+    result = ApiDocumentCollector().collect(
         RepositorySandbox(FIXTURES),
         roots=("api-doc",),
-        source_surface="backend_api_doc",
         file_globs=("*.json",),
     )
 
     assert result.parser_status == "ok"
-    assert result.metadata["document_mode"] is True
+    assert result.source_surface == "backend_api_doc"
     assert result.facts[0].evidence_strength == "server_doc"
     endpoints = {fact.observed_value["route"] for fact in result.facts}
     assert endpoints == {"/v1/auth/login", "/v1/loans/{loanId}/repay"}
@@ -101,11 +74,10 @@ def test_route_api_collector_extracts_backend_api_document() -> None:
     assert operation_ids == {"login", "repayLoan", "getRepaymentStatus"}
 
 
-def test_route_api_collector_reports_fallback_for_broken_document() -> None:
-    result = RouteApiCollector().collect(
+def test_api_document_collector_reports_fallback_for_broken_document() -> None:
+    result = ApiDocumentCollector().collect(
         RepositorySandbox(FIXTURES),
         roots=("api-doc-broken",),
-        source_surface="backend_api_doc",
         file_globs=("*.json",),
     )
 
