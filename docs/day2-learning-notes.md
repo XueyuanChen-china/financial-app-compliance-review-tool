@@ -67,7 +67,33 @@ read_file(path, start_line, line_count)
 
 ## 6. Graphify Code Map
 
-项目通过自己的 `CodeMapProvider` 调用本地 Graphify CLI，而不是让上层代码直接依赖 Graphify 的原始输出。
+项目通过自己的 `CodeMapProvider` 调用本地 Graphify CLI，而不是让上层代码直接依赖 Graphify 的原始输出。Day 2 现在包含完整的初始化链路：先建图，再查询。
+
+初始化一个代码仓库：
+
+```bash
+compliance-review init --repo /path/to/repository
+```
+
+初始化命令会检查 `graphify`，缺失时默认执行：
+
+```bash
+uv tool install graphifyy
+```
+
+然后执行：
+
+```bash
+graphify extract . --code-only
+```
+
+如果使用 App Profile：
+
+```bash
+compliance-review init --profile examples/app-profile.yaml
+```
+
+它会为 `frontend_h5`、`android_native`、`backend_code` 的代码 roots 分别建图。`backend_api_doc` 是 OpenAPI/Swagger 文档，不进入 Graphify 建图。
 
 调用示例：
 
@@ -91,6 +117,8 @@ relations: []
 - `available`：成功返回可用的代码导航结果。
 - `unavailable`：CLI、目标仓库或索引不存在。
 - `degraded`：超时、命令失败或输出无法解析。
+
+如果还没有先执行 `init`，`code-map-query` 会返回 `graph_not_initialized`，而不是直接把空结果解释成“代码不存在”。
 
 重要边界：
 
@@ -195,7 +223,7 @@ evidence_strength: server_doc
 .venv/bin/pytest
 ```
 
-当前结果：20 个测试通过。
+当前结果：26 个测试通过。
 
 ## 10. CLI 示例
 

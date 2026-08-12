@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from compliance_review.domain.models import Surface
 
 CodeMapStatus = Literal["available", "unavailable", "degraded"]
+GraphifyInitStatus = Literal["initialized", "unavailable", "degraded"]
 
 
 class CodeMapModel(BaseModel):
@@ -44,3 +45,13 @@ class CodeMapQueryResult(CodeMapModel):
     relations: list[CodeMapRelation] = Field(default_factory=list)
     error_code: Optional[str] = None
     truncated: bool = False
+
+
+class GraphifyInitResult(CodeMapModel):
+    repo_path: str
+    status: GraphifyInitStatus
+    graphify_command: Optional[str] = None
+    build_command: list[str] = Field(default_factory=list)
+    graph_paths: list[str] = Field(default_factory=list)
+    error_code: Optional[str] = None
+    message: Optional[str] = None

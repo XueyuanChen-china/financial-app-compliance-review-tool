@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import re
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional, Protocol, Sequence, Tuple
 
+from compliance_review.code_map.lifecycle import GraphifyLifecycle
 from compliance_review.code_map.models import (
     CodeMapCandidate,
     CodeMapQuery,
@@ -44,14 +46,20 @@ class GraphifyCodeMapProvider:
         repo_path: Path,
         command: Sequence[str] = ("graphify",),
         timeout_seconds: float = 10.0,
+        require_index: bool = True,
     ) -> None:
         self.repo_path = repo_path
         self.command = tuple(command)
         self.timeout_seconds = timeout_seconds
+        self.require_index = require_index
 
     def query(self, request: CodeMapQuery) -> CodeMapQueryResult:
         if not self.repo_path.is_dir():
             return self._status_result(request, "unavailable", "repository_not_found")
+        if not Path(self.command[0]).is_file() and shutil.which(self.command[0]) is None:
+            return self._status_result(request, "unavailable", "graphify_not_found")
+        if self.require_index and not GraphifyLifecycle.graph_paths(self.repo_path):
+            return self._status_result(request, "unavailable", "graph_not_initialized")
 
         command = [
             *self.command,

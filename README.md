@@ -20,6 +20,33 @@ compliance-review --help
 pytest
 ```
 
+## Normal Workflow
+
+先初始化目标代码仓库的 Graphify 地图，再生成 Review Manifest 和执行 Reviewer：
+
+```bash
+# 方式一：初始化一个代码仓库
+compliance-review init --repo /path/to/backend-repository
+
+# 方式二：按照 App Profile 初始化 frontend_h5、android_native、backend_code
+compliance-review init --profile examples/app-profile.yaml
+
+# 生成 module x surface Review Work Items
+compliance-review build-manifest \
+  --profile examples/app-profile.yaml \
+  --controls examples/mvp-controls.yaml \
+  --run-id review-2026-01 \
+  --output runs/review-2026-01/review-manifest.json
+
+# 查询已经初始化的代码地图
+compliance-review code-map-query \
+  --repo /path/to/backend-repository \
+  --query "account deletion workflow" \
+  --surface backend_code
+```
+
+`init` 默认会在缺少 Graphify CLI 时执行 `uv tool install graphifyy`，然后在目标仓库中执行 `graphify extract . --code-only`。API 文档不走 Graphify，而由 `backend_api_doc` Collector 解析。
+
 ## Core Principles
 
 - Controls define what must be reviewed.

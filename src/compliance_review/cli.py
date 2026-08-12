@@ -6,7 +6,11 @@ import typer
 from pydantic import TypeAdapter, ValidationError
 
 from compliance_review import __version__
-from compliance_review.code_map import CodeMapQuery, GraphifyCodeMapProvider
+from compliance_review.code_map import (
+    CodeMapQuery,
+    GraphifyCodeMapProvider,
+    GraphifyLifecycle,
+)
 from compliance_review.code_map.provider import command_from_string
 from compliance_review.collectors import DependencyCollector, ManifestCollector, RouteApiCollector
 from compliance_review.config.loader import ConfigLoadError, load_controls, load_profile
@@ -82,6 +86,48 @@ def code_map_query(
         raise typer.BadParameter(str(exc)) from exc
 
     typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("init")
+def init_graphify(
+    repo: Annotated[Optional[Path], typer.Option(help="One code repository to index")] = None,
+    profile: Annotated[
+        Optional[Path], typer.Option(help="Applicability profile; indexes code surfaces")
+    ] = None,
+    install_graphify: Annotated[
+        bool, typer.Option(help="Install graphifyy with uv when graphify is missing")
+    ] = True,
+    force: Annotated[bool, typer.Option(help="Force a full graph rebuild")] = False,
+) -> None:
+    """Install/check Graphify and build local code maps before review queries."""
+    if (repo is None) == (profile is None):
+        raise typer.BadParameter("provide exactly one of --repo or --profile")
+    lifecycle = GraphifyLifecycle()
+    targets: list[Path]
+    if repo is not None:
+        targets = [repo]
+    else:
+        try:
+            loaded_profile = load_profile(profile or Path())
+        except ConfigLoadError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        profile_root = (profile or Path()).parent
+        targets = [
+            (profile_root / root).resolve()
+            if not Path(root).is_absolute()
+            else Path(root)
+            for surface, root in loaded_profile.roots.items()
+            if surface in {"frontend_h5", "android_native", "backend_code"}
+        ]
+    results = [
+        lifecycle.initialize(
+            target,
+            install_if_missing=install_graphify,
+            force=force,
+        )
+        for target in targets
+    ]
+    typer.echo(json.dumps([result.model_dump() for result in results], indent=2))
 
 
 @app.command("repository-info")
