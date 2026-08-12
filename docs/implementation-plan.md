@@ -13,7 +13,7 @@
 第一版完成后，系统应能够：
 
 1. 加载 5 至 10 个代表性 Controls 和 App Applicability Profile。
-2. 对 H5、Android、后端 API 文档等已接入证据面建立确定性审查清单。
+2. 对 H5、Android、后端 API 文档和后端代码等已接入证据面建立确定性审查清单。
 3. 在没有 LLM 时运行通用 Collectors 并输出结构化事实。
 4. 将审查任务拆成相互隔离的 Work Items，并发交给多个 Reviewer Agent。
 5. 对每个 `Control x Required Surface` 单独记录证据、缺口和建议状态。
@@ -351,6 +351,13 @@ Collector 不再承担建立整个 Repository Code Map 的职责。代码关系�
 
 提取 H5 路由、API 路径、HTTP method、调用位置以及后端 API 文档中声明的 endpoint 和字段。
 
+这个 Collector 支持两种输入，但输出必须保留不同的 `source_surface`：
+
+- `backend_api_doc`：读取 OpenAPI/Swagger JSON 或 YAML 的 `paths`，证明“文档声明了哪些接口”，最低证据强度为 `server_doc`。
+- `backend_code`：读取后端 controller/router 等源码中的路由声明，证明“源码中出现了哪些候选 endpoint”，但不自动证明运行时可达、鉴权或数据库写入行为。
+
+两者不能合并成一个“后端已实现”结论。API 文档是声明层证据，后端代码是实现层候选证据；最终是否满足 Control 仍由 Validator 根据要求的 Surface 和证据强度判断。
+
 字符串或正则分析不能声称完整覆盖。每个 Collector 必须返回：
 
 ```yaml
@@ -624,7 +631,7 @@ examples/
 - 实现 `CodeMapProvider` 接口和 `GraphifyCodeMapProvider`。
 - 先跑通 `code_map_query`，只返回 Top 3-5 个候选节点和紧凑关系。
 - 保留 `search_code`、`read_file` 作为 fallback 和 exact verification。
-- 再实现 Manifest、Dependency、Route/API Collectors。
+- 再实现 Manifest、Dependency、Route/API Collectors；Route/API Collector 同时支持后端 API 文档和真实后端代码仓库，但保持两种 Surface 分离。
 - 输出 parser status、coverage status、limitations 和 facts。
 - 建立 Graphify unavailable/degraded 和 Collector parser success/fallback/failure fixtures。
 

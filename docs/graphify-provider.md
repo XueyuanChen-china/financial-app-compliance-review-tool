@@ -39,6 +39,8 @@ CodeMapProvider
 CodeMapProvider.query(CodeMapQuery) -> CodeMapQueryResult
 ```
 
+输入可以来自独立的前端、Android 或后端代码仓库。`backend_api_doc` 也可以作为查询上下文，但它只代表接口文档，不等于后端实现代码。
+
 输入：
 
 ```json

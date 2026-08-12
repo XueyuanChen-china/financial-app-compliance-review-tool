@@ -17,4 +17,6 @@ review_scope: multi_surface_static_review
 roots:
   frontend_h5: ../pak-web-009
   android_native: ../pakistan-android-009
+  # API 文档和后端源码是两个独立证据面，可以来自不同目录或仓库。
   backend_api_doc: compliance/backend_api
+  backend_code: ../pakistan-backend-009

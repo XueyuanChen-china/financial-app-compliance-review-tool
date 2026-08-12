@@ -1,0 +1,13 @@
+{
+  "openapi": "3.0.0",
+  "info": {"title": "Loan API", "version": "1.0.0"},
+  "paths": {
+    "/v1/auth/login": {
+      "post": {"operationId": "login"}
+    },
+    "/v1/loans/{loanId}/repay": {
+      "post": {"operationId": "repayLoan"},
+      "get": {"operationId": "getRepaymentStatus"}
+    }
+  }
+}

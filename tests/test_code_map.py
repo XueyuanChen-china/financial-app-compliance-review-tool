@@ -37,6 +37,18 @@ def test_graphify_missing_is_degraded_without_exception(tmp_path: Path) -> None:
     assert result.error_code == "graphify_not_found"
 
 
+def test_graphify_unparseable_output_is_degraded(tmp_path: Path) -> None:
+    fake_graphify = tmp_path / "fake_graphify.py"
+    fake_graphify.write_text("print('unexpected graph output')\n", encoding="utf-8")
+
+    result = GraphifyCodeMapProvider(
+        tmp_path, command=(sys.executable, str(fake_graphify))
+    ).query(CodeMapQuery(query="account deletion"))
+
+    assert result.status == "degraded"
+    assert result.error_code == "graphify_output_unparseable"
+
+
 def test_graphify_nonexistent_repository_is_unavailable(tmp_path: Path) -> None:
     result = GraphifyCodeMapProvider(tmp_path / "missing", command=("graphify",)).query(
         CodeMapQuery(query="account deletion")
