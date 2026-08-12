@@ -55,7 +55,7 @@ path_is_inside_parent_repository
 
 ## 5. Read-only Tools
 
-当前提供三个基础工具：
+Repository 层提供三个基础文件工具：
 
 ```text
 list_files(root, pattern, limit)
@@ -64,6 +64,8 @@ read_file(path, start_line, line_count)
 ```
 
 `search_code` 优先使用 `git grep`，不可用或没有结果时回退到受限文本搜索。所有操作都有路径范围和数量限制，不执行目标仓库代码，也不调用业务 API。
+
+在 Day 3 的 Reviewer Tool Runtime 中，这三个工具会和 Graphify、Collector Facts 统一纳入受控白名单；模型仍然不能直接获得 shell 权限。
 
 ## 6. Graphify Code Map
 

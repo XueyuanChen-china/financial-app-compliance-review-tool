@@ -4,6 +4,15 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
+from compliance_review.code_map import (
+    CodeMapPath,
+    CodeMapPathResult,
+    CodeMapProvider,
+    CodeMapQuery,
+    CodeMapQueryResult,
+    GraphifyCodeMapProvider,
+)
+from compliance_review.collectors.base import CollectorResult
 from compliance_review.domain.models import WorkItem
 from compliance_review.repository import ReadOnlyRepositoryTools, RepositorySandbox
 from compliance_review.review.models import ScopedToolResult, ToolCall
@@ -16,16 +25,34 @@ class ScopedToolExecutor:
         self,
         sandbox: RepositorySandbox,
         work_item: WorkItem,
+        code_map_provider: CodeMapProvider | None = None,
+        collector_results: dict[str, CollectorResult] | None = None,
+        max_tool_calls: int | None = None,
     ) -> None:
         self.sandbox = sandbox
         self.work_item = work_item
         self.tools = ReadOnlyRepositoryTools(sandbox)
         self.read_paths: set[str] = set()
+        self.code_map_provider = code_map_provider or GraphifyCodeMapProvider(
+            sandbox.root
+        )
+        self.collector_results = collector_results or {}
+        self.tool_calls = 0
+        self.max_tool_calls = max_tool_calls or max(3, work_item.max_tool_rounds * 3)
 
     def execute(self, call: ToolCall) -> ScopedToolResult:
         try:
+            self.tool_calls += 1
+            if self.tool_calls > self.max_tool_calls:
+                raise ValueError("work item max_tool_calls exceeded")
             output: Any
-            if call.name == "list_files":
+            if call.name == "code_map_query":
+                output = self._code_map_query(call.arguments)
+            elif call.name == "code_map_path":
+                output = self._code_map_path(call.arguments)
+            elif call.name == "get_collector_facts":
+                output = self._get_collector_facts(call.arguments)
+            elif call.name == "list_files":
                 output = self._list_files(call.arguments)
             elif call.name == "search_code":
                 output = self._search_code(call.arguments)
@@ -41,6 +68,132 @@ class ScopedToolExecutor:
                 ok=False,
                 error=str(exc),
             )
+
+    def _code_map_query(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        query = _string_argument(arguments, "query")
+        surface = arguments.get("surface", self.work_item.surface)
+        if surface != self.work_item.surface:
+            raise ValueError("code map surface must match the Work Item surface")
+        request = CodeMapQuery.model_validate(
+            {
+                "query": query,
+                "surface": surface,
+                "max_candidates": arguments.get("max_candidates", 5),
+                "budget": arguments.get("budget", 2000),
+            }
+        )
+        result = self.code_map_provider.query(request)
+        return self._bounded_code_map_query(result).model_dump()
+
+    def _code_map_path(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        source = _string_argument(arguments, "source")
+        target = _string_argument(arguments, "target")
+        surface = arguments.get("surface", self.work_item.surface)
+        if surface != self.work_item.surface:
+            raise ValueError("code map surface must match the Work Item surface")
+        request = CodeMapPath.model_validate(
+            {
+                "source": source,
+                "target": target,
+                "surface": surface,
+                "max_hops": arguments.get("max_hops", 6),
+                "budget": arguments.get("budget", 2000),
+            }
+        )
+        result = self.code_map_provider.path(request)
+        return self._bounded_code_map_path(result).model_dump()
+
+    def _get_collector_facts(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        collector_id = arguments.get("collector_id")
+        if collector_id is not None and not isinstance(collector_id, str):
+            raise TypeError("collector_id must be a string")
+        raw_fact_ids = arguments.get("fact_ids", [])
+        if not isinstance(raw_fact_ids, list) or not all(
+            isinstance(value, str) for value in raw_fact_ids
+        ):
+            raise TypeError("fact_ids must be a list of strings")
+        fact_type = arguments.get("fact_type")
+        if fact_type is not None and not isinstance(fact_type, str):
+            raise TypeError("fact_type must be a string")
+        limit = _bounded_int(arguments, "limit", 50, 1, 100)
+        compatible_results = {
+            current_id: result
+            for current_id, result in self.collector_results.items()
+            if result.source_surface == self.work_item.surface
+        }
+        if collector_id is None:
+            selected = compatible_results
+        else:
+            selected = (
+                {collector_id: compatible_results[collector_id]}
+                if collector_id in compatible_results
+                else {}
+            )
+        facts: list[dict[str, Any]] = []
+        for result in selected.values():
+            for fact in result.facts:
+                if raw_fact_ids and fact.fact_id not in raw_fact_ids:
+                    continue
+                if fact_type and fact.fact_type != fact_type:
+                    continue
+                facts.append(fact.model_dump())
+        facts = facts[:limit]
+        missing_fact_ids = [
+            fact_id
+            for fact_id in raw_fact_ids
+            if not any(fact["fact_id"] == fact_id for fact in facts)
+        ]
+        return {
+            "collector_id": collector_id,
+            "available_collectors": sorted(compatible_results),
+            "facts": facts,
+            "missing_fact_ids": missing_fact_ids,
+            "limitations": [
+                limitation
+                for result in selected.values()
+                for limitation in result.limitations
+            ][:limit],
+        }
+
+    def _bounded_code_map_query(self, result: CodeMapQueryResult) -> CodeMapQueryResult:
+        candidates = [
+            candidate
+            for candidate in result.candidates
+            if self._is_allowed_code_map_candidate(candidate.path)
+        ]
+        symbols = {candidate.symbol for candidate in candidates}
+        relations = [
+            relation
+            for relation in result.relations
+            if relation.source in symbols and relation.target in symbols
+        ]
+        return result.model_copy(update={"candidates": candidates, "relations": relations})
+
+    def _bounded_code_map_path(self, result: CodeMapPathResult) -> CodeMapPathResult:
+        nodes = [
+            node
+            for node in result.nodes
+            if self._is_allowed_code_map_candidate(node.path)
+        ]
+        symbols = {node.symbol for node in nodes}
+        relations = [
+            relation
+            for relation in result.relations
+            if relation.source in symbols and relation.target in symbols
+        ]
+        return result.model_copy(update={"nodes": nodes, "relations": relations})
+
+    def _is_allowed_code_path(self, path: str) -> bool:
+        try:
+            self._allowed_path(path)
+            return True
+        except ValueError:
+            return False
+
+    def _is_allowed_code_map_candidate(self, path: str | None) -> bool:
+        if path is None:
+            return self.work_item.allowed_roots in ([], ["."])
+        return self._is_allowed_code_path(path)
 
     def _list_files(self, arguments: dict[str, Any]) -> list[str]:
         pattern = _string_argument(arguments, "pattern", "**/*")

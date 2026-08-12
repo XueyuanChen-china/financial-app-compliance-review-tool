@@ -117,23 +117,29 @@ Worker 不允许直接写其他 Work Item 的目录，也不直接改 Snapshot�
 
 ## 6. Tool-call 和读取边界
 
-模型只能请求三个只读工具：
+Reviewer 只能通过项目自己的 Tool Runtime 请求以下只读工具：
 
 ```text
-list_files
-search_code
-read_file
+code_map_query       # Graphify 语义导航
+code_map_path        # Graphify 节点关系路径
+get_collector_facts  # 读取预计算确定性 Facts
+search_code          # 精确搜索 fallback
+read_file            # 候选源码验证
+list_files           # 有限目录 inventory
 ```
 
-`ScopedToolExecutor` 会检查：
+Reviewer 不直接获得 shell 或 Graphify CLI 权限。调用链是：
 
-- 工具名称是否在白名单。
-- 路径是否位于当前 Work Item 的 allowed roots。
-- `read_file` 是否超过 `max_files_read`。
-- 单次读取是否超过 `max_lines_per_read`。
-- 搜索结果和文件列表是否超过数量上限。
+```text
+Reviewer LLM
+  -> ScopedToolExecutor
+  -> CodeMapProvider / Collector store / Repository tools
+  -> structured ToolResult
+```
 
-如果工具调用越界，不会读取文件，而是返回结构化的失败 Tool Result，让 Worker 继续决定是否返回 `indeterminate`。
+`ScopedToolExecutor` 会检查工具白名单、路径边界、文件读取数量、单次读取行数、搜索/list/Graphify 结果数量、Graphify budget 和 Work Item 总 tool call 数量。
+
+如果工具调用越界，不会读取文件，而是返回结构化失败 Tool Result，让 Reviewer 继续决定是否返回 `indeterminate`。Graphify 没有找到节点也不能证明代码不存在，必须用 `search_code` 和 `read_file` 做 fallback 验证。
 
 ## 7. Token Budget
 
@@ -180,22 +186,55 @@ Worker 会拒绝以下结果：
 - `agent_id` 不匹配。
 - 没有覆盖所有分配的 Control。
 
-## 9. 受控并发 Scheduler
+## 9. LangGraph 受控并发 Runtime
 
-`ReviewScheduler` 使用 bounded `ThreadPoolExecutor`，默认 `max_concurrency=3`。
+`LangGraphReviewRuntime` 使用 Parent Graph 编排 Reviewer 子图，默认 `max_concurrency=3`。
 
-Scheduler 负责：
+运行原则是：
 
-- 为每个 Work Item 分配 agent id。
+```text
+One Work Item = One Isolated Agent Context
+Work Items are fan-out in LangGraph, but Reviewer execution is bounded by max_concurrency=3.
+```
+
+Parent Graph 负责：
+
+- 通过 `Send` 为每个 Work Item 建立一个独立分支。
 - 把 surface root 映射到对应 Sandbox。
-- 并发启动独立 Worker。
-- 收集并按 `work_item_id` 排序结果。
-- 将单个 Worker 的异常转成结构化失败结果。
-- 生成运行汇总。
+- 通过 `executions` reducer 合并分支结果。
+- 用 `defer=True` 等所有分支完成后再生成运行汇总。
+- 将单个 Reviewer 的异常转成结构化失败结果。
 
-并发不意味着共享上下文。每个 Worker 只能看到自己的 Work Item、自己的工具执行器和自己的输出路径。
+Reviewer 子图负责：
 
-## 10. Append-only Worker Events
+- 调用模型。
+- 执行受限的只读工具。
+- 根据工具结果继续模型循环。
+- 写入自己的 `review-result.json`。
+
+并发不意味着共享上下文。每个 Reviewer 只能看到自己的 Work Item、工具执行器和输出路径。`ReviewScheduler` 仍保留为兼容门面，但内部已委托给 LangGraph，不再直接创建线程池。
+
+所有 Work Items 可以进入 LangGraph fan-out，但超过 3 个的 Work Items 会等待执行槽位，不引入 RabbitMQ、Kafka、Redis Queue、Celery 等外部消息队列。
+
+LangGraph checkpoint 与 JSONL 事件日志职责不同：checkpoint 用于恢复图状态，JSONL 用于保留不可变审计轨迹。详见 [LangGraph Runtime Architecture](langgraph-architecture.md)。
+
+## 10. Reviewer Context 管理
+
+每个 Work Item 有独立的 `ReviewerContextState`，共享的只有只读工具实现、Graphify provider、Collector facts
+和仓库元数据。消息、工具结果、探索历史和压缩工作记忆都不跨 Work Item 共享。
+
+默认保留最近 3 个完整 round。第 4 个 round 只会把最旧 round 移入 retired，不会立刻压缩。
+下一次模型调用前估算 context usage：达到 78% 才同步压缩，目标降到 60%，硬上限为 90%，最多两次。
+压缩只允许读取旧 memory 和 retired rounds，不能压缩 immutable context、evidence ledger 或 active rounds。
+
+压缩输出必须是结构化 `CompressedReviewMemory`，包含 generation、inspected paths/symbols、findings、
+dead ends、unresolved questions 和 next search hints。失败时保留旧状态并重试；两次失败或仍超限时，
+当前 Work Item 返回 `indeterminate` 和 `context_budget_exhausted`，父图继续处理其他 Work Items。
+终态 Work Item 释放 live messages、active/retired rounds 和临时压缩内存，但保留结构化结果与证据锚点。
+
+执行预算（round、tool call、文件读取）与上下文预算（usage ratio 和阈值）独立计算。
+
+## 11. Append-only Worker Events
 
 运行过程写入 JSONL 事件日志：
 
@@ -219,12 +258,12 @@ run_completed
 
 事件只追加，不覆盖旧记录。这样后续可以追踪某个 Work Item 是哪个 Worker、哪个 attempt 产生的。
 
-## 11. 验收测试
+## 12. 验收测试
 
 当前测试覆盖：
 
 - Manifest 按 module 和 surface 分组。
-- 3 个 Work Items 确实同时进入 provider。
+- 3 个 Work Items 确实通过 LangGraph `Send` 同时进入 provider。
 - 3 个 Worker 的输出路径互不相同。
 - context fingerprint 互不相同。
 - event sequence 没有重复或覆盖。
@@ -232,6 +271,9 @@ run_completed
 - 工具调用读取其他目录会被拒绝。
 - Worker 可以先请求 `read_file`，再返回结构化结果。
 - provider 结果不符合 Work Item 合同会失败。
+- active window 会在第 4 个 round 后滑动，且不会立即压缩。
+- 达到 78% 时只压缩结构化的 retired rounds，immutable context、evidence ledger 和 active rounds 不变。
+- 压缩成功会清空 retired rounds；失败或超过硬上限会返回 `context_budget_exhausted` 的 indeterminate 结果。
 
 验证命令：
 
@@ -241,9 +283,9 @@ run_completed
 .venv/bin/pytest
 ```
 
-当前结果：24 个测试通过。
+当前结果：36 个测试通过。
 
-## 12. CLI 使用
+## 13. CLI 使用
 
 先生成 Manifest：
 
@@ -261,22 +303,25 @@ run_completed
 .venv/bin/compliance-review run-review \
   --manifest runs/review-2026-01/review-manifest.json \
   --output-root runs/review-2026-01/work-items \
-  --model <model-name>
+  --model <model-name> \
+  --checkpoint-db runs/review-2026-01/review-checkpoints.sqlite \
+  --thread-id review-2026-01
 ```
 
 API key 通过 `OPENAI_API_KEY` 环境变量提供，不写入 Manifest、事件日志或结果文件。
 
-## 13. Day 3 结论
+## 14. Day 3 结论
 
-Day 3 已经把“多个 Reviewer 并行审查”从架构图落成了可运行的基础管线：
+Day 3 已经把“多个 Reviewer 并行审查”从架构图落成了可运行的 LangGraph 基础管线：
 
 ```text
 Controls/Profile
   -> Review Manifest
   -> Work Item Sandbox
-  -> Provider + Read-only Tool Calls
+  -> Parent Graph Send
+  -> Reviewer Subgraph: Provider + Read-only Tool Calls
   -> Structured Review Result
-  -> Append-only Events
+  -> Deferred Summary + Checkpoint + Append-only Events
 ```
 
 当前仍未实现最终 Validator、Verifier、Resolver 和 Snapshot。下一阶段应在不破坏本阶段 Work Item 隔离的前提下，增加结果一致性校验、疑点复核和最终状态计算。

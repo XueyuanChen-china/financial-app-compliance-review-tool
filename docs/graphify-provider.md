@@ -33,10 +33,11 @@ CodeMapProvider
 
 ## 3. 当前接口
 
-第一版只实现：
+当前实现：
 
 ```python
 CodeMapProvider.query(CodeMapQuery) -> CodeMapQueryResult
+CodeMapProvider.path(CodeMapPath) -> CodeMapPathResult
 ```
 
 输入可以来自独立的前端、Android 或后端代码仓库。`backend_api_doc` 也可以作为查询上下文，但它只代表接口文档，不等于后端实现代码。
@@ -73,6 +74,20 @@ CodeMapProvider.query(CodeMapQuery) -> CodeMapQueryResult
 ```
 
 候选结果有上限，Wrapper 不返回整个 graph。
+
+路径查询示例：
+
+```json
+{
+  "source": "AccountController.deleteAccount",
+  "target": "UserRepository.delete",
+  "surface": "backend_code",
+  "max_hops": 6,
+  "budget": 2000
+}
+```
+
+路径结果同样只返回受限节点和关系，不暴露 Graphify 原始输出。
 
 ## 4. 状态含义
 
@@ -153,11 +168,35 @@ compliance-review init --profile examples/app-profile.yaml
 }
 ```
 
-## 6. 当前不做什么
+## 6. Reviewer Tool Runtime 接入
+
+Reviewer 不直接获得 `graphify` 命令。调用链是：
+
+```text
+Reviewer LLM
+  -> code_map_query / code_map_path
+  -> ScopedToolExecutor
+  -> GraphifyCodeMapProvider
+  -> graphify query/path
+  -> normalize + allowed-root filter
+  -> structured ToolResult
+```
+
+`ScopedToolExecutor` 同时暴露 `get_collector_facts`。父流程可以把 `ManifestCollector`、`DependencyCollector` 和 `ApiDocumentCollector` 的 `CollectorResult` 注入 Runtime，Reviewer 只能按 collector/fact 条件读取这些预计算 Facts。
+
+推荐调查顺序：
+
+```text
+get_collector_facts / code_map_query
+  -> 找到候选事实、代码和关系
+  -> read_file 验证源码
+  -> 证据不足时 search_code fallback
+```
+
+## 7. 当前不做什么
 
 - 不使用 Graphify MCP。
 - 不加载 Graphify 的完整 Codex Skill。
 - 不直接读取或修改 Graphify 的 `graph.json`。
 - 不把 Graphify 结果当作 Evidence 或 Compliance Result。
-- 不实现 `code_map_path`，等 `code_map_query` 稳定后再做。
 - 不实现 Graphify 内部的 AST、增量图算法或 Knowledge Graph 数据库；建图由 Graphify CLI 完成，项目只负责生命周期编排和结果边界。

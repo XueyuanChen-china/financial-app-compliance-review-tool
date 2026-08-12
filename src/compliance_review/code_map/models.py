@@ -19,6 +19,14 @@ class CodeMapQuery(CodeMapModel):
     budget: int = Field(default=2000, ge=100, le=10000)
 
 
+class CodeMapPath(CodeMapModel):
+    source: str = Field(min_length=1)
+    target: str = Field(min_length=1)
+    surface: Optional[Surface] = None
+    max_hops: int = Field(default=6, ge=1, le=12)
+    budget: int = Field(default=2000, ge=100, le=10000)
+
+
 class CodeMapCandidate(CodeMapModel):
     symbol: str = Field(min_length=1)
     path: Optional[str] = None
@@ -42,6 +50,18 @@ class CodeMapQueryResult(CodeMapModel):
     status: CodeMapStatus
     provider: str = "graphify"
     candidates: list[CodeMapCandidate] = Field(default_factory=list)
+    relations: list[CodeMapRelation] = Field(default_factory=list)
+    error_code: Optional[str] = None
+    truncated: bool = False
+
+
+class CodeMapPathResult(CodeMapModel):
+    source: str
+    target: str
+    surface: Optional[Surface] = None
+    status: CodeMapStatus
+    provider: str = "graphify"
+    nodes: list[CodeMapCandidate] = Field(default_factory=list)
     relations: list[CodeMapRelation] = Field(default_factory=list)
     error_code: Optional[str] = None
     truncated: bool = False

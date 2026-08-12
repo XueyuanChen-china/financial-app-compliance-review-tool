@@ -30,7 +30,16 @@ class ReviewManifest(ReviewContractModel):
 
 class ToolCall(ReviewContractModel):
     call_id: str = Field(min_length=1)
-    name: Literal["list_files", "search_code", "read_file"]
+    name: Literal[
+        "code_map_query",
+        "code_map_path",
+        "get_collector_facts",
+        "get_repository_inventory",
+        "get_app_facts",
+        "list_files",
+        "search_code",
+        "read_file",
+    ]
     arguments: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -41,6 +50,7 @@ class ModelRequest(ReviewContractModel):
     messages: list[dict[str, Any]] = Field(min_length=1)
     tools: list[dict[str, Any]] = Field(default_factory=list)
     token_budget: int = Field(default=4000, ge=100)
+    request_kind: Literal["review", "compression"] = "review"
 
 
 class ModelResponse(ReviewContractModel):

@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 from compliance_review.code_map import (
+    CodeMapPath,
     CodeMapQuery,
     GraphifyCodeMapProvider,
     GraphifyLifecycle,
@@ -71,6 +72,27 @@ def test_graphify_query_requires_initialized_map(tmp_path: Path) -> None:
 
     assert result.status == "unavailable"
     assert result.error_code == "graph_not_initialized"
+
+
+def test_graphify_path_is_normalized_and_bounded(tmp_path: Path) -> None:
+    fake_graphify = tmp_path / "fake_graphify.py"
+    fake_graphify.write_text(
+        """
+import sys
+print('C.delete → S.delete → R.delete')
+""",
+        encoding="utf-8",
+    )
+    result = GraphifyCodeMapProvider(
+        tmp_path,
+        command=(sys.executable, str(fake_graphify)),
+        require_index=False,
+    ).path(CodeMapPath(source="C.delete", target="R.delete", max_hops=1))
+
+    assert result.status == "available"
+    assert result.truncated is True
+    assert [node.symbol for node in result.nodes] == ["C.delete", "S.delete"]
+    assert len(result.relations) == 1
 
 
 def test_graphify_lifecycle_builds_code_only_map_with_fake_cli(tmp_path: Path) -> None:

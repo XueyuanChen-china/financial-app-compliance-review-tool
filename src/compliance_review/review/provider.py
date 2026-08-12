@@ -133,6 +133,57 @@ def tool_schemas() -> list[dict[str, Any]]:
     """Return the only tools a Reviewer may request."""
     return [
         {
+                "type": "function",
+                "function": {
+                "name": "code_map_query",
+                "description": (
+                    "Query the bounded Graphify code map for candidate symbols and relations."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "required": ["query"],
+                    "properties": {
+                        "query": {"type": "string"},
+                        "max_candidates": {"type": "integer", "minimum": 1, "maximum": 20},
+                        "budget": {"type": "integer", "minimum": 100, "maximum": 10000},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "code_map_path",
+                "description": "Find a bounded Graphify relation path between two symbols.",
+                "parameters": {
+                    "type": "object",
+                    "required": ["source", "target"],
+                    "properties": {
+                        "source": {"type": "string"},
+                        "target": {"type": "string"},
+                        "max_hops": {"type": "integer", "minimum": 1, "maximum": 12},
+                        "budget": {"type": "integer", "minimum": 100, "maximum": 10000},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_collector_facts",
+                "description": "Read precomputed deterministic Manifest, dependency, or API facts.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "collector_id": {"type": "string"},
+                        "fact_ids": {"type": "array", "items": {"type": "string"}},
+                        "fact_type": {"type": "string"},
+                        "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+                    },
+                },
+            },
+        },
+        {
             "type": "function",
             "function": {
                 "name": "list_files",

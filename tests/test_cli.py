@@ -47,3 +47,20 @@ def test_validate_command() -> None:
 
     assert result.exit_code == 0
     assert "valid: profile=ForiQarz controls=8" in result.stdout
+
+
+def test_init_workspace_setup_mode(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    result = CliRunner().invoke(
+        app,
+        [
+            "init",
+            str(workspace),
+            "--repository",
+            f"web={PROJECT_ROOT / 'tests' / 'fixtures' / 'day2' / 'frontend'}",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert '"confirmation_status": "awaiting_confirmation"' in result.stdout
+    assert (workspace / "setup" / "repository_inventory.json").is_file()

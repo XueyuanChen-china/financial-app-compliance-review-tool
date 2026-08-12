@@ -5,15 +5,26 @@ import threading
 import time
 from pathlib import Path
 
+from compliance_review.code_map import CodeMapCandidate, CodeMapQueryResult, CodeMapRelation
+from compliance_review.collectors.base import CollectorResult
 from compliance_review.config.loader import load_controls, load_profile
 from compliance_review.domain.models import (
     ControlSurfaceResult,
+    Fact,
     ReviewResult,
+    SourceRef,
     WorkItem,
 )
 from compliance_review.repository import RepositorySandbox
-from compliance_review.review import ReviewManifestBuilder, ReviewScheduler, StaticModelProvider
+from compliance_review.review import (
+    LangGraphReviewRuntime,
+    ReviewerRuntimeConfig,
+    ReviewManifestBuilder,
+    ReviewScheduler,
+    StaticModelProvider,
+)
 from compliance_review.review.models import ModelRequest, ModelResponse, ToolCall
+from compliance_review.review.provider import tool_schemas
 from compliance_review.review.tools import ScopedToolExecutor
 
 FIXTURES = Path(__file__).parent / "fixtures" / "day2"
@@ -140,6 +151,238 @@ def test_worker_tool_call_is_scoped_to_work_item_root() -> None:
     assert "outside work item roots" in (denied.error or "")
 
 
+def test_reviewer_tools_include_graphify_and_collector_facts() -> None:
+    class FakeCodeMapProvider:
+        def query(self, request: object) -> CodeMapQueryResult:
+            return CodeMapQueryResult(
+                query="account deletion",
+                surface="backend_code",
+                status="available",
+                candidates=[
+                    CodeMapCandidate(symbol="AccountService.delete", path="backend/app.py"),
+                    CodeMapCandidate(symbol="SecretStore.read", path="secrets.txt"),
+                ],
+                relations=[
+                    CodeMapRelation(
+                        source="AccountService.delete",
+                        relation="calls",
+                        target="SecretStore.read",
+                    )
+                ],
+            )
+
+        def path(self, request: object) -> object:
+            raise AssertionError("path is not needed in this test")
+
+    collector = CollectorResult(
+        collector_id="android_manifest",
+        source_surface="backend_code",
+        parser_status="ok",
+        coverage_status="complete",
+        facts=[
+            Fact(
+                fact_id="fact.backend.permission.contacts",
+                source_surface="backend_code",
+                fact_type="android_manifest_permission",
+                observed_value="android.permission.READ_CONTACTS",
+                source_refs=[SourceRef(path="app/src/main/AndroidManifest.xml")],
+                parser_status="ok",
+                coverage_status="complete",
+                evidence_strength="static_proof",
+            )
+        ],
+    )
+    executor = ScopedToolExecutor(
+        RepositorySandbox(FIXTURES),
+        _work_item("wi.graph-tools"),
+        code_map_provider=FakeCodeMapProvider(),
+        collector_results={"android_manifest": collector},
+    )
+
+    code_map = executor.execute(
+        ToolCall(
+            call_id="map-1",
+            name="code_map_query",
+            arguments={"query": "account deletion"},
+        )
+    )
+    facts = executor.execute(
+        ToolCall(
+            call_id="facts-1",
+            name="get_collector_facts",
+            arguments={"collector_id": "android_manifest"},
+        )
+    )
+
+    assert code_map.ok is True
+    assert [item["symbol"] for item in code_map.output["candidates"]] == [
+        "AccountService.delete"
+    ]
+    assert code_map.output["relations"] == []
+    assert facts.ok is True
+    assert facts.output["facts"][0]["fact_id"] == "fact.backend.permission.contacts"
+
+
+def test_tool_schema_exposes_all_read_only_reviewer_tools() -> None:
+    names = {
+        schema["function"]["name"]
+        for schema in tool_schemas()
+    }
+    assert names == {
+        "code_map_query",
+        "code_map_path",
+        "get_collector_facts",
+        "list_files",
+        "search_code",
+        "read_file",
+    }
+
+
+def test_work_items_have_independent_contexts_and_tool_histories(tmp_path: Path) -> None:
+    items = [_work_item("wi.context-a"), _work_item("wi.context-b")]
+    request_log: dict[str, list[ModelRequest]] = {item.work_item_id: [] for item in items}
+    call_counts: dict[str, int] = {item.work_item_id: 0 for item in items}
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        work_item_id = request.work_item.work_item_id
+        request_log[work_item_id].append(request)
+        call_counts[work_item_id] += 1
+        if call_counts[work_item_id] == 1:
+            return ModelResponse(
+                tool_calls=[
+                    ToolCall(
+                        call_id=f"read-{work_item_id}",
+                        name="read_file",
+                        arguments={"path": "backend/app.py", "line_count": 2},
+                    )
+                ]
+            )
+        return ModelResponse(
+            content=_review_json(request, request.work_item, request.agent_id)
+        )
+
+    summary = LangGraphReviewRuntime(
+        provider=StaticModelProvider(response_factory),
+        max_concurrency=1,
+    ).run(
+        manifest_run_id="run-context-isolation",
+        work_items=items,
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+    )
+
+    assert summary.completed == 2
+    first_a, second_a = request_log["wi.context-a"]
+    first_b, second_b = request_log["wi.context-b"]
+    assert len(first_a.messages) == 2
+    assert len(first_b.messages) == 2
+    assert "wi.context-a" in first_a.messages[-1]["content"]
+    assert "wi.context-b" in first_b.messages[-1]["content"]
+    assert "wi.context-b" not in first_a.messages[-1]["content"]
+    assert "wi.context-a" not in first_b.messages[-1]["content"]
+    assert any(message.get("tool_call_id") == "read-wi.context-a" for message in second_a.messages)
+    assert any(message.get("tool_call_id") == "read-wi.context-b" for message in second_b.messages)
+    assert all(
+        "read-wi.context-b" not in str(message) for message in second_a.messages
+    )
+    assert all(
+        "read-wi.context-a" not in str(message) for message in second_b.messages
+    )
+
+
+def test_work_item_failure_does_not_pollute_another_context(tmp_path: Path) -> None:
+    failed = _work_item("wi.failed")
+    healthy = _work_item("wi.healthy")
+    requests: list[ModelRequest] = []
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        requests.append(request)
+        if request.work_item.work_item_id == failed.work_item_id:
+            raise RuntimeError("provider failure for failed work item")
+        return ModelResponse(content=_review_json(request, request.work_item, request.agent_id))
+
+    summary = LangGraphReviewRuntime(
+        provider=StaticModelProvider(response_factory),
+        max_concurrency=2,
+    ).run(
+        manifest_run_id="run-failure-isolation",
+        work_items=[failed, healthy],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+    )
+
+    assert summary.completed == 1
+    assert summary.failed == 1
+    healthy_request = next(
+        request for request in requests if request.work_item.work_item_id == healthy.work_item_id
+    )
+    assert "provider failure for failed work item" not in str(healthy_request.messages)
+
+
+def test_seven_work_items_are_bounded_and_waiting_items_progress(tmp_path: Path) -> None:
+    items = [_work_item(f"wi.queue-{index}") for index in range(7)]
+    active = 0
+    completed = 0
+    maximum_active = 0
+    start_records: list[tuple[str, int]] = []
+    lock = threading.Lock()
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        nonlocal active, completed, maximum_active
+        with lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+            start_records.append((request.work_item.work_item_id, completed))
+        time.sleep(0.03)
+        with lock:
+            active -= 1
+            completed += 1
+        return ModelResponse(content=_review_json(request, request.work_item, request.agent_id))
+
+    summary = LangGraphReviewRuntime(
+        provider=StaticModelProvider(response_factory),
+        max_concurrency=3,
+    ).run(
+        manifest_run_id="run-queue",
+        work_items=items,
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+    )
+
+    assert summary.completed == 7
+    assert summary.failed == 0
+    assert maximum_active <= 3
+    assert len(start_records) == 7
+    assert any(completed_before_start >= 1 for _, completed_before_start in start_records[3:])
+
+
+def test_context_budget_exhaustion_returns_indeterminate_for_one_work_item(
+    tmp_path: Path,
+) -> None:
+    item = _work_item("wi.context-budget")
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        raise AssertionError("model should not be called after the hard context gate")
+
+    summary = LangGraphReviewRuntime(
+        provider=StaticModelProvider(response_factory),
+        max_concurrency=1,
+        context_config=ReviewerRuntimeConfig(context_window_tokens=100),
+    ).run(
+        manifest_run_id="run-context-budget",
+        work_items=[item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+    )
+
+    assert summary.completed == 0
+    assert summary.failed == 1
+    execution = summary.executions[0]
+    assert execution.error == "context_budget_exhausted"
+    assert execution.result is not None
+    assert execution.result.rows[0].recommended_control_status == "indeterminate"
+
+
 def test_worker_can_complete_after_read_only_tool_call(tmp_path: Path) -> None:
     item = _work_item("wi.tool-run")
     calls = 0
@@ -175,3 +418,31 @@ def test_worker_can_complete_after_read_only_tool_call(tmp_path: Path) -> None:
     assert execution.completed == 1
     assert execution.executions[0].tool_rounds == 1
     assert calls == 2
+
+
+def test_langgraph_runtime_persists_parent_checkpoint(tmp_path: Path) -> None:
+    item = _work_item("wi.checkpoint")
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        return ModelResponse(content=_review_json(request, request.work_item, request.agent_id))
+
+    runtime = LangGraphReviewRuntime(
+        provider=StaticModelProvider(response_factory),
+        max_concurrency=1,
+    )
+    summary = runtime.run(
+        manifest_run_id="run-checkpoint",
+        work_items=[item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+        event_log_path=tmp_path / "events.jsonl",
+        thread_id="thread-checkpoint",
+    )
+
+    assert summary.completed == 1
+    checkpoint = runtime.checkpointer.get_tuple(
+        {"configurable": {"thread_id": "thread-checkpoint"}}
+    )
+    assert checkpoint is not None
+    events = (tmp_path / "events.jsonl").read_text(encoding="utf-8")
+    assert '"runtime": "langgraph"' in events

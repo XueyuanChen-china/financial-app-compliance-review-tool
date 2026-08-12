@@ -10,6 +10,8 @@ from typing import Optional, Protocol, Sequence, Tuple
 from compliance_review.code_map.lifecycle import GraphifyLifecycle
 from compliance_review.code_map.models import (
     CodeMapCandidate,
+    CodeMapPath,
+    CodeMapPathResult,
     CodeMapQuery,
     CodeMapQueryResult,
     CodeMapRelation,
@@ -31,6 +33,9 @@ class CodeMapProvider(Protocol):
 
     def query(self, request: CodeMapQuery) -> CodeMapQueryResult:
         """Return a compact, bounded code-map response."""
+
+    def path(self, request: CodeMapPath) -> CodeMapPathResult:
+        """Return a compact path between two graph symbols."""
 
 
 class GraphifyCodeMapProvider:
@@ -103,6 +108,55 @@ class GraphifyCodeMapProvider:
             truncated=truncated,
         )
 
+    def path(self, request: CodeMapPath) -> CodeMapPathResult:
+        if not self.repo_path.is_dir():
+            return self._path_status_result(request, "unavailable", "repository_not_found")
+        if not Path(self.command[0]).is_file() and shutil.which(self.command[0]) is None:
+            return self._path_status_result(request, "unavailable", "graphify_not_found")
+        if self.require_index and not GraphifyLifecycle.graph_paths(self.repo_path):
+            return self._path_status_result(request, "unavailable", "graph_not_initialized")
+
+        command = [
+            *self.command,
+            "path",
+            request.source,
+            request.target,
+            "--budget",
+            str(request.budget),
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds,
+                check=False,
+            )
+        except FileNotFoundError:
+            return self._path_status_result(request, "unavailable", "graphify_not_found")
+        except subprocess.TimeoutExpired:
+            return self._path_status_result(request, "degraded", "graphify_timeout")
+        except OSError:
+            return self._path_status_result(request, "unavailable", "graphify_os_error")
+
+        if completed.returncode != 0:
+            return self._path_status_result(request, "degraded", "graphify_command_failed")
+        nodes, relations, truncated = self._parse_path_output(
+            completed.stdout, request.source, request.target, request.max_hops
+        )
+        if not nodes:
+            return self._path_status_result(request, "degraded", "graphify_path_unparseable")
+        return CodeMapPathResult(
+            source=request.source,
+            target=request.target,
+            surface=request.surface,
+            status="available",
+            nodes=nodes,
+            relations=relations,
+            truncated=truncated,
+        )
+
     @staticmethod
     def _status_result(
         request: CodeMapQuery, status: CodeMapStatus, error_code: str
@@ -111,6 +165,18 @@ class GraphifyCodeMapProvider:
             query=request.query,
             surface=request.surface,
             provider="graphify",
+            status=status,
+            error_code=error_code,
+        )
+
+    @staticmethod
+    def _path_status_result(
+        request: CodeMapPath, status: CodeMapStatus, error_code: str
+    ) -> CodeMapPathResult:
+        return CodeMapPathResult(
+            source=request.source,
+            target=request.target,
+            surface=request.surface,
             status=status,
             error_code=error_code,
         )
@@ -158,6 +224,41 @@ class GraphifyCodeMapProvider:
             if relation.source in candidate_symbols and relation.target in candidate_symbols
         ][: max_candidates * 2]
         return candidates, relations, truncated
+
+    @staticmethod
+    def _parse_path_output(
+        output: str, source: str, target: str, max_hops: int
+    ) -> tuple[list[CodeMapCandidate], list[CodeMapRelation], bool]:
+        """Normalize Graphify path text without exposing its raw output."""
+        symbols: list[str] = []
+        for line in output.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith(("Path:", "No path", "(") ):
+                continue
+            if "NODE " in stripped:
+                node_match = _NODE_RE.match(stripped)
+                if node_match:
+                    symbols.append(node_match.group("symbol"))
+                    continue
+            for separator in (" → ", " -> ", " -> "):
+                if separator in stripped:
+                    symbols.extend(part.strip() for part in stripped.split(separator))
+                    break
+        if not symbols:
+            return [], [], False
+        normalized: list[str] = []
+        for symbol in [source, *symbols, target]:
+            clean = symbol.strip().rstrip(".")
+            if clean and (not normalized or normalized[-1] != clean):
+                normalized.append(clean)
+        truncated = len(normalized) > max_hops + 1
+        normalized = normalized[: max_hops + 1]
+        nodes = [CodeMapCandidate(symbol=symbol) for symbol in normalized]
+        relations = [
+            CodeMapRelation(source=left, relation="path", target=right)
+            for left, right in zip(normalized, normalized[1:])
+        ]
+        return nodes, relations, truncated
 
 
 def _parse_location(location: str) -> Tuple[Optional[int], Optional[int]]:

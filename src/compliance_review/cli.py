@@ -21,11 +21,13 @@ from compliance_review.config.loader import ConfigLoadError, load_controls, load
 from compliance_review.domain.models import Surface
 from compliance_review.repository import GitRepository, ReadOnlyRepositoryTools, RepositorySandbox
 from compliance_review.review import (
+    LangGraphReviewRuntime,
     OpenAICompatibleProvider,
     ReviewManifestBuilder,
-    ReviewScheduler,
 )
 from compliance_review.review.models import ReviewManifest
+from compliance_review.setup import ReviewSetupService
+from compliance_review.setup.models import WorkspaceMaterial, WorkspaceRepository
 
 app = typer.Typer(
     name="compliance-review",
@@ -94,6 +96,9 @@ def code_map_query(
 
 @app.command("init")
 def init_graphify(
+    workspace: Annotated[
+        Optional[Path], typer.Argument(help="Workspace root for Phase 1 setup")
+    ] = None,
     repo: Annotated[Optional[Path], typer.Option(help="One code repository to index")] = None,
     profile: Annotated[
         Optional[Path], typer.Option(help="Applicability profile; indexes code surfaces")
@@ -102,8 +107,50 @@ def init_graphify(
         bool, typer.Option(help="Install graphifyy with uv when graphify is missing")
     ] = True,
     force: Annotated[bool, typer.Option(help="Force a full graph rebuild")] = False,
+    repository: Annotated[
+        Optional[list[str]],
+        typer.Option(
+            "--repository",
+            help="Workspace repository, repeat as repo_id=path; enables setup mode",
+        ),
+    ] = None,
+    material: Annotated[
+        Optional[list[Path]],
+        typer.Option(
+            "--material",
+            help="Compliance material path to register in workspace setup",
+        ),
+    ] = None,
 ) -> None:
-    """Install/check Graphify and build local code maps before review queries."""
+    """Initialize a Workspace, or use legacy Graphify repository initialization."""
+    repository = repository or []
+    material = material or []
+    if workspace is not None or repository or material:
+        if workspace is None:
+            raise typer.BadParameter("workspace path is required in setup mode")
+        try:
+            repositories = [_parse_workspace_repository(value) for value in repository]
+            materials = [
+                WorkspaceMaterial(path=path.expanduser().resolve().as_posix())
+                for path in material
+            ]
+            result = ReviewSetupService(workspace).initialize(repositories, materials)
+        except (OSError, ValueError) as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        typer.echo(
+            json.dumps(
+                {
+                    "workspace": result.workspace.model_dump(mode="json"),
+                    "repositories": len(result.inventories),
+                    "facts": len(result.app_facts.facts),
+                    "profile_status": result.profile.status,
+                    "confirmation_status": result.confirmation.status,
+                    "required_fields": result.confirmation.required_fields,
+                },
+                indent=2,
+            )
+        )
+        return
     if (repo is None) == (profile is None):
         raise typer.BadParameter("provide exactly one of --repo or --profile")
     lifecycle = GraphifyLifecycle()
@@ -132,6 +179,20 @@ def init_graphify(
         for target in targets
     ]
     typer.echo(json.dumps([result.model_dump() for result in results], indent=2))
+
+
+def _parse_workspace_repository(value: str) -> WorkspaceRepository:
+    if "=" in value:
+        repo_id, raw_path = value.split("=", 1)
+        if not repo_id or not raw_path:
+            raise ValueError("workspace repository must use repo_id=path")
+    else:
+        raw_path = value
+        repo_id = Path(raw_path).expanduser().name
+    return WorkspaceRepository(
+        repo_id=repo_id,
+        path=Path(raw_path).expanduser().resolve().as_posix(),
+    )
 
 
 @app.command("repository-info")
@@ -228,8 +289,14 @@ def run_review(
         str, typer.Option(help="OpenAI-compatible chat completions URL")
     ] = "https://api.openai.com/v1/chat/completions",
     max_concurrency: Annotated[int, typer.Option(help="Maximum parallel workers")] = 3,
+    checkpoint_db: Annotated[
+        Optional[Path], typer.Option(help="Optional SQLite checkpoint database")
+    ] = None,
+    thread_id: Annotated[
+        Optional[str], typer.Option(help="LangGraph thread id for resume/debug")
+    ] = None,
 ) -> None:
-    """Run a manifest using an OpenAI-compatible provider and read-only tools."""
+    """Run a manifest with the LangGraph parent graph and read-only tools."""
     try:
         loaded = json.loads(manifest.read_text(encoding="utf-8"))
         review_manifest = ReviewManifest.model_validate(loaded)
@@ -237,15 +304,35 @@ def run_review(
             surface: RepositorySandbox(Path(root))
             for surface, root in review_manifest.surface_roots.items()
         }
-        summary = ReviewScheduler(
+        runtime = LangGraphReviewRuntime(
             provider=OpenAICompatibleProvider(model=model, base_url=base_url),
             max_concurrency=max_concurrency,
-        ).run(
-            manifest_run_id=review_manifest.run_id,
-            work_items=review_manifest.work_items,
-            sandboxes=sandboxes,
-            output_root=output_root,
         )
+        if checkpoint_db is None:
+            summary = runtime.run(
+                manifest_run_id=review_manifest.run_id,
+                work_items=review_manifest.work_items,
+                sandboxes=sandboxes,
+                output_root=output_root,
+                thread_id=thread_id,
+            )
+        else:
+            from langgraph.checkpoint.sqlite import SqliteSaver
+
+            checkpoint_db.parent.mkdir(parents=True, exist_ok=True)
+            with SqliteSaver.from_conn_string(checkpoint_db.as_posix()) as saver:
+                runtime = LangGraphReviewRuntime(
+                    provider=OpenAICompatibleProvider(model=model, base_url=base_url),
+                    max_concurrency=max_concurrency,
+                    checkpointer=saver,
+                )
+                summary = runtime.run(
+                    manifest_run_id=review_manifest.run_id,
+                    work_items=review_manifest.work_items,
+                    sandboxes=sandboxes,
+                    output_root=output_root,
+                    thread_id=thread_id,
+                )
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.echo(summary.model_dump_json(indent=2))
