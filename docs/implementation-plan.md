@@ -13,7 +13,7 @@
 第一版完成后，系统应能够：
 
 1. 加载 5 至 10 个代表性 Controls 和 App Applicability Profile。
-2. 对 H5、Android、后端 API 文档等已接入证据面建立确定性审查清单。
+2. 对 H5、Android、后端 API 文档和后端代码等已接入证据面建立确定性审查清单。
 3. 在没有 LLM 时运行通用 Collectors 并输出结构化事实。
 4. 将审查任务拆成相互隔离的 Work Items，并发交给多个 Reviewer Agent。
 5. 对每个 `Control x Required Surface` 单独记录证据、缺口和建议状态。
@@ -207,18 +207,27 @@ Agent 只输出 `recommended_control_status`，最终 `control_status` 由 Resol
 
 ### 6.1 Parent Orchestrator
 
-Parent 是普通程序驱动的调度器，不是一个可以自由创建 Agent 网络的自治 Agent。职责包括：
+Parent 是 LangGraph 驱动的状态化调度图，不是一个可以自由创建 Agent 网络的自治 Agent。职责包括：
 
 - 加载 Controls、Profile、Snapshot 和 Git Diff。
 - 生成 Review Manifest 与 Coverage Manifest。
 - 生成 Work Items。
+- 通过 `Send` 控制动态 fan-out，通过 checkpoint 支持状态保存和恢复。
 - 控制并发数、超时、重试和恢复。
-- 为每个 Reviewer 创建独立上下文。
+- 为每个 Reviewer 创建独立的 reviewer subgraph 和上下文。
 - 聚合结构化结果。
 - 调用 Validator、Verifier、Resolver 和 Reporter。
 - 记录不可变事件和运行状态。
 
-默认并发数为 3，可通过配置调整，但不允许 Worker 自己继续派生 Agent。
+默认并发数为 3，可通过 LangGraph invocation config 调整，但不允许 Worker 自己继续派生 Agent。
+
+当前实现路径为：
+
+```text
+Parent Graph -> Send(Work Item) -> Reviewer Subgraph -> deferred summarize
+```
+
+LangGraph checkpoint 负责图状态，JSONL event log 负责不可变审计记录；两者不能互相替代。
 
 ### 6.2 并行 Reviewer Agents
 
@@ -227,7 +236,7 @@ Reviewer 是 Multi-Agent 能力的主体。不同 Work Items 可以并发执行�
 Reviewer 可以：
 
 - 查看本 Work Item 的 Controls、Collector Facts 和 Code Map candidates。
-- 使用受限的 `list_files`、`search_code`、`read_file`、`get_collector_evidence`。
+- 使用受限的 `code_map_query`、`code_map_path`、`get_collector_facts`、`list_files`、`search_code`、`read_file`。
 - 跨文件理解同一业务流程。
 - 为每个 Control-Surface row 返回 observations、anchors、missing evidence 和 recommended status。
 
@@ -239,7 +248,28 @@ Reviewer 不可以：
 - 声称整个项目已经覆盖完成。
 - 将 API 文档提升为 backend implementation proof。
 
-### 6.3 单 Verifier
+### 6.3 Reviewer Context 与并发边界
+
+每个 Work Item 绑定一个独立 `ReviewerContextState`，同一 Work Item 的多轮模型/工具交互连续进行，
+不同 Work Items 之间不共享 messages、tool results、探索历史或压缩工作记忆。
+
+上下文状态分为：
+
+- `immutable_context`：Work Item、required surface、审查指令，永不压缩。
+- `evidence_ledger`：可追溯的路径、symbol、行号和工具来源锚点，永不压缩。
+- `active_rounds`：默认最近 3 个完整 round。
+- `retired_rounds`：被滑出 active window 的完整 round。
+- `compressed_memory`：由旧 memory + retired rounds 同步生成的结构化摘要。
+
+每次模型调用前估算上下文使用量。达到 78% 时同步压缩，目标为 60%，硬上限为 90%，最多尝试两次。
+压缩不能读取或改写 immutable context、evidence ledger、active rounds。压缩后仍超限或两次失败时，
+只将当前 Work Item 标记为 `indeterminate`，错误为 `context_budget_exhausted`，不让父图崩溃。
+
+LangGraph 一次可以 fan-out 全部 Work Items，但运行时 `max_concurrency` 默认是 3；超过 3 个的 Work Items
+在 LangGraph 内部等待执行槽位，不额外引入 RabbitMQ、Celery 或其他外部队列。Work Item 终态后释放临时
+conversation/context，只保留结构化结果和 evidence anchors。
+
+### 6.4 单 Verifier
 
 Verifier 不并行复审所有 Work Items。Validator 先筛选以下项目：
 
@@ -253,7 +283,7 @@ Verifier 不并行复审所有 Work Items。Validator 先筛选以下项目：
 
 Verifier 只读取疑点相关的结构化结果与最小代码范围，输出 objection、confirmation 或 correction recommendation。它同样不能直接决定最终状态。
 
-### 6.4 Planner 的处理
+### 6.5 Planner 的处理
 
 第一版不实现 Planner Agent。Parent 根据 Control、Surface、Collector Facts 和 Code Map 查询结果直接生成 Work Item。需要更复杂的范围缩小时，先通过限制 `code_map_query` 的候选数、`read_file` 行数和工具轮次解决。后续如果真实运行数据显示范围规划成为瓶颈，再单独评估 Planner。
 
@@ -271,22 +301,27 @@ Verifier 只读取疑点相关的结构化结果与最小代码范围，输出 o
 class CodeMapProvider:
     def query(self, request: CodeMapQuery) -> CodeMapQueryResult:
         ...
+
+    def path(self, request: CodeMapPath) -> CodeMapPathResult:
+        ...
 ```
 
-第一阶段只实现 `code_map_query`。`code_map_path` 留到查询链路稳定后再实现。
+第一阶段实现 `code_map_query` 和 `code_map_path`，但两者都只通过项目自己的 Provider 暴露给 Reviewer。
 
-Reviewer 的目标工具集合如下；第一阶段只实现其中的 `code_map_query`：
+Reviewer 的目标工具集合如下：
 
 ```text
 code_map_query
-code_map_path       # planned, not implemented in Day 2
+code_map_path
 list_files(root, pattern, limit)
 search_code(query, roots, file_globs, limit)
 read_file(path, start_line, line_count)
-get_collector_evidence(fact_ids)
+get_collector_facts(collector_id, fact_ids, fact_type, limit)
 ```
 
-第一阶段实际只接入 `code_map_query`、`search_code`、`read_file` 和 `get_collector_evidence`。不能因为 Graphify 没返回候选，就证明代码不存在；关键 absence 判断仍必须 fallback 到 `search_code`、文件搜索和定向读取。
+Reviewer 不直接调用 `graphify` CLI。`code_map_query` 和 `code_map_path` 由 `ScopedToolExecutor` 转发到 `GraphifyCodeMapProvider`，并在返回前按当前 Sandbox 和 Work Item 的 allowed roots 过滤候选。
+
+`get_collector_facts` 只读取父流程注入的 `CollectorResult`，不重新扫描代码，也不允许 Reviewer 修改 Facts。不能因为 Graphify 没返回候选，就证明代码不存在；关键 absence 判断仍必须 fallback 到 `search_code`、文件搜索和定向读取。
 
 Graphify Wrapper 的返回必须是紧凑结构，不向 Reviewer 传递完整 graph 或 Graphify Skill：
 
@@ -311,10 +346,12 @@ Graphify Wrapper 的返回必须是紧凑结构，不向 Reviewer 传递完整 g
 第一版保留以下只读工具约束：
 
 ```text
+code_map_query(query, max_candidates, budget)
+code_map_path(source, target, max_hops, budget)
+get_collector_facts(collector_id, fact_ids, fact_type, limit)
 list_files(root, pattern, limit)
 search_code(query, roots, file_globs, limit)
 read_file(path, start_line, line_count)
-get_collector_evidence(fact_ids)
 ```
 
 必须实现：
@@ -323,6 +360,9 @@ get_collector_evidence(fact_ids)
 - 防止 `..` 路径逃逸与 symlink escape。
 - 单次读取行数限制。
 - 搜索结果数量限制。
+- Graphify 候选、关系、路径 hop 和查询 budget 限制。
+- Collector Facts 只能从已注入的结果集中读取。
+- Work Item 总 tool call 数量限制。
 - Work Item 级工具轮次限制。
 - 全部调用写入 append-only log。
 - 返回内容的 secret redaction。
@@ -347,9 +387,21 @@ Collector 不再承担建立整个 Repository Code Map 的职责。代码关系�
 
 提取 Android 与前端依赖、版本和可能的 SDK 身份。Collector 只报告声明事实，不直接判断 SDK 合规性。
 
-### 8.3 Route/API Collector
+### 8.3 API Document Collector
 
-提取 H5 路由、API 路径、HTTP method、调用位置以及后端 API 文档中声明的 endpoint 和字段。
+只提取 OpenAPI/Swagger JSON 或 YAML 中声明的 endpoint、HTTP method 和 `operationId`。
+
+这个 Collector 只服务于 `backend_api_doc`，输出的最低证据强度是 `server_doc`。它证明“接口文档声明了某个能力”，不能证明后端代码已经实现，也不能证明运行时可达、鉴权或数据库写入。
+
+源码中的路由不再由通用 Collector 跨语言解析。对于 `frontend_h5`、`android_native` 和 `backend_code`：
+
+```text
+Graphify 定位候选 controller/router/handler
+  -> search_code/read_file 做精确核验
+  -> Reviewer 解释业务语义
+```
+
+这样避免维护 Python、Java、Kotlin、JavaScript 等框架各自不同的路由正则，同时避免把“出现了路由字符串”误当成运行时行为证明。
 
 字符串或正则分析不能声称完整覆盖。每个 Collector 必须返回：
 
@@ -563,7 +615,7 @@ src/compliance_review/
     base.py
     android_manifest.py
     dependencies.py
-    routes_and_apis.py
+    api_documents.py
   code_map/
     models.py
     provider.py
@@ -624,7 +676,7 @@ examples/
 - 实现 `CodeMapProvider` 接口和 `GraphifyCodeMapProvider`。
 - 先跑通 `code_map_query`，只返回 Top 3-5 个候选节点和紧凑关系。
 - 保留 `search_code`、`read_file` 作为 fallback 和 exact verification。
-- 再实现 Manifest、Dependency、Route/API Collectors。
+- 再实现 Manifest、Dependency、API Document Collector；源码路由由 Graphify + 只读工具 + Reviewer 处理，不再维护跨语言源码路由 Collector。
 - 输出 parser status、coverage status、limitations 和 facts。
 - 建立 Graphify unavailable/degraded 和 Collector parser success/fallback/failure fixtures。
 
@@ -632,14 +684,14 @@ examples/
 
 ### Day 3 - Parallel Reviewer Pipeline
 
-- 实现 Review Manifest 和 Work Item builder。
-- 实现受控并发 Scheduler，默认并发 3。
-- 接入一个模型 provider adapter。
-- 实现 Reviewer 结构化输出和独立上下文。
-- 实现 tool-call、文件读取和 token budget。
-- 实现 append-only worker events。
+- 已实现 Review Manifest 和 Work Item builder，按 `module x evidence_surface` 拆分。
+- 已实现受控并发 Scheduler，默认并发 3。
+- 已接入 `OpenAICompatibleProvider` 和 deterministic `StaticModelProvider`。
+- 已实现 Reviewer 结构化输出、独立 context fingerprint 和独立结果目录。
+- 已实现只读 tool-call、文件读取边界和 token budget。
+- 已实现 append-only JSONL worker events。
 
-验收：至少三个 Work Items 可并行执行，且不能互相写文件或污染上下文。
+验收已通过：3 个 Work Items 可并行执行，结果目录和 context fingerprint 互相隔离，工具越界读取会被拒绝。
 
 ### Day 4 - Validation, Verifier and Full Review
 

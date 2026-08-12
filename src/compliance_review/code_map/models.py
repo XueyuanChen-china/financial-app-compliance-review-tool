@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from compliance_review.domain.models import Surface
 
 CodeMapStatus = Literal["available", "unavailable", "degraded"]
+GraphifyInitStatus = Literal["initialized", "unavailable", "degraded"]
 
 
 class CodeMapModel(BaseModel):
@@ -15,6 +16,14 @@ class CodeMapQuery(CodeMapModel):
     query: str = Field(min_length=1)
     surface: Optional[Surface] = None
     max_candidates: int = Field(default=5, ge=1, le=20)
+    budget: int = Field(default=2000, ge=100, le=10000)
+
+
+class CodeMapPath(CodeMapModel):
+    source: str = Field(min_length=1)
+    target: str = Field(min_length=1)
+    surface: Optional[Surface] = None
+    max_hops: int = Field(default=6, ge=1, le=12)
     budget: int = Field(default=2000, ge=100, le=10000)
 
 
@@ -44,3 +53,25 @@ class CodeMapQueryResult(CodeMapModel):
     relations: list[CodeMapRelation] = Field(default_factory=list)
     error_code: Optional[str] = None
     truncated: bool = False
+
+
+class CodeMapPathResult(CodeMapModel):
+    source: str
+    target: str
+    surface: Optional[Surface] = None
+    status: CodeMapStatus
+    provider: str = "graphify"
+    nodes: list[CodeMapCandidate] = Field(default_factory=list)
+    relations: list[CodeMapRelation] = Field(default_factory=list)
+    error_code: Optional[str] = None
+    truncated: bool = False
+
+
+class GraphifyInitResult(CodeMapModel):
+    repo_path: str
+    status: GraphifyInitStatus
+    graphify_command: Optional[str] = None
+    build_command: list[str] = Field(default_factory=list)
+    graph_paths: list[str] = Field(default_factory=list)
+    error_code: Optional[str] = None
+    message: Optional[str] = None

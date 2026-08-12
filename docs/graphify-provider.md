@@ -33,11 +33,14 @@ CodeMapProvider
 
 ## 3. 当前接口
 
-第一版只实现：
+当前实现：
 
 ```python
 CodeMapProvider.query(CodeMapQuery) -> CodeMapQueryResult
+CodeMapProvider.path(CodeMapPath) -> CodeMapPathResult
 ```
+
+输入可以来自独立的前端、Android 或后端代码仓库。`backend_api_doc` 也可以作为查询上下文，但它只代表接口文档，不等于后端实现代码。
 
 输入：
 
@@ -72,6 +75,20 @@ CodeMapProvider.query(CodeMapQuery) -> CodeMapQueryResult
 
 候选结果有上限，Wrapper 不返回整个 graph。
 
+路径查询示例：
+
+```json
+{
+  "source": "AccountController.deleteAccount",
+  "target": "UserRepository.delete",
+  "surface": "backend_code",
+  "max_hops": 6,
+  "budget": 2000
+}
+```
+
+路径结果同样只返回受限节点和关系，不暴露 Graphify 原始输出。
+
 ## 4. 状态含义
 
 | 状态 | 含义 | 后续动作 |
@@ -90,14 +107,48 @@ Graphify query empty != code does not exist
 
 ## 5. Graphify 安装与建图
 
-Graphify 官方包名是 `graphifyy`，CLI 命令是 `graphify`。项目不把它作为 Python 运行时依赖强制安装，而是把它作为本地工具：
+Graphify 官方 Python 包名是 `graphifyy`，安装后提供 `graphify` CLI。项目不把它作为 Python 运行时依赖打进虚拟环境，而是由项目 CLI 的初始化命令管理这个外部工具：
 
 ```bash
 uv tool install graphifyy
-graphify /path/to/target/repository
 ```
 
-建图后，Graphify 默认在目标仓库的 `graphify-out/` 中保存地图。当前 Wrapper 通过目标仓库目录执行：
+正常流程的第一步是：
+
+```bash
+compliance-review init --repo /path/to/target/repository
+```
+
+`init` 会：
+
+1. 检查目标目录。
+2. 检查本地 `graphify` CLI。
+3. CLI 缺失时默认执行 `uv tool install graphifyy`。
+4. 在目标仓库内执行 `graphify extract . --code-only`。
+5. 检查 `graphify-out/graph.json`、`graphify-out/manifest.json` 或 `graph.json` 是否生成。
+6. 输出结构化初始化结果。
+
+如果不希望自动安装，可以使用：
+
+```bash
+compliance-review init --repo /path/to/target/repository --no-install-graphify
+```
+
+如果需要强制全量重建：
+
+```bash
+compliance-review init --repo /path/to/target/repository --force
+```
+
+也可以用 App Profile 一次初始化多个代码 Surface：
+
+```bash
+compliance-review init --profile examples/app-profile.yaml
+```
+
+这会处理 `frontend_h5`、`android_native` 和 `backend_code` 的 roots；`backend_api_doc` 不进入 Graphify 建图，而由 API 文档 Collector 解析。
+
+建图后，Graphify 默认在目标仓库的 `graphify-out/` 中保存地图。项目的 `code-map-query` 只允许查询已经初始化的地图：
 
 ```bash
 .venv/bin/compliance-review code-map-query \
@@ -108,11 +159,44 @@ graphify /path/to/target/repository
 
 如果本机没有 `graphify`，命令仍会返回结构化 `unavailable` JSON，而不是抛出异常。
 
-## 6. 当前不做什么
+如果 CLI 存在但还没有建图，查询会返回：
+
+```json
+{
+  "status": "unavailable",
+  "error_code": "graph_not_initialized"
+}
+```
+
+## 6. Reviewer Tool Runtime 接入
+
+Reviewer 不直接获得 `graphify` 命令。调用链是：
+
+```text
+Reviewer LLM
+  -> code_map_query / code_map_path
+  -> ScopedToolExecutor
+  -> GraphifyCodeMapProvider
+  -> graphify query/path
+  -> normalize + allowed-root filter
+  -> structured ToolResult
+```
+
+`ScopedToolExecutor` 同时暴露 `get_collector_facts`。父流程可以把 `ManifestCollector`、`DependencyCollector` 和 `ApiDocumentCollector` 的 `CollectorResult` 注入 Runtime，Reviewer 只能按 collector/fact 条件读取这些预计算 Facts。
+
+推荐调查顺序：
+
+```text
+get_collector_facts / code_map_query
+  -> 找到候选事实、代码和关系
+  -> read_file 验证源码
+  -> 证据不足时 search_code fallback
+```
+
+## 7. 当前不做什么
 
 - 不使用 Graphify MCP。
 - 不加载 Graphify 的完整 Codex Skill。
 - 不直接读取或修改 Graphify 的 `graph.json`。
 - 不把 Graphify 结果当作 Evidence 或 Compliance Result。
-- 不实现 `code_map_path`，等 `code_map_query` 稳定后再做。
-- 不实现自动建图、复杂增量图算法或 Knowledge Graph 数据库。
+- 不实现 Graphify 内部的 AST、增量图算法或 Knowledge Graph 数据库；建图由 Graphify CLI 完成，项目只负责生命周期编排和结果边界。

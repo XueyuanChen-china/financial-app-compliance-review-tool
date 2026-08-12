@@ -149,7 +149,7 @@ class Evidence(ContractModel):
 
 
 class WorkItem(ContractModel):
-    work_item_id: str = Field(min_length=1)
+    work_item_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
     module_id: str = Field(min_length=1)
     surface: Surface
     control_ids: list[str] = Field(min_length=1)

@@ -264,7 +264,7 @@ valid: profile=ForiQarz controls=8
 1. Graphify Code Map Provider 和紧凑的 `code_map_query`。
 2. Android Manifest Collector。
 3. Dependency/SDK Collector。
-4. Route/API Collector。
+4. API Document Collector：只处理 `backend_api_doc` 的 OpenAPI/Swagger 文档；源码路由由 Graphify + 只读工具定位和核验。
 
 Graphify 只负责定位代码节点和关系，不负责合规结论。它不可用时，后续仍要使用 `search_code`、文件搜索和 `read_file` 做 fallback；Graphify 没命中不能证明代码不存在。
 
