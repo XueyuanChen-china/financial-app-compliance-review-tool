@@ -12,6 +12,12 @@ from compliance_review.collectors import DependencyCollector, ManifestCollector,
 from compliance_review.config.loader import ConfigLoadError, load_controls, load_profile
 from compliance_review.domain.models import Surface
 from compliance_review.repository import GitRepository, ReadOnlyRepositoryTools, RepositorySandbox
+from compliance_review.review import (
+    OpenAICompatibleProvider,
+    ReviewManifestBuilder,
+    ReviewScheduler,
+)
+from compliance_review.review.models import ReviewManifest
 
 app = typer.Typer(
     name="compliance-review",
@@ -138,3 +144,60 @@ def collect(
     except (OSError, ValueError, ValidationError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("build-manifest")
+def build_manifest(
+    profile: Annotated[Path, typer.Option(help="Applicability profile YAML")],
+    controls: Annotated[Path, typer.Option(help="Control set YAML")],
+    run_id: Annotated[str, typer.Option(help="Stable review run identifier")],
+    output: Annotated[Path, typer.Option(help="Manifest JSON output path")],
+    max_concurrency: Annotated[int, typer.Option(help="Default worker concurrency")] = 3,
+) -> None:
+    """Build a deterministic module-by-surface Review Manifest."""
+    try:
+        loaded_profile = load_profile(profile)
+        loaded_controls = load_controls(controls)
+        manifest = ReviewManifestBuilder().build(
+            loaded_profile,
+            loaded_controls,
+            run_id=run_id,
+            max_concurrency=max_concurrency,
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+    except (ConfigLoadError, OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(output.as_posix())
+
+
+@app.command("run-review")
+def run_review(
+    manifest: Annotated[Path, typer.Option(help="Review Manifest JSON")],
+    output_root: Annotated[Path, typer.Option(help="Per-work-item output directory")],
+    model: Annotated[str, typer.Option(help="OpenAI-compatible model name")],
+    base_url: Annotated[
+        str, typer.Option(help="OpenAI-compatible chat completions URL")
+    ] = "https://api.openai.com/v1/chat/completions",
+    max_concurrency: Annotated[int, typer.Option(help="Maximum parallel workers")] = 3,
+) -> None:
+    """Run a manifest using an OpenAI-compatible provider and read-only tools."""
+    try:
+        loaded = json.loads(manifest.read_text(encoding="utf-8"))
+        review_manifest = ReviewManifest.model_validate(loaded)
+        sandboxes = {
+            surface: RepositorySandbox(Path(root))
+            for surface, root in review_manifest.surface_roots.items()
+        }
+        summary = ReviewScheduler(
+            provider=OpenAICompatibleProvider(model=model, base_url=base_url),
+            max_concurrency=max_concurrency,
+        ).run(
+            manifest_run_id=review_manifest.run_id,
+            work_items=review_manifest.work_items,
+            sandboxes=sandboxes,
+            output_root=output_root,
+        )
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(summary.model_dump_json(indent=2))

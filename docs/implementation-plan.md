@@ -639,14 +639,14 @@ examples/
 
 ### Day 3 - Parallel Reviewer Pipeline
 
-- 实现 Review Manifest 和 Work Item builder。
-- 实现受控并发 Scheduler，默认并发 3。
-- 接入一个模型 provider adapter。
-- 实现 Reviewer 结构化输出和独立上下文。
-- 实现 tool-call、文件读取和 token budget。
-- 实现 append-only worker events。
+- 已实现 Review Manifest 和 Work Item builder，按 `module x evidence_surface` 拆分。
+- 已实现受控并发 Scheduler，默认并发 3。
+- 已接入 `OpenAICompatibleProvider` 和 deterministic `StaticModelProvider`。
+- 已实现 Reviewer 结构化输出、独立 context fingerprint 和独立结果目录。
+- 已实现只读 tool-call、文件读取边界和 token budget。
+- 已实现 append-only JSONL worker events。
 
-验收：至少三个 Work Items 可并行执行，且不能互相写文件或污染上下文。
+验收已通过：3 个 Work Items 可并行执行，结果目录和 context fingerprint 互相隔离，工具越界读取会被拒绝。
 
 ### Day 4 - Validation, Verifier and Full Review
 
