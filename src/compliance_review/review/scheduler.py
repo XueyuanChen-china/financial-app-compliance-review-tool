@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Mapping
 
-from compliance_review.domain.models import Surface, WorkItem
+from compliance_review.domain.models import WorkItem
 from compliance_review.repository import RepositorySandbox
 from compliance_review.review.langgraph_runtime import LangGraphReviewRuntime
 from compliance_review.review.models import ReviewRunSummary
@@ -35,7 +35,7 @@ class ReviewScheduler:
         self,
         manifest_run_id: str,
         work_items: list[WorkItem],
-        sandboxes: Mapping[Surface, RepositorySandbox],
+        sandboxes: Mapping[str, RepositorySandbox],
         output_root: Path,
         event_log_path: Path | None = None,
     ) -> ReviewRunSummary:

@@ -144,9 +144,7 @@ class SourceRegistryBuilder:
             blocks.append(text)
         if not blocks:
             return []
-        return _structured_blocks_to_sections(
-            blocks, headings, self.max_section_chars
-        )
+        return _structured_blocks_to_sections(blocks, headings, self.max_section_chars)
 
 
 def _expand_paths(paths: Iterable[Path]) -> list[Path]:
@@ -180,13 +178,13 @@ def _media_type(path: Path) -> SourceMediaType:
 
 def _source_id(path: Path, digest: str) -> str:
     stem = re.sub(r"[^A-Za-z0-9_.-]+", "-", path.stem).strip("-") or "source"
-    return f"{stem}-{digest[:12]}"
+    path_digest = hashlib.sha256(path.as_posix().encode("utf-8")).hexdigest()[:12]
+    return f"{stem}-{digest[:12]}-{path_digest}"
 
 
 def _mapping_for_path(path: Path, mappings: dict[str, str], default: str) -> str:
     matches = [
-        (Path(raw_path).expanduser().resolve(), family)
-        for raw_path, family in mappings.items()
+        (Path(raw_path).expanduser().resolve(), family) for raw_path, family in mappings.items()
     ]
     containing = [
         (candidate, family)
@@ -206,9 +204,11 @@ def _text_sections(text: str, max_chars: int) -> list[SourceSection]:
         if match:
             headings.append((index, match.group(2).strip()))
     if not headings:
-        return _chunk_section_text(
-            text.strip(), "Document", "section-0001", None, max_chars, 1
-        ) if text.strip() else []
+        return (
+            _chunk_section_text(text.strip(), "Document", "section-0001", None, max_chars, 1)
+            if text.strip()
+            else []
+        )
     blocks: list[str] = []
     for start, end in zip(
         [index for index, _ in headings],

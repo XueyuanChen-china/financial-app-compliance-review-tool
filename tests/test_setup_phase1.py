@@ -70,9 +70,7 @@ def test_setup_service_persists_conservative_profile_draft(tmp_path: Path) -> No
     assert result.confirmation.status == "awaiting_confirmation"
     assert "jurisdiction" in result.confirmation.required_fields
     assert (tmp_path / "workspace" / "workspace.json").is_file()
-    profile = json.loads(
-        (tmp_path / "workspace" / "setup" / "app_profile_draft.json").read_text()
-    )
+    profile = json.loads((tmp_path / "workspace" / "setup" / "app_profile_draft.json").read_text())
     assert profile["fields"]["evidence_surfaces"]["value"] == ["frontend_h5"]
     assert not (tmp_path / "workspace" / "setup" / "app_profile.json").exists()
 
@@ -125,9 +123,35 @@ def test_nested_manifest_path_is_preserved_in_inventory_and_facts(tmp_path: Path
         fact for fact in facts.facts if fact.fact_type == "android_manifest_permission"
     ]
     assert manifest_facts[0].repo_id == "mobile"
-    assert manifest_facts[0].source_refs[0].path == (
-        f"{root}/app/src/main/AndroidManifest.xml"
+    assert manifest_facts[0].source_refs[0].path == (f"{root}/app/src/main/AndroidManifest.xml")
+
+
+def test_confirmation_persists_repository_surface_in_workspace(tmp_path: Path) -> None:
+    service = ReviewSetupService(tmp_path / "workspace")
+    service.initialize(
+        [
+            WorkspaceRepository(
+                repo_id="web",
+                path=(FIXTURES / "frontend").as_posix(),
+            )
+        ]
     )
+
+    service.confirm_profile(
+        {
+            "app_name": "Example Loan",
+            "package_name": "com.example.loan",
+            "jurisdiction": "Pakistan",
+            "business_type": ["personal_loan"],
+            "self_lending": True,
+        },
+        {"web": "frontend_h5"},
+    )
+
+    workspace = json.loads((tmp_path / "workspace" / "workspace.json").read_text())
+    assert workspace["repositories"][0]["declared_surface"] == "frontend_h5"
+    profile = json.loads((tmp_path / "workspace" / "setup" / "app_profile.json").read_text())
+    assert profile["fields"]["evidence_surfaces"]["source"] == "human_confirmed"
 
 
 def test_confirmation_rejects_unresolved_repository_surface(tmp_path: Path) -> None:

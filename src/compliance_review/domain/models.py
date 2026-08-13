@@ -71,7 +71,7 @@ class EvidenceRequirement(ContractModel):
 
 class Control(ContractModel):
     control_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
-    module_id: str = Field(min_length=1)
+    module_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
     title: str = Field(min_length=1)
     severity: Severity
     applicability_expression: str = Field(min_length=1)
@@ -148,7 +148,7 @@ class ApplicabilitySet(ContractModel):
 class CoverageUnit(ContractModel):
     coverage_unit_id: str = Field(pattern=r"^cu\.[A-Za-z0-9_.-]+$")
     control_id: str = Field(min_length=1)
-    module_id: str = Field(min_length=1)
+    module_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
     surface: Surface
     applicability_status: ApplicabilityDecisionStatus
     coverage_status: CoverageUnitStatus
@@ -223,7 +223,9 @@ class Evidence(ContractModel):
 
 class WorkItem(ContractModel):
     work_item_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
-    module_id: str = Field(min_length=1)
+    module_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    repository_id: str = Field(default="workspace", pattern=r"^[A-Za-z0-9_.-]+$")
+    repository_ids: list[str] = Field(default_factory=list)
     surface: Surface
     control_ids: list[str] = Field(min_length=1)
     coverage_unit_ids: list[str] = Field(default_factory=list)

@@ -124,7 +124,7 @@ class LangGraphReviewRuntime:
         self,
         manifest_run_id: str,
         work_items: list[WorkItem],
-        sandboxes: Mapping[Surface, RepositorySandbox],
+        sandboxes: Mapping[str, RepositorySandbox],
         output_root: Path,
         event_log_path: Path | None = None,
         thread_id: str | None = None,
@@ -168,7 +168,7 @@ class LangGraphReviewRuntime:
 
     def _build_graph(
         self,
-        sandboxes: Mapping[Surface, RepositorySandbox],
+        sandboxes: Mapping[str, RepositorySandbox],
         output_root: Path,
         event_log: AppendOnlyEventLog,
         collector_results: Mapping[str, CollectorResult],
@@ -257,7 +257,7 @@ def _fan_out(state: ParentState) -> list[Send] | list[str]:
 def _build_reviewer_graph(
     provider: ModelProvider | None,
     provider_factory: ProviderFactory | None,
-    sandboxes: Mapping[Surface, RepositorySandbox],
+    sandboxes: Mapping[str, RepositorySandbox],
     output_root: Path,
     event_log: AppendOnlyEventLog,
     code_map_providers: Mapping[Surface, CodeMapProvider],
@@ -427,9 +427,12 @@ def _build_reviewer_graph(
             if tool_rounds > work_item.max_tool_rounds:
                 raise RuntimeError("work item max_tool_rounds exceeded")
             response = ModelResponse.model_validate(state["response"])
-            sandbox = sandboxes.get(work_item.surface)
+            sandbox = sandboxes.get(work_item.work_item_id) or sandboxes.get(work_item.surface)
             if sandbox is None:
-                raise ValueError(f"missing sandbox for surface: {work_item.surface}")
+                raise ValueError(
+                    f"missing sandbox for work item {work_item.work_item_id} "
+                    f"and surface {work_item.surface}"
+                )
             executor = ScopedToolExecutor(
                 sandbox,
                 work_item,

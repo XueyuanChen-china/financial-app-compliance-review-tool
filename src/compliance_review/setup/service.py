@@ -8,6 +8,7 @@ from typing import Literal, Optional, Sequence
 
 from pydantic import TypeAdapter
 
+from compliance_review.collectors.base import CollectorResult
 from compliance_review.compilation.models import ControlValidationResult
 from compliance_review.domain.models import (
     ApplicabilityProfile,
@@ -63,7 +64,8 @@ class ReviewSetupResult:
     manifest: Optional[ReviewManifest] = None
     run_id: Optional[str] = None
     work_items: list[WorkItem] = field(default_factory=list)
-    sandboxes: dict[Surface, RepositorySandbox] = field(default_factory=dict)
+    sandboxes: dict[str, RepositorySandbox] = field(default_factory=dict)
+    collector_results: dict[str, CollectorResult] = field(default_factory=dict)
 
 
 class ReviewSetupError(ValueError):
@@ -148,8 +150,33 @@ class ReviewSetupService:
             for item in json.loads(inventory_path.read_text(encoding="utf-8"))
         ]
         app_facts = AppFactSet.model_validate(json.loads(facts_path.read_text(encoding="utf-8")))
+        workspace_path = self.workspace_root / "workspace.json"
+        if not workspace_path.is_file():
+            raise ValueError("workspace.json does not exist")
+        workspace = ComplianceWorkspace.model_validate(
+            json.loads(workspace_path.read_text(encoding="utf-8"))
+        )
         if repository_surfaces:
             inventories = self._confirm_repository_surfaces(inventories, repository_surfaces)
+            workspace = workspace.model_copy(
+                update={
+                    "repositories": [
+                        repository.model_copy(
+                            update={
+                                "declared_surface": next(
+                                    (
+                                        inventory.declared_surface
+                                        for inventory in inventories
+                                        if inventory.repo_id == repository.repo_id
+                                    ),
+                                    repository.declared_surface,
+                                )
+                            }
+                        )
+                        for repository in workspace.repositories
+                    ]
+                }
+            )
         fields = dict(profile.fields)
         for field_name, value in values.items():
             existing = fields.get(field_name)
@@ -174,8 +201,39 @@ class ReviewSetupService:
             field = fields.get(field_name)
             if field is None or field.value is None or field.value == "unknown":
                 missing.append(field_name)
+        if repository_surfaces:
+            selected_surfaces = sorted(
+                {
+                    surface
+                    for inventory in inventories
+                    for surface in [inventory.detected_surface or inventory.declared_surface]
+                    if surface is not None
+                }
+            )
+            fields["evidence_surfaces"] = fields["evidence_surfaces"].model_copy(
+                update={
+                    "value": selected_surfaces,
+                    "source": "human_confirmed",
+                    "confidence": "high",
+                }
+            )
+            fields["repository_roots"] = fields["repository_roots"].model_copy(
+                update={
+                    "value": {
+                        surface: [
+                            inventory.path
+                            for inventory in inventories
+                            if surface in [inventory.detected_surface or inventory.declared_surface]
+                        ]
+                        for surface in selected_surfaces
+                    },
+                    "source": "human_confirmed",
+                    "confidence": "high",
+                }
+            )
         confirmed = profile.model_copy(update={"status": "confirmed", "fields": fields})
         validation = ProfileValidator().validate(confirmed, inventories, app_facts)
+        self.store.write_workspace(workspace)
         self.store.write_repository_inventory(inventories)
         self.store.write_profile_validation(validation)
         if missing or not validation.valid:
@@ -247,7 +305,8 @@ class ReviewSetupService:
             mode=mode,
             default_max_concurrency=max_concurrency,
             surface_roots={
-                surface: sandbox.root.as_posix() for surface, sandbox in plan.sandboxes.items()
+                work_item.work_item_id: plan.sandboxes[work_item.work_item_id].root.as_posix()
+                for work_item in plan.work_items
             },
             work_items=plan.work_items,
             excluded_controls=[
@@ -285,6 +344,7 @@ class ReviewSetupService:
             run_id=selected_run_id,
             work_items=plan.work_items,
             sandboxes=plan.sandboxes,
+            collector_results=plan.collector_results,
         )
 
     def _load_workspace(self) -> ComplianceWorkspace:
@@ -403,12 +463,7 @@ def _to_applicability_profile(
                 surface: Surface = TypeAdapter(Surface).validate_python(raw_surface)
             except (TypeError, ValueError):
                 continue
-            if isinstance(raw_root, list) and len(raw_root) > 1:
-                raise ReviewSetupError(
-                    "multiple repository roots share one surface, but coverage is not "
-                    f"repository-scoped: {surface}"
-                )
-            if isinstance(raw_surface, str) and isinstance(raw_root, list) and raw_root:
+            if isinstance(raw_root, list) and raw_root:
                 roots[surface] = str(raw_root[0])
             elif isinstance(raw_surface, str) and isinstance(raw_root, str):
                 roots[surface] = raw_root

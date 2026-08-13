@@ -152,6 +152,50 @@ def test_phase3_builds_applicability_coverage_and_runtime_handoff(tmp_path: Path
     assert summary.failed == 0
 
 
+def test_phase3_preserves_same_surface_repositories_and_fact_capabilities(tmp_path: Path) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    for root in (first, second):
+        root.mkdir()
+        (root / "package.json").write_text('{"dependencies":{"vue":"3"}}', encoding="utf-8")
+    workspace_root = tmp_path / "workspace"
+    service = ReviewSetupService(workspace_root)
+    service.initialize(
+        [
+            WorkspaceRepository(repo_id="first", path=str(first)),
+            WorkspaceRepository(repo_id="second", path=str(second)),
+        ]
+    )
+    service.confirm_profile(
+        {
+            "app_name": "Example",
+            "package_name": "com.example",
+            "jurisdiction": "Pakistan",
+            "business_type": ["personal_loan"],
+            "self_lending": True,
+        }
+    )
+    controls = load_controls(PROJECT_ROOT / "examples/mvp-controls.yaml")
+    store = ArtifactStore(workspace_root)
+    store.write_controls(controls)
+    store.write_control_validation(
+        ControlValidationResult(valid=True, validated_control_count=len(controls.controls))
+    )
+
+    result = service.compile(run_id="same-surface")
+
+    frontend_items = [item for item in result.work_items if item.surface == "frontend_h5"]
+    assert frontend_items
+    assert all(item.repository_id == "workspace" for item in frontend_items)
+    assert all(set(item.repository_ids) == {"first", "second"} for item in frontend_items)
+    assert all(item.collector_fact_refs for item in frontend_items)
+    assert all(
+        any(fact_id.startswith("fact.first.") for fact_id in item.collector_fact_refs)
+        and any(fact_id.startswith("fact.second.") for fact_id in item.collector_fact_refs)
+        for item in frontend_items
+    )
+
+
 def test_unknown_applicability_is_retained_as_unknown_coverage() -> None:
     profile = ApplicabilityProfile(
         contract="applicability_profile.v1",

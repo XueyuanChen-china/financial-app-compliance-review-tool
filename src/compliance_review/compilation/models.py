@@ -65,7 +65,7 @@ class ObligationSet(ContractModel):
 
 class ControlDraft(ContractModel):
     control_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
-    module_id: str = Field(min_length=1)
+    module_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
     title: str = Field(min_length=1)
     severity: Severity
     obligation_ids: list[str] = Field(min_length=1)
@@ -89,6 +89,7 @@ class ControlValidationResult(ContractModel):
     valid: bool
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    duplicate_obligation_ids: list[str] = Field(default_factory=list)
     duplicate_control_ids: list[str] = Field(default_factory=list)
     duplicate_control_groups: list[str] = Field(default_factory=list)
     validated_control_count: int = Field(default=0, ge=0)
