@@ -34,7 +34,7 @@ class RepositorySandbox:
             raise SandboxViolation(f"path leaves repository root: {relative_path}") from exc
         return resolved
 
-    def read_text(self, relative_path: str | Path, max_bytes: int = 1_000_000) -> str:
+    def read_bytes(self, relative_path: str | Path, max_bytes: int = 1_000_000) -> bytes:
         path = self.resolve(relative_path)
         if is_sensitive_path(path.relative_to(self.root).as_posix()):
             raise SandboxViolation(f"sensitive file is not readable: {relative_path}")
@@ -42,7 +42,10 @@ class RepositorySandbox:
             raise FileNotFoundError(path)
         if path.stat().st_size > max_bytes:
             raise SandboxViolation(f"file exceeds read limit: {relative_path}")
-        return path.read_text(encoding="utf-8", errors="replace")
+        return path.read_bytes()
+
+    def read_text(self, relative_path: str | Path, max_bytes: int = 1_000_000) -> str:
+        return self.read_bytes(relative_path, max_bytes=max_bytes).decode("utf-8", errors="replace")
 
     def list_files(self, pattern: str = "*", limit: int = 500) -> list[str]:
         if limit < 1:

@@ -56,9 +56,15 @@ class ReadOnlyRepositoryTools:
         limit: int,
     ) -> list[SearchMatch] | None:
         command = ["git", "grep", "-n", "-I", "-F", "--", query]
-        command.extend(roots or (".",))
-        for glob in file_globs:
-            command.extend((":(glob)" + glob,))
+        selected_roots = roots or (".",)
+        if file_globs:
+            command.extend(
+                f":(top,glob){'' if root == '.' else root.rstrip('/') + '/'}{glob}"
+                for root in selected_roots
+                for glob in file_globs
+            )
+        else:
+            command.extend(selected_roots)
         try:
             result = subprocess.run(
                 command,

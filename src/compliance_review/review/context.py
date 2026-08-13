@@ -5,7 +5,7 @@ from typing import Any, Callable, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from compliance_review.domain.models import Surface, WorkItem
+from compliance_review.domain.models import EvidenceAnchor, Surface, WorkItem
 
 
 class ReviewerContextError(RuntimeError):
@@ -40,18 +40,6 @@ class ReviewerImmutableContext(BaseModel):
     work_item: WorkItem
     required_surface: Surface
     reviewer_instructions: str = Field(min_length=1)
-
-
-class EvidenceAnchor(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    control_ids: list[str] = Field(min_length=1)
-    source_tool: str = Field(min_length=1)
-    path: Optional[str] = None
-    symbol: Optional[str] = None
-    start_line: Optional[int] = Field(default=None, ge=1)
-    end_line: Optional[int] = Field(default=None, ge=1)
-    summary: str = Field(min_length=1)
 
 
 class AgentRound(BaseModel):
@@ -136,9 +124,7 @@ class ReviewerContextManager:
             {"role": "system", "content": immutable.reviewer_instructions},
             {
                 "role": "user",
-                "content": json.dumps(
-                    immutable.work_item.model_dump(), sort_keys=True
-                ),
+                "content": json.dumps(immutable.work_item.model_dump(), sort_keys=True),
             },
         ]
         if state.evidence_ledger:
@@ -169,7 +155,23 @@ class ReviewerContextManager:
                 messages.append(
                     {
                         "role": "assistant",
-                        "tool_calls": response["tool_calls"],
+                        "tool_calls": [
+                            {
+                                "id": call.get("call_id", call.get("id")),
+                                "type": "function",
+                                "function": {
+                                    "name": call["name"]
+                                    if "name" in call
+                                    else call["function"]["name"],
+                                    "arguments": (
+                                        call["arguments"]
+                                        if "arguments" in call
+                                        else call["function"]["arguments"]
+                                    ),
+                                },
+                            }
+                            for call in response["tool_calls"]
+                        ],
                     }
                 )
             elif response.get("content"):

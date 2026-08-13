@@ -40,9 +40,11 @@ class GitRepository:
                 changed_files=(),
                 error_code="path_is_inside_parent_repository",
             )
-        status = self._run(("status", "--porcelain=v1")) or ""
+        status = self._run(("status", "--porcelain=v1", "--untracked-files=all")) or ""
         changed = tuple(
-            line[3:].strip() for line in status.splitlines() if len(line) >= 4
+            line[3:].split(" -> ")[-1].strip()
+            for line in status.splitlines()
+            if len(line) >= 4
         )
         return GitMetadata(
             revision=revision,

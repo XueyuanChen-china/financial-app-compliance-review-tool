@@ -138,9 +138,7 @@ class ReviewSetupService:
         draft_path = self.workspace_root / "setup" / "app_profile_draft.json"
         if not draft_path.is_file():
             raise ValueError("app_profile_draft.json does not exist")
-        profile = AppProfile.model_validate(
-            json.loads(draft_path.read_text(encoding="utf-8"))
-        )
+        profile = AppProfile.model_validate(json.loads(draft_path.read_text(encoding="utf-8")))
         inventory_path = self.workspace_root / "setup" / "repository_inventory.json"
         facts_path = self.workspace_root / "setup" / "app_facts.json"
         if not inventory_path.is_file() or not facts_path.is_file():
@@ -149,13 +147,9 @@ class ReviewSetupService:
             RepositoryInventory.model_validate(item)
             for item in json.loads(inventory_path.read_text(encoding="utf-8"))
         ]
-        app_facts = AppFactSet.model_validate(
-            json.loads(facts_path.read_text(encoding="utf-8"))
-        )
+        app_facts = AppFactSet.model_validate(json.loads(facts_path.read_text(encoding="utf-8")))
         if repository_surfaces:
-            inventories = self._confirm_repository_surfaces(
-                inventories, repository_surfaces
-            )
+            inventories = self._confirm_repository_surfaces(inventories, repository_surfaces)
         fields = dict(profile.fields)
         for field_name, value in values.items():
             existing = fields.get(field_name)
@@ -236,9 +230,7 @@ class ReviewSetupService:
         controls, control_validation = self._load_validated_controls()
         applicability_profile = _to_applicability_profile(profile, inventories)
         applicability = ApplicabilityEngine().evaluate(applicability_profile, controls)
-        coverage = CoverageUnitBuilder().build(
-            applicability_profile, controls, applicability
-        )
+        coverage = CoverageUnitBuilder().build(applicability_profile, controls, applicability)
         selected_run_id = run_id or _new_run_id()
         run_paths = self.store.prepare_run_artifacts(selected_run_id)
         plan = WorkItemPlanner().plan(
@@ -255,8 +247,7 @@ class ReviewSetupService:
             mode=mode,
             default_max_concurrency=max_concurrency,
             surface_roots={
-                surface: sandbox.root.as_posix()
-                for surface, sandbox in plan.sandboxes.items()
+                surface: sandbox.root.as_posix() for surface, sandbox in plan.sandboxes.items()
             },
             work_items=plan.work_items,
             excluded_controls=[
@@ -301,9 +292,7 @@ class ReviewSetupService:
         if not path.is_file():
             raise ReviewSetupError(f"workspace.json does not exist: {path}")
         try:
-            return ComplianceWorkspace.model_validate(
-                json.loads(path.read_text(encoding="utf-8"))
-            )
+            return ComplianceWorkspace.model_validate(json.loads(path.read_text(encoding="utf-8")))
         except (OSError, ValueError, TypeError) as exc:
             raise ReviewSetupError(f"invalid workspace.json: {exc}") from exc
 
@@ -340,9 +329,7 @@ class ReviewSetupService:
                 "validated Control Set is unavailable because deterministic validation failed"
             )
         if validation.validated_control_count != len(controls.controls):
-            raise ReviewSetupError(
-                "control_validation count does not match setup/controls.json"
-            )
+            raise ReviewSetupError("control_validation count does not match setup/controls.json")
         return controls, validation
 
     @staticmethod
@@ -416,6 +403,11 @@ def _to_applicability_profile(
                 surface: Surface = TypeAdapter(Surface).validate_python(raw_surface)
             except (TypeError, ValueError):
                 continue
+            if isinstance(raw_root, list) and len(raw_root) > 1:
+                raise ReviewSetupError(
+                    "multiple repository roots share one surface, but coverage is not "
+                    f"repository-scoped: {surface}"
+                )
             if isinstance(raw_surface, str) and isinstance(raw_root, list) and raw_root:
                 roots[surface] = str(raw_root[0])
             elif isinstance(raw_surface, str) and isinstance(raw_root, str):
@@ -431,9 +423,9 @@ def _to_applicability_profile(
         self_lending = "unknown"
     else:
         raise ReviewSetupError("AppProfile self_lending must be true, false, or unknown")
-    review_scope: Literal[
-        "full_release_package", "multi_surface_static_review", "partial"
-    ] = profile.value_for("review_scope", "partial")
+    review_scope: Literal["full_release_package", "multi_surface_static_review", "partial"] = (
+        profile.value_for("review_scope", "partial")
+    )
     if review_scope not in {"full_release_package", "multi_surface_static_review", "partial"}:
         review_scope = "partial"
     try:

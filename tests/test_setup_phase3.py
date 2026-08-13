@@ -85,16 +85,29 @@ def test_phase3_builds_applicability_coverage_and_runtime_handoff(tmp_path: Path
     assert result.work_items
     assert result.sandboxes
     assert len(result.coverage.units) == sum(
-        len(control.required_surfaces)
-        for control in controls.controls
-        if control.control_id not in result.coverage.excluded_control_ids
+        len(control.required_surfaces) for control in controls.controls
+    )
+    assert all(
+        unit.coverage_status == "not_applicable"
+        for unit in result.coverage.units
+        if unit.control_id in result.coverage.excluded_control_ids
+    )
+    assert all(
+        unit.control_id not in result.coverage.excluded_control_ids
+        for item in result.work_items
+        for unit in result.coverage.units
+        if unit.coverage_unit_id in item.coverage_unit_ids
     )
     assert len(result.manifest.coverage_unit_ids) == len(result.coverage.units)
     assert any(unit.coverage_status == "missing_surface" for unit in result.coverage.units)
     assert all(
-        item.collector_fact_refs
+        unit.coverage_status == "planned"
         for item in result.work_items
-        if item.surface == "frontend_h5"
+        for unit in result.coverage.units
+        if unit.coverage_unit_id in item.coverage_unit_ids
+    )
+    assert all(
+        item.collector_fact_refs for item in result.work_items if item.surface == "frontend_h5"
     )
 
     run_root = tmp_path / "workspace" / "runs" / "run-phase3"
@@ -164,9 +177,7 @@ def test_unknown_applicability_is_retained_as_unknown_coverage() -> None:
         source_refs=[{"url": "https://example.test/policy"}],
         reuse_invalidation_keys=["control_version"],
         evidence_requirements={
-            "frontend_h5": EvidenceRequirement(
-                minimum_strength="static_proof", rationale="fixture"
-            )
+            "frontend_h5": EvidenceRequirement(minimum_strength="static_proof", rationale="fixture")
         },
     )
     controls = ControlSet(contract="control_set.v1", version="1.0", controls=[control])

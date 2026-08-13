@@ -66,9 +66,7 @@ def test_below_trigger_does_not_compress() -> None:
         calls += 1
         return CompressedReviewMemory(generation=1)
 
-    prepared, _ = manager.prepare_for_model(
-        state, manager.render_messages(state), compressor
-    )
+    prepared, _ = manager.prepare_for_model(state, manager.render_messages(state), compressor)
 
     assert calls == 0
     assert prepared.compressed_memory is None
@@ -78,11 +76,14 @@ def test_compression_is_structured_and_preserves_immutable_and_evidence() -> Non
     manager = _manager()
     state = manager.create(_work_item(), "immutable instructions")
     anchor = EvidenceAnchor(
+        anchor_id="anchor.context.service",
         control_ids=["C001"],
+        source_surface="backend_code",
         source_tool="read_file",
         path="backend/service.py",
         start_line=10,
         end_line=12,
+        evidence_strength="server_code",
         summary="service evidence",
     )
     state = manager.add_evidence_anchors(state, [anchor])
@@ -150,9 +151,12 @@ def test_compression_failure_preserves_context_and_hard_limit_is_indeterminate()
         state,
         [
             EvidenceAnchor(
+                anchor_id="anchor.context.search",
                 control_ids=["C001"],
+                source_surface="backend_code",
                 source_tool="search_code",
                 path="backend/service.py",
+                evidence_strength="server_code",
                 summary="durable anchor",
             )
         ],
@@ -175,8 +179,6 @@ def test_compression_failure_preserves_context_and_hard_limit_is_indeterminate()
 
     tiny_manager = _manager(context_window_tokens=100)
     tiny_state = tiny_manager.create(_work_item(), "instructions")
-    oversized = tiny_manager.render_messages(tiny_state) + [
-        {"role": "user", "content": "x" * 1000}
-    ]
+    oversized = tiny_manager.render_messages(tiny_state) + [{"role": "user", "content": "x" * 1000}]
     with pytest.raises(ContextBudgetExceeded, match="context_budget_exhausted"):
         tiny_manager.prepare_for_model(tiny_state, oversized, failing_compressor)

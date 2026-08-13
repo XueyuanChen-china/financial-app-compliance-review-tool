@@ -31,8 +31,14 @@ Confidence = Literal["high", "medium", "low"]
 WriteRisk = Literal["none", "possible", "high"]
 ReviewMode = Literal["full", "diff"]
 RunStatus = Literal["pending", "running", "completed", "failed"]
+CiStatus = Literal["pass", "warn", "block"]
 ApplicabilityDecisionStatus = Literal["true", "false", "unknown"]
-CoverageUnitStatus = Literal["planned", "missing_surface", "unknown_applicability"]
+CoverageUnitStatus = Literal[
+    "planned",
+    "missing_surface",
+    "unknown_applicability",
+    "not_applicable",
+]
 
 
 class ContractModel(BaseModel):
@@ -174,6 +180,23 @@ class Fact(ContractModel):
     limitations: list[str] = Field(default_factory=list)
 
 
+class EvidenceAnchor(ContractModel):
+    anchor_id: str = Field(min_length=1)
+    control_ids: list[str] = Field(min_length=1)
+    source_surface: Surface
+    source_tool: str = Field(min_length=1)
+    path: Optional[str] = None
+    symbol: Optional[str] = None
+    start_line: Optional[int] = Field(default=None, ge=1)
+    end_line: Optional[int] = Field(default=None, ge=1)
+    exact_snippet: Optional[str] = None
+    normalized_snippet_hash: Optional[str] = None
+    file_revision: Optional[str] = None
+    evidence_strength: EvidenceStrength
+    fact_ids: list[str] = Field(default_factory=list)
+    summary: str = Field(min_length=1)
+
+
 class Evidence(ContractModel):
     evidence_id: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
@@ -218,6 +241,11 @@ class ControlSurfaceResult(ContractModel):
     evidence_status: EvidenceStatus
     recommended_control_status: ControlStatus
     evidence_ids: list[str] = Field(default_factory=list)
+    observed_evidence_strength: Optional[EvidenceStrength] = None
+    anchor_ids: list[str] = Field(default_factory=list)
+    fact_ids: list[str] = Field(default_factory=list)
+    confidence: Confidence = "medium"
+    unsupported_inferences: list[str] = Field(default_factory=list)
     gap_reasons: list[str] = Field(default_factory=list)
     observations: list[str] = Field(default_factory=list)
 
@@ -228,9 +256,46 @@ class ReviewResult(ContractModel):
     attempt_id: str = Field(min_length=1)
     execution_status: ExecutionStatus
     rows: list[ControlSurfaceResult] = Field(min_length=1)
+    anchors: list[EvidenceAnchor] = Field(default_factory=list)
     agent_id: str = Field(min_length=1)
     verifier_required: bool = False
     errors: list[str] = Field(default_factory=list)
+
+
+class ResolvedControlResult(ContractModel):
+    control_id: str = Field(min_length=1)
+    status: ControlStatus
+    severity: Severity
+    coverage_unit_ids: list[str] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list)
+    verifier_row_ids: list[str] = Field(default_factory=list)
+
+
+class CoverageManifestRow(ContractModel):
+    coverage_unit_id: str = Field(min_length=1)
+    control_id: str = Field(min_length=1)
+    surface: Surface
+    work_item_id: Optional[str] = None
+    attempt_id: Optional[str] = None
+    execution_status: ExecutionStatus
+    evidence_status: EvidenceStatus
+    result_origin: Literal[
+        "reviewed",
+        "manual_required",
+        "blocked",
+        "not_applicable",
+        "waived",
+    ]
+    resolution_status: ControlStatus
+
+
+class CoverageGateResult(ContractModel):
+    contract: Literal["coverage_gate_result.v1"] = "coverage_gate_result.v1"
+    complete: bool
+    ci_status: CiStatus
+    rows: list[CoverageManifestRow] = Field(default_factory=list)
+    blocking_reasons: list[str] = Field(default_factory=list)
+    warning_reasons: list[str] = Field(default_factory=list)
 
 
 class Snapshot(ContractModel):
@@ -239,7 +304,10 @@ class Snapshot(ContractModel):
     git_revision: str = Field(min_length=1)
     mode: ReviewMode
     baseline_run_id: Optional[str] = None
-    control_results: list[ControlSurfaceResult] = Field(default_factory=list)
+    control_results: list[ResolvedControlResult] = Field(default_factory=list)
+    coverage_manifest_ref: str = Field(min_length=1)
+    applicability_hash: str = Field(min_length=1)
+    ci_status: CiStatus
     reviewed_rows: list[str] = Field(default_factory=list)
     reused_rows: list[str] = Field(default_factory=list)
     missing_surfaces: list[Surface] = Field(default_factory=list)

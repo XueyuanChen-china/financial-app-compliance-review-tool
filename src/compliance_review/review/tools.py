@@ -28,17 +28,19 @@ class ScopedToolExecutor:
         code_map_provider: CodeMapProvider | None = None,
         collector_results: dict[str, CollectorResult] | None = None,
         max_tool_calls: int | None = None,
+        tool_calls_used: int = 0,
+        read_paths: set[str] | None = None,
     ) -> None:
         self.sandbox = sandbox
         self.work_item = work_item
         self.tools = ReadOnlyRepositoryTools(sandbox)
-        self.read_paths: set[str] = set()
-        self.code_map_provider = code_map_provider or GraphifyCodeMapProvider(
-            sandbox.root
-        )
+        self.read_paths = set(read_paths or ())
+        self.code_map_provider = code_map_provider or GraphifyCodeMapProvider(sandbox.root)
         self.collector_results = collector_results or {}
-        self.tool_calls = 0
-        self.max_tool_calls = max_tool_calls or max(3, work_item.max_tool_rounds * 3)
+        self.tool_calls = tool_calls_used
+        self.max_tool_calls = (
+            max_tool_calls if max_tool_calls is not None else max(3, work_item.max_tool_rounds * 3)
+        )
 
     def execute(self, call: ToolCall) -> ScopedToolResult:
         try:
@@ -116,28 +118,29 @@ class ScopedToolExecutor:
         if fact_type is not None and not isinstance(fact_type, str):
             raise TypeError("fact_type must be a string")
         limit = _bounded_int(arguments, "limit", 50, 1, 100)
-        compatible_results = {
-            current_id: result
-            for current_id, result in self.collector_results.items()
-            if result.source_surface == self.work_item.surface
-        }
-        if collector_id is None:
-            selected = compatible_results
-        else:
-            selected = (
-                {collector_id: compatible_results[collector_id]}
-                if collector_id in compatible_results
-                else {}
+        allowed_fact_ids = set(self.work_item.collector_fact_refs)
+        disallowed_requests = sorted(set(raw_fact_ids) - allowed_fact_ids)
+        if disallowed_requests:
+            raise ValueError(
+                f"fact_ids are outside the Work Item capability: {disallowed_requests}"
             )
+        compatible_results = [
+            result
+            for result in self.collector_results.values()
+            if result.source_surface == self.work_item.surface
+            and (collector_id is None or result.collector_id == collector_id)
+        ]
         facts: list[dict[str, Any]] = []
-        for result in selected.values():
+        for result in compatible_results:
             for fact in result.facts:
+                if fact.fact_id not in allowed_fact_ids:
+                    continue
                 if raw_fact_ids and fact.fact_id not in raw_fact_ids:
                     continue
                 if fact_type and fact.fact_type != fact_type:
                     continue
                 facts.append(fact.model_dump())
-        facts = facts[:limit]
+        facts = sorted(facts, key=lambda item: str(item["fact_id"]))[:limit]
         missing_fact_ids = [
             fact_id
             for fact_id in raw_fact_ids
@@ -145,13 +148,11 @@ class ScopedToolExecutor:
         ]
         return {
             "collector_id": collector_id,
-            "available_collectors": sorted(compatible_results),
+            "available_collectors": sorted({result.collector_id for result in compatible_results}),
             "facts": facts,
             "missing_fact_ids": missing_fact_ids,
             "limitations": [
-                limitation
-                for result in selected.values()
-                for limitation in result.limitations
+                limitation for result in compatible_results for limitation in result.limitations
             ][:limit],
         }
 
@@ -170,11 +171,7 @@ class ScopedToolExecutor:
         return result.model_copy(update={"candidates": candidates, "relations": relations})
 
     def _bounded_code_map_path(self, result: CodeMapPathResult) -> CodeMapPathResult:
-        nodes = [
-            node
-            for node in result.nodes
-            if self._is_allowed_code_map_candidate(node.path)
-        ]
+        nodes = [node for node in result.nodes if self._is_allowed_code_map_candidate(node.path)]
         symbols = {node.symbol for node in nodes}
         relations = [
             relation
@@ -220,9 +217,7 @@ class ScopedToolExecutor:
         if root:
             roots = (self._allowed_path(root),)
         else:
-            roots = tuple(
-                self._allowed_path(allowed) for allowed in self.work_item.allowed_roots
-            )
+            roots = tuple(self._allowed_path(allowed) for allowed in self.work_item.allowed_roots)
         matches = self.tools.search_code(
             query,
             roots=roots or (".",),
@@ -233,10 +228,13 @@ class ScopedToolExecutor:
 
     def _read_file(self, arguments: dict[str, Any]) -> str:
         path = _string_argument(arguments, "path")
-        self._allowed_path(path)
-        if path not in self.read_paths and len(self.read_paths) >= self.work_item.max_files_read:
+        canonical_path = self._allowed_path(path)
+        if (
+            canonical_path not in self.read_paths
+            and len(self.read_paths) >= self.work_item.max_files_read
+        ):
             raise ValueError("work item max_files_read exceeded")
-        self.read_paths.add(path)
+        self.read_paths.add(canonical_path)
         start_line = _bounded_int(arguments, "start_line", 1, 1, 1_000_000)
         line_count = _bounded_int(
             arguments,

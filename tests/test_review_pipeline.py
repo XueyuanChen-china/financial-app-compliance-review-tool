@@ -10,6 +10,7 @@ from compliance_review.collectors.base import CollectorResult
 from compliance_review.config.loader import load_controls, load_profile
 from compliance_review.domain.models import (
     ControlSurfaceResult,
+    EvidenceAnchor,
     Fact,
     ReviewResult,
     SourceRef,
@@ -23,7 +24,12 @@ from compliance_review.review import (
     ReviewScheduler,
     StaticModelProvider,
 )
-from compliance_review.review.models import ModelRequest, ModelResponse, ToolCall
+from compliance_review.review.evidence import file_content_revision
+from compliance_review.review.langgraph_runtime import (
+    _anchors_from_tool_results,
+    _parse_compressed_memory,
+)
+from compliance_review.review.models import ModelRequest, ModelResponse, ScopedToolResult, ToolCall
 from compliance_review.review.provider import tool_schemas
 from compliance_review.review.tools import ScopedToolExecutor
 
@@ -65,6 +71,16 @@ def _review_json(request: ModelRequest, work_item: WorkItem, agent_id: str) -> s
     return result.model_dump_json()
 
 
+def test_compressed_memory_generation_is_runtime_controlled() -> None:
+    parsed = _parse_compressed_memory(
+        json.dumps({"generation": 99, "findings": ["retained finding"]}),
+        generation=2,
+    )
+
+    assert parsed.generation == 2
+    assert parsed.findings == ["retained finding"]
+
+
 def test_manifest_builder_groups_applicable_controls_by_module_and_surface() -> None:
     profile = load_profile(PROJECT_ROOT / "examples/app-profile.yaml")
     controls = load_controls(PROJECT_ROOT / "examples/mvp-controls.yaml")
@@ -76,9 +92,7 @@ def test_manifest_builder_groups_applicable_controls_by_module_and_surface() -> 
     assert len(manifest.work_items) >= 3
     assert not manifest.excluded_controls
     assert all(item.allowed_roots for item in manifest.work_items)
-    assert len({item.work_item_id for item in manifest.work_items}) == len(
-        manifest.work_items
-    )
+    assert len({item.work_item_id for item in manifest.work_items}) == len(manifest.work_items)
 
 
 def test_scheduler_runs_three_work_items_in_parallel_and_isolates_outputs(tmp_path: Path) -> None:
@@ -192,9 +206,12 @@ def test_reviewer_tools_include_graphify_and_collector_facts() -> None:
             )
         ],
     )
+    work_item = _work_item("wi.graph-tools").model_copy(
+        update={"collector_fact_refs": ["fact.backend.permission.contacts"]}
+    )
     executor = ScopedToolExecutor(
         RepositorySandbox(FIXTURES),
-        _work_item("wi.graph-tools"),
+        work_item,
         code_map_provider=FakeCodeMapProvider(),
         collector_results={"android_manifest": collector},
     )
@@ -215,19 +232,58 @@ def test_reviewer_tools_include_graphify_and_collector_facts() -> None:
     )
 
     assert code_map.ok is True
-    assert [item["symbol"] for item in code_map.output["candidates"]] == [
-        "AccountService.delete"
-    ]
+    assert [item["symbol"] for item in code_map.output["candidates"]] == ["AccountService.delete"]
     assert code_map.output["relations"] == []
     assert facts.ok is True
     assert facts.output["facts"][0]["fact_id"] == "fact.backend.permission.contacts"
 
 
+def test_collector_fact_tool_denies_unassigned_fact_capabilities() -> None:
+    allowed = Fact(
+        fact_id="fact.allowed",
+        source_surface="backend_code",
+        fact_type="backend_presence",
+        observed_value=True,
+        source_refs=[SourceRef(path="backend/app.py")],
+        parser_status="ok",
+        coverage_status="complete",
+        evidence_strength="server_code",
+    )
+    denied = allowed.model_copy(update={"fact_id": "fact.denied"})
+    collector = CollectorResult(
+        collector_id="dependencies",
+        source_surface="backend_code",
+        parser_status="ok",
+        coverage_status="complete",
+        facts=[allowed, denied],
+    )
+    work_item = _work_item("wi.fact-capability").model_copy(
+        update={"collector_fact_refs": [allowed.fact_id]}
+    )
+    executor = ScopedToolExecutor(
+        RepositorySandbox(FIXTURES),
+        work_item,
+        collector_results={"repo/dependencies": collector},
+    )
+
+    listed = executor.execute(
+        ToolCall(call_id="facts-listed", name="get_collector_facts", arguments={})
+    )
+    rejected = executor.execute(
+        ToolCall(
+            call_id="facts-rejected",
+            name="get_collector_facts",
+            arguments={"fact_ids": [denied.fact_id]},
+        )
+    )
+
+    assert [item["fact_id"] for item in listed.output["facts"]] == [allowed.fact_id]
+    assert rejected.ok is False
+    assert "outside the Work Item capability" in (rejected.error or "")
+
+
 def test_tool_schema_exposes_all_read_only_reviewer_tools() -> None:
-    names = {
-        schema["function"]["name"]
-        for schema in tool_schemas()
-    }
+    names = {schema["function"]["name"] for schema in tool_schemas()}
     assert names == {
         "code_map_query",
         "code_map_path",
@@ -257,9 +313,7 @@ def test_work_items_have_independent_contexts_and_tool_histories(tmp_path: Path)
                     )
                 ]
             )
-        return ModelResponse(
-            content=_review_json(request, request.work_item, request.agent_id)
-        )
+        return ModelResponse(content=_review_json(request, request.work_item, request.agent_id))
 
     summary = LangGraphReviewRuntime(
         provider=StaticModelProvider(response_factory),
@@ -282,12 +336,107 @@ def test_work_items_have_independent_contexts_and_tool_histories(tmp_path: Path)
     assert "wi.context-a" not in first_b.messages[-1]["content"]
     assert any(message.get("tool_call_id") == "read-wi.context-a" for message in second_a.messages)
     assert any(message.get("tool_call_id") == "read-wi.context-b" for message in second_b.messages)
-    assert all(
-        "read-wi.context-b" not in str(message) for message in second_a.messages
+    assert all("read-wi.context-b" not in str(message) for message in second_a.messages)
+    assert all("read-wi.context-a" not in str(message) for message in second_b.messages)
+
+
+def test_runtime_enforces_tool_budgets_across_rounds(tmp_path: Path) -> None:
+    work_item = _work_item("wi.cumulative-budget").model_copy(
+        update={"max_files_read": 1, "max_tool_rounds": 3}
     )
-    assert all(
-        "read-wi.context-a" not in str(message) for message in second_b.messages
+    calls = 0
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return ModelResponse(
+                tool_calls=[
+                    ToolCall(
+                        call_id="read-first",
+                        name="read_file",
+                        arguments={"path": "backend/app.py", "line_count": 1},
+                    )
+                ]
+            )
+        if calls == 2:
+            return ModelResponse(
+                tool_calls=[
+                    ToolCall(
+                        call_id="read-second",
+                        name="read_file",
+                        arguments={"path": "backend/build.gradle.kts", "line_count": 1},
+                    )
+                ]
+            )
+        return ModelResponse(content=_review_json(request, request.work_item, request.agent_id))
+
+    provider = StaticModelProvider(response_factory)
+    LangGraphReviewRuntime(provider=provider, max_concurrency=1).run(
+        manifest_run_id="run-cumulative-budget",
+        work_items=[work_item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
     )
+
+    second_tool_result = next(
+        message
+        for message in provider.requests[-1].messages
+        if message.get("tool_call_id") == "read-second"
+    )
+    assert '"ok": false' in second_tool_result["content"]
+    assert "max_files_read exceeded" in second_tool_result["content"]
+
+
+def test_runtime_rejects_extra_and_duplicate_reviewer_rows(tmp_path: Path) -> None:
+    extra = _work_item("wi.extra-row")
+    duplicate = _work_item("wi.duplicate-row")
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        rows = [
+            ControlSurfaceResult(
+                control_id=request.work_item.control_ids[0],
+                surface=request.work_item.surface,
+                evidence_status="missing",
+                recommended_control_status="indeterminate",
+            )
+        ]
+        if request.work_item.work_item_id == extra.work_item_id:
+            rows.append(
+                ControlSurfaceResult(
+                    control_id="control.out-of-scope",
+                    surface=request.work_item.surface,
+                    evidence_status="missing",
+                    recommended_control_status="indeterminate",
+                )
+            )
+        else:
+            rows.append(rows[0])
+        result = ReviewResult(
+            contract="review_result.v1",
+            work_item_id=request.work_item.work_item_id,
+            attempt_id=request.attempt_id,
+            execution_status="completed",
+            rows=rows,
+            agent_id=request.agent_id,
+        )
+        return ModelResponse(content=result.model_dump_json())
+
+    summary = LangGraphReviewRuntime(
+        provider=StaticModelProvider(response_factory),
+        max_concurrency=2,
+    ).run(
+        manifest_run_id="run-invalid-rows",
+        work_items=[extra, duplicate],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+    )
+
+    assert summary.completed == 0
+    assert summary.failed == 2
+    errors = {execution.work_item_id: execution.error for execution in summary.executions}
+    assert "exactly match assigned controls" in (errors[extra.work_item_id] or "")
+    assert "duplicate control-surface rows" in (errors[duplicate.work_item_id] or "")
 
 
 def test_work_item_failure_does_not_pollute_another_context(tmp_path: Path) -> None:
@@ -383,6 +532,51 @@ def test_context_budget_exhaustion_returns_indeterminate_for_one_work_item(
     assert execution.result.rows[0].recommended_control_status == "indeterminate"
 
 
+def test_tool_budgets_remain_cumulative_across_model_rounds(tmp_path: Path) -> None:
+    item = _work_item("wi.cumulative-budget").model_copy(
+        update={"max_files_read": 1, "max_tool_rounds": 3}
+    )
+    calls = 0
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return ModelResponse(
+                tool_calls=[
+                    ToolCall(
+                        call_id="read-first",
+                        name="read_file",
+                        arguments={"path": "backend/app.py", "line_count": 1},
+                    )
+                ]
+            )
+        if calls == 2:
+            return ModelResponse(
+                tool_calls=[
+                    ToolCall(
+                        call_id="read-second",
+                        name="read_file",
+                        arguments={"path": "backend/build.gradle.kts", "line_count": 1},
+                    )
+                ]
+            )
+        return ModelResponse(content=_review_json(request, request.work_item, request.agent_id))
+
+    provider = StaticModelProvider(response_factory)
+    summary = LangGraphReviewRuntime(provider=provider, max_concurrency=1).run(
+        manifest_run_id="run-cumulative-budget",
+        work_items=[item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+    )
+
+    assert summary.completed == 1
+    assert summary.failed == 0
+    assert len(provider.requests) == 3
+    assert "max_files_read exceeded" in provider.requests[2].messages[-1]["content"]
+
+
 def test_worker_can_complete_after_read_only_tool_call(tmp_path: Path) -> None:
     item = _work_item("wi.tool-run")
     calls = 0
@@ -400,9 +594,7 @@ def test_worker_can_complete_after_read_only_tool_call(tmp_path: Path) -> None:
                     )
                 ]
             )
-        return ModelResponse(
-            content=_review_json(request, request.work_item, request.agent_id)
-        )
+        return ModelResponse(content=_review_json(request, request.work_item, request.agent_id))
 
     event_path = tmp_path / "events.jsonl"
     execution = ReviewScheduler(
@@ -418,6 +610,58 @@ def test_worker_can_complete_after_read_only_tool_call(tmp_path: Path) -> None:
     assert execution.completed == 1
     assert execution.executions[0].tool_rounds == 1
     assert calls == 2
+
+
+def test_runtime_discards_provider_supplied_anchors_without_tool_provenance(
+    tmp_path: Path,
+) -> None:
+    item = _work_item("wi.fabricated-anchor")
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        fabricated = EvidenceAnchor(
+            anchor_id="anchor.fabricated",
+            control_ids=[item.control_ids[0]],
+            source_surface="backend_code",
+            source_tool="read_file",
+            path="backend/app.py",
+            exact_snippet="return {'status': 'ok'}",
+            normalized_snippet_hash="not-a-real-hash",
+            evidence_strength="server_code",
+            summary="Provider-supplied anchor without a tool call.",
+        )
+        result = ReviewResult(
+            contract="review_result.v1",
+            work_item_id=item.work_item_id,
+            attempt_id=request.attempt_id,
+            execution_status="completed",
+            rows=[
+                ControlSurfaceResult(
+                    control_id=item.control_ids[0],
+                    surface="backend_code",
+                    evidence_status="complete",
+                    recommended_control_status="pass",
+                    observed_evidence_strength="server_code",
+                    anchor_ids=[fabricated.anchor_id],
+                )
+            ],
+            anchors=[fabricated],
+            agent_id=request.agent_id,
+        )
+        return ModelResponse(content=result.model_dump_json())
+
+    summary = LangGraphReviewRuntime(
+        provider=StaticModelProvider(response_factory), max_concurrency=1
+    ).run(
+        manifest_run_id="run-fabricated-anchor",
+        work_items=[item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+    )
+
+    result = summary.executions[0].result
+    assert result is not None
+    assert result.anchors == []
+    assert result.rows[0].anchor_ids == ["anchor.fabricated"]
 
 
 def test_langgraph_runtime_persists_parent_checkpoint(tmp_path: Path) -> None:
@@ -446,3 +690,92 @@ def test_langgraph_runtime_persists_parent_checkpoint(tmp_path: Path) -> None:
     assert checkpoint is not None
     events = (tmp_path / "events.jsonl").read_text(encoding="utf-8")
     assert '"runtime": "langgraph"' in events
+
+
+def test_anchor_generation_preserves_search_location_and_fact_provenance() -> None:
+    sandbox = RepositorySandbox(FIXTURES)
+    work_item = _work_item("wi.anchor-contract")
+    search_anchors = _anchors_from_tool_results(
+        work_item,
+        [
+            ToolCall(
+                call_id="search-1",
+                name="search_code",
+                arguments={"query": "loan/disburse"},
+            )
+        ],
+        [
+            ScopedToolResult(
+                call_id="search-1",
+                name="search_code",
+                ok=True,
+                output=[
+                    {
+                        "path": "backend/app.py",
+                        "line_number": 3,
+                        "line_text": "@app.post('/loan/disburse')",
+                    }
+                ],
+            )
+        ],
+        sandbox,
+    )
+    assert search_anchors[0].start_line == 3
+    assert search_anchors[0].end_line == 3
+    assert search_anchors[0].file_revision == file_content_revision(
+        (FIXTURES / "backend" / "app.py").read_bytes()
+    )
+
+    read_anchors = _anchors_from_tool_results(
+        work_item,
+        [
+            ToolCall(
+                call_id="read-1",
+                name="read_file",
+                arguments={"path": "backend/app.py", "start_line": 3, "line_count": 20},
+            )
+        ],
+        [
+            ScopedToolResult(
+                call_id="read-1",
+                name="read_file",
+                ok=True,
+                output="@app.post('/loan/disburse')\ndef disburse():\n    return {'status': 'ok'}",
+            )
+        ],
+        sandbox,
+    )
+    assert read_anchors[0].start_line == 3
+    assert read_anchors[0].end_line == 5
+
+    fact_anchors = _anchors_from_tool_results(
+        work_item,
+        [ToolCall(call_id="facts-1", name="get_collector_facts", arguments={})],
+        [
+            ScopedToolResult(
+                call_id="facts-1",
+                name="get_collector_facts",
+                ok=True,
+                output={
+                    "facts": [
+                        {
+                            "fact_id": "fact.one",
+                            "evidence_strength": "declared",
+                            "source_refs": [{"path": "backend/app.py", "start_line": 1}],
+                        },
+                        {
+                            "fact_id": "fact.two",
+                            "evidence_strength": "server_code",
+                            "source_refs": [{"path": "backend/app.py", "start_line": 2}],
+                        },
+                    ]
+                },
+            )
+        ],
+        sandbox,
+    )
+    assert [anchor.fact_ids for anchor in fact_anchors] == [["fact.one"], ["fact.two"]]
+    assert [anchor.evidence_strength for anchor in fact_anchors] == [
+        "declared",
+        "server_code",
+    ]

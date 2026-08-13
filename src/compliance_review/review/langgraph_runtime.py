@@ -14,23 +14,35 @@ from langgraph.types import Send
 
 from compliance_review.code_map import CodeMapProvider, GraphifyCodeMapProvider
 from compliance_review.collectors.base import CollectorResult
-from compliance_review.domain.models import ControlSurfaceResult, ReviewResult, Surface, WorkItem
+from compliance_review.domain.models import (
+    ControlSurfaceResult,
+    EvidenceAnchor,
+    EvidenceStrength,
+    ReviewResult,
+    Surface,
+    WorkItem,
+)
 from compliance_review.repository import RepositorySandbox
 from compliance_review.review.context import (
     AgentRound,
     CompressedReviewMemory,
     ContextBudgetExceeded,
-    EvidenceAnchor,
     ReviewerContextManager,
     ReviewerContextState,
     ReviewerRuntimeConfig,
 )
 from compliance_review.review.events import AppendOnlyEventLog
+from compliance_review.review.evidence import (
+    file_content_revision,
+    normalize_snippet,
+    strongest_evidence_strength,
+)
 from compliance_review.review.models import (
     ModelRequest,
     ModelResponse,
     ReviewRunSummary,
     WorkerExecution,
+    validate_review_result_assignment,
 )
 from compliance_review.review.provider import ModelProvider, tool_schemas
 from compliance_review.review.tools import ScopedToolExecutor, serialize_tool_result
@@ -68,6 +80,8 @@ class ReviewerState(TypedDict, total=False):
     tool_rounds: int
     tokens_used: int
     token_budget: int
+    tool_calls_used: int
+    read_paths: list[str]
     error: str
     execution: dict[str, Any]
 
@@ -114,6 +128,7 @@ class LangGraphReviewRuntime:
         output_root: Path,
         event_log_path: Path | None = None,
         thread_id: str | None = None,
+        collector_results: Mapping[str, CollectorResult] | None = None,
     ) -> ReviewRunSummary:
         output_root.mkdir(parents=True, exist_ok=True)
         log_path = event_log_path or output_root.parent / "worker-events.jsonl"
@@ -127,7 +142,12 @@ class LangGraphReviewRuntime:
                 "runtime": "langgraph",
             },
         )
-        graph = self._build_graph(sandboxes, output_root, event_log)
+        graph = self._build_graph(
+            sandboxes,
+            output_root,
+            event_log,
+            dict(collector_results) if collector_results is not None else self.collector_results,
+        )
         config = {
             "configurable": {"thread_id": thread_id or f"review-{manifest_run_id}"},
             "max_concurrency": self.max_concurrency,
@@ -151,6 +171,7 @@ class LangGraphReviewRuntime:
         sandboxes: Mapping[Surface, RepositorySandbox],
         output_root: Path,
         event_log: AppendOnlyEventLog,
+        collector_results: Mapping[str, CollectorResult],
     ) -> Any:
         reviewer_graph = _build_reviewer_graph(
             provider=self.provider,
@@ -159,7 +180,7 @@ class LangGraphReviewRuntime:
             output_root=output_root,
             event_log=event_log,
             code_map_providers=self.code_map_providers,
-            collector_results=self.collector_results,
+            collector_results=collector_results,
             context_config=self.context_config,
         )
 
@@ -183,8 +204,7 @@ class LangGraphReviewRuntime:
 
         def summarize(state: ParentState) -> dict[str, Any]:
             executions = [
-                WorkerExecution.model_validate(item)
-                for item in state.get("executions", [])
+                WorkerExecution.model_validate(item) for item in state.get("executions", [])
             ]
             executions.sort(key=lambda item: item.work_item_id)
             summary = ReviewRunSummary(
@@ -245,6 +265,7 @@ def _build_reviewer_graph(
     context_config: ReviewerRuntimeConfig,
 ) -> Any:
     context_manager = ReviewerContextManager(context_config)
+
     def resolve_provider(work_item: WorkItem) -> ModelProvider:
         selected = provider_factory(work_item) if provider_factory else provider
         if selected is None:
@@ -281,6 +302,8 @@ def _build_reviewer_graph(
             "context": context.model_dump(),
             "tool_rounds": 0,
             "tokens_used": tokens,
+            "tool_calls_used": 0,
+            "read_paths": [],
         }
 
     def call_model(state: ReviewerState) -> dict[str, Any]:
@@ -346,9 +369,7 @@ def _build_reviewer_graph(
                 context, messages, compress
             )
             remaining = (
-                state.get("token_budget", 4000)
-                - state.get("tokens_used", 0)
-                - compression_tokens
+                state.get("token_budget", 4000) - state.get("tokens_used", 0) - compression_tokens
             )
             if remaining < 100:
                 raise RuntimeError("token budget exceeded before model call")
@@ -416,6 +437,9 @@ def _build_reviewer_graph(
                     work_item.surface, GraphifyCodeMapProvider(sandbox.root)
                 ),
                 collector_results=dict(collector_results),
+                tool_calls_used=state.get("tool_calls_used", 0),
+                read_paths=set(state.get("read_paths", [])),
+                max_tool_calls=work_item.max_tool_rounds * 3,
             )
             messages = list(state.get("messages", []))
             messages.append(
@@ -449,8 +473,7 @@ def _build_reviewer_graph(
                 tool_calls=[call.model_dump() for call in response.tool_calls],
                 tool_results=[result.model_dump() for result in tool_results],
                 estimated_tokens=sum(
-                    _approx_tokens(serialize_tool_result(result))
-                    for result in tool_results
+                    _approx_tokens(serialize_tool_result(result)) for result in tool_results
                 )
                 + response.input_tokens
                 + response.output_tokens
@@ -458,13 +481,16 @@ def _build_reviewer_graph(
             )
             context = context_manager.record_round(context, round_item)
             context = context_manager.add_evidence_anchors(
-                context, _anchors_from_tool_results(work_item, response.tool_calls, tool_results)
+                context,
+                _anchors_from_tool_results(work_item, response.tool_calls, tool_results, sandbox),
             )
             return {
                 "messages": messages,
                 "context": context.model_dump(),
                 "tool_rounds": tool_rounds,
                 "tokens_used": used,
+                "tool_calls_used": executor.tool_calls,
+                "read_paths": sorted(executor.read_paths),
             }
         except ContextBudgetExceeded:
             return {"error": "context_budget_exhausted", "response": {}}
@@ -490,9 +516,18 @@ def _build_reviewer_graph(
             result = _parse_review_result(
                 response.content, work_item, attempt_id, state["agent_id"]
             )
+            context = ReviewerContextState.model_validate(state["context"])
+            result = _attach_evidence_ledger(result, context.evidence_ledger)
         except Exception as exc:
             error = str(exc)
             result = _failure_result(work_item, attempt_id, state["agent_id"], error)
+        work_item_path = Path(work_item.work_item_id)
+        if (
+            len(work_item_path.parts) != 1
+            or work_item_path.name in {"", ".", ".."}
+            or work_item_path.name != work_item.work_item_id
+        ):
+            raise ValueError("work_item_id contains unsafe path characters")
         result_path = output_root / work_item.work_item_id / "review-result.json"
         result_path.parent.mkdir(parents=True, exist_ok=True)
         temporary = result_path.with_suffix(".json.tmp")
@@ -554,16 +589,10 @@ def _parse_review_result(
         result = ReviewResult.model_validate(json.loads(text))
     except (json.JSONDecodeError, ValueError) as exc:
         raise RuntimeError(f"invalid structured review result: {exc}") from exc
-    if result.work_item_id != work_item.work_item_id:
-        raise RuntimeError("review result work_item_id does not match assigned work item")
-    if result.attempt_id != attempt_id:
-        raise RuntimeError("review result attempt_id does not match current attempt")
-    if result.agent_id != agent_id:
-        raise RuntimeError("review result agent_id does not match current worker")
-    expected = {(control_id, work_item.surface) for control_id in work_item.control_ids}
-    actual = {(row.control_id, row.surface) for row in result.rows}
-    if not expected.issubset(actual):
-        raise RuntimeError("review result does not cover every assigned control")
+    try:
+        validate_review_result_assignment(result, work_item, attempt_id, agent_id)
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
     return result
 
 
@@ -574,7 +603,8 @@ def _parse_compressed_memory(content: str, generation: int) -> CompressedReviewM
         if text.startswith("json"):
             text = text[4:].strip()
     try:
-        return CompressedReviewMemory.model_validate(json.loads(text))
+        parsed = CompressedReviewMemory.model_validate(json.loads(text))
+        return parsed.model_copy(update={"generation": generation})
     except (json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f"invalid compressed review memory: {exc}") from exc
 
@@ -585,7 +615,10 @@ def _next_round_number(context: ReviewerContextState) -> int:
 
 
 def _anchors_from_tool_results(
-    work_item: WorkItem, calls: list[Any], results: list[Any]
+    work_item: WorkItem,
+    calls: list[Any],
+    results: list[Any],
+    sandbox: RepositorySandbox,
 ) -> list[EvidenceAnchor]:
     anchors: list[EvidenceAnchor] = []
     for call, result in zip(calls, results):
@@ -594,15 +627,13 @@ def _anchors_from_tool_results(
         output = result.output
         references: list[dict[str, Any]] = []
         if call.name == "read_file":
+            start_line = int(call.arguments.get("start_line", 1))
+            actual_line_count = len(output.splitlines()) if isinstance(output, str) else 0
             references.append(
                 {
                     "path": call.arguments.get("path"),
-                    "start_line": call.arguments.get("start_line"),
-                    "end_line": (
-                        int(call.arguments.get("start_line", 1))
-                        + int(call.arguments.get("line_count", 1))
-                        - 1
-                    ),
+                    "start_line": start_line,
+                    "end_line": start_line + max(actual_line_count, 1) - 1,
                 }
             )
         elif call.name in {"code_map_query", "code_map_path"} and isinstance(output, dict):
@@ -617,26 +648,110 @@ def _anchors_from_tool_results(
             references.extend(entry for entry in output if isinstance(entry, dict))
         elif call.name == "get_collector_facts" and isinstance(output, dict):
             for fact in output.get("facts", []):
+                if not isinstance(fact, dict):
+                    continue
                 for source_ref in fact.get("source_refs", []):
                     if isinstance(source_ref, dict):
-                        references.append(source_ref)
+                        references.append(
+                            {
+                                **source_ref,
+                                "_fact_id": fact.get("fact_id"),
+                                "_evidence_strength": fact.get("evidence_strength"),
+                            }
+                        )
         for reference in references:
             path = reference.get("path") or reference.get("source_path")
             symbol = reference.get("symbol")
             if not path and not symbol:
                 continue
+            exact_snippet = _reference_snippet(call.name, output, reference)
+            normalized_hash = (
+                hashlib.sha256(normalize_snippet(exact_snippet).encode("utf-8")).hexdigest()
+                if exact_snippet
+                else None
+            )
+            anchor_payload = json.dumps(
+                {
+                    "work_item_id": work_item.work_item_id,
+                    "call_id": call.call_id,
+                    "path": path,
+                    "symbol": symbol,
+                    "start_line": reference.get("start_line") or reference.get("source_line"),
+                    "snippet_hash": normalized_hash,
+                },
+                sort_keys=True,
+            )
+            file_revision = None
+            if path:
+                try:
+                    file_revision = file_content_revision(sandbox.read_bytes(str(path)))
+                except (OSError, ValueError):
+                    file_revision = None
             anchors.append(
                 EvidenceAnchor(
+                    anchor_id="anchor."
+                    + hashlib.sha256(anchor_payload.encode("utf-8")).hexdigest()[:20],
                     control_ids=list(work_item.control_ids),
+                    source_surface=work_item.surface,
                     source_tool=call.name,
                     path=path,
                     symbol=symbol,
-                    start_line=reference.get("start_line") or reference.get("source_line"),
-                    end_line=reference.get("end_line"),
+                    start_line=(
+                        reference.get("start_line")
+                        or reference.get("line_number")
+                        or reference.get("source_line")
+                    ),
+                    end_line=(reference.get("end_line") or reference.get("line_number")),
+                    exact_snippet=exact_snippet,
+                    normalized_snippet_hash=normalized_hash,
+                    file_revision=file_revision,
+                    evidence_strength=(
+                        reference.get("_evidence_strength")
+                        or _tool_evidence_strength(call.name, work_item.surface)
+                    ),
+                    fact_ids=([str(reference["_fact_id"])] if reference.get("_fact_id") else []),
                     summary=f"Observed bounded result from {call.name}.",
                 )
             )
     return anchors
+
+
+def _attach_evidence_ledger(result: ReviewResult, anchors: list[EvidenceAnchor]) -> ReviewResult:
+    anchors_by_id = {anchor.anchor_id: anchor for anchor in anchors}
+    rows = []
+    for row in result.rows:
+        cited = [
+            anchors_by_id[anchor_id] for anchor_id in row.anchor_ids if anchor_id in anchors_by_id
+        ]
+        fact_ids = sorted({fact_id for anchor in cited for fact_id in anchor.fact_ids})
+        strongest = strongest_evidence_strength([anchor.evidence_strength for anchor in cited])
+        rows.append(
+            row.model_copy(
+                update={
+                    "fact_ids": sorted(set([*row.fact_ids, *fact_ids])),
+                    "observed_evidence_strength": row.observed_evidence_strength or strongest,
+                }
+            )
+        )
+    return result.model_copy(update={"rows": rows, "anchors": anchors})
+
+
+def _reference_snippet(tool_name: str, output: Any, reference: dict[str, Any]) -> str | None:
+    if tool_name == "read_file" and isinstance(output, str):
+        return output
+    for key in ("line_text", "snippet", "text"):
+        value = reference.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
+def _tool_evidence_strength(tool_name: str, surface: Surface) -> EvidenceStrength:
+    if tool_name in {"code_map_query", "code_map_path"}:
+        return "behavioral_hint"
+    if surface == "backend_api_doc":
+        return "server_doc"
+    return "static_proof"
 
 
 def _failure_result(
