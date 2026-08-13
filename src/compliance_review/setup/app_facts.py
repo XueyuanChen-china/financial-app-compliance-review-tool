@@ -7,6 +7,7 @@ from compliance_review.collectors import (
     DependencyCollector,
     ManifestCollector,
 )
+from compliance_review.collectors.base import CollectorResult
 from compliance_review.domain.models import Fact, SourceRef, Surface
 from compliance_review.repository import RepositorySandbox
 from compliance_review.setup.models import AppFactSet, RepositoryInventory
@@ -31,6 +32,7 @@ def collect_app_facts(inventories: list[RepositoryInventory]) -> AppFactSet:
             facts.append(
                 Fact(
                     fact_id=f"fact.{inventory.repo_id}.surface",
+                    repo_id=inventory.repo_id,
                     source_surface=primary,
                     fact_type="repository_surface",
                     observed_value={
@@ -63,6 +65,7 @@ def collect_app_facts(inventories: list[RepositoryInventory]) -> AppFactSet:
             facts.append(
                 Fact(
                     fact_id=f"fact.{inventory.repo_id}.detection.{index}",
+                    repo_id=inventory.repo_id,
                     source_surface=signal_surface,
                     fact_type=fact_type,
                     observed_value={
@@ -88,21 +91,63 @@ def collect_app_facts(inventories: list[RepositoryInventory]) -> AppFactSet:
                 "app/src/main/AndroidManifest.xml",
             )
             result = ManifestCollector().collect(sandbox, manifest_path=manifest_path)
+            result, namespaced = _namespace_result(result, inventory)
             collector_results.append(result.model_dump(mode="json"))
-            facts.extend(result.facts)
+            facts.extend(namespaced)
         if inventory.detected_surfaces:
             result = DependencyCollector().collect(
                 sandbox,
                 source_surface=primary or inventory.detected_surfaces[0],
             )
+            result, namespaced = _namespace_result(result, inventory)
             collector_results.append(result.model_dump(mode="json"))
-            facts.extend(result.facts)
+            facts.extend(namespaced)
         if "backend_api_doc" in inventory.detected_surfaces:
             result = ApiDocumentCollector().collect(sandbox)
+            result, namespaced = _namespace_result(result, inventory)
             collector_results.append(result.model_dump(mode="json"))
-            facts.extend(result.facts)
+            facts.extend(namespaced)
     return AppFactSet(
         facts=facts,
         inventory_ids=[inventory.repo_id for inventory in inventories],
         collector_results=collector_results,
+    )
+
+
+def _namespace_result(
+    result: CollectorResult, inventory: RepositoryInventory
+) -> tuple[CollectorResult, list[Fact]]:
+    """Attach repository identity to every Collector result and Fact."""
+    collector_result = result
+    facts = []
+    for fact in collector_result.facts:
+        local_id = fact.fact_id.removeprefix("fact.")
+        source_refs = [
+            ref.model_copy(
+                update={
+                    "path": (
+                        f"{inventory.path}/{ref.path.lstrip('/')}"
+                        if ref.path and not ref.path.startswith("/")
+                        else ref.path
+                    )
+                }
+            )
+            for ref in fact.source_refs
+        ]
+        facts.append(
+            fact.model_copy(
+                update={
+                    "fact_id": (
+                        f"fact.{inventory.repo_id}.{collector_result.collector_id}.{local_id}"
+                    ),
+                    "repo_id": inventory.repo_id,
+                    "source_refs": source_refs,
+                }
+            )
+        )
+    return (
+        collector_result.model_copy(
+            update={"repo_id": inventory.repo_id, "facts": facts}
+        ),
+        facts,
     )

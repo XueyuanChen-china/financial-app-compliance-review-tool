@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +55,53 @@ class ArtifactStore:
 
     def write_profile_validation(self, result: ProfileValidationResult) -> Path:
         return self._write_model("setup/profile_validation.json", result)
+
+    def write_source_registry(self, registry: BaseModel) -> Path:
+        return self._write_model("setup/sources.json", registry)
+
+    def write_obligations(self, obligations: BaseModel) -> Path:
+        return self._write_model("setup/obligations.json", obligations)
+
+    def write_controls_draft(self, controls: BaseModel) -> Path:
+        return self._write_model("setup/controls_draft.json", controls)
+
+    def write_controls(self, controls: BaseModel) -> Path:
+        return self._write_model("setup/controls.json", controls)
+
+    def write_control_validation(self, result: BaseModel) -> Path:
+        return self._write_model("setup/control_validation.json", result)
+
+    def write_applicability(self, result: BaseModel) -> Path:
+        return self._write_model("setup/applicability.json", result)
+
+    def write_coverage_units(self, result: BaseModel) -> Path:
+        return self._write_model("setup/coverage_units.json", result)
+
+    def write_review_manifest(self, run_id: str, manifest: BaseModel) -> Path:
+        return self._write_model(f"runs/{run_id}/manifest.json", manifest)
+
+    def prepare_run_artifacts(self, run_id: str) -> dict[str, Path]:
+        """Create the runtime handoff paths without starting Reviewer execution."""
+        run_root = self._confined_target(f"runs/{run_id}")
+        reviewer_results = run_root / "reviewer_results"
+        reviewer_results.mkdir(parents=True, exist_ok=True)
+        event_log = run_root / "worker-events.jsonl"
+        event_log.touch(exist_ok=True)
+        checkpoint = run_root / "checkpoint.sqlite"
+        with sqlite3.connect(checkpoint) as connection:
+            connection.execute("PRAGMA user_version = 1")
+        return {
+            "run_root": run_root,
+            "reviewer_results": reviewer_results,
+            "event_log": event_log,
+            "checkpoint": checkpoint,
+        }
+
+    def invalidate_controls(self) -> None:
+        """Remove only the generated validated control artifact before recompilation."""
+        target = self._confined_target("setup/controls.json")
+        if target.is_file():
+            target.unlink()
 
     def _write_model(self, relative_path: str, value: BaseModel) -> Path:
         return self._write_json(relative_path, value.model_dump(mode="json"))

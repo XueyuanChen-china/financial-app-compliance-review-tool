@@ -7,6 +7,14 @@ from langgraph.graph import END, START, StateGraph
 
 from compliance_review.domain.models import WorkItem
 from compliance_review.repository import RepositorySandbox
+from compliance_review.review.context import (
+    AgentRound,
+    CompressedReviewMemory,
+    ContextBudgetExceeded,
+    ReviewerContextManager,
+    ReviewerContextState,
+    ReviewerRuntimeConfig,
+)
 from compliance_review.review.models import ModelRequest, ModelResponse
 from compliance_review.review.provider import ModelProvider, tool_schemas
 from compliance_review.review.tools import ScopedToolExecutor, serialize_tool_result
@@ -28,15 +36,19 @@ def build_profile_draft(
         {surface for inventory in inventories for surface in inventory.detected_surfaces}
     )
     roots = {
-        surface: next(
+        surface: [
             inventory.path
             for inventory in inventories
             if surface in inventory.detected_surfaces
-        )
+        ]
         for surface in surfaces
     }
     evidence = [
-        ProfileEvidence(fact_id=fact.fact_id, summary=fact.fact_type)
+        ProfileEvidence(
+            repo_id=fact.repo_id,
+            fact_id=fact.fact_id,
+            summary=fact.fact_type,
+        )
         for fact in facts.facts
         if fact.fact_type == "repository_surface"
     ]
@@ -64,7 +76,11 @@ def build_profile_draft(
         ),
     }
     required = {"app_name", "package_name", "jurisdiction", "business_type", "self_lending"}
-    status: ProfileStatus = "awaiting_confirmation" if required else "draft"
+    unresolved_required = any(
+        fields[field_name].value is None or fields[field_name].value == "unknown"
+        for field_name in required
+    )
+    status: ProfileStatus = "awaiting_confirmation" if unresolved_required else "draft"
     return AppProfile(version="1.0", status=status, fields=fields)
 
 
@@ -123,14 +139,16 @@ class ProfileValidator:
 class ProfileAgentState(TypedDict, total=False):
     """Serializable state for one Profile Agent subgraph invocation."""
 
-    inventory: dict[str, Any]
+    inventories: list[dict[str, Any]]
     facts: dict[str, Any]
     work_item: dict[str, Any]
     agent_id: str
     attempt_id: str
     messages: list[dict[str, Any]]
+    context: dict[str, Any]
     response: dict[str, Any]
     tool_rounds: int
+    tokens_used: int
     profile: dict[str, Any]
     error: str
 
@@ -149,11 +167,36 @@ class ProfileAgent:
         sandbox: RepositorySandbox,
         agent_id: str = "profile-agent-001",
     ) -> AppProfile:
-        surface = inventory.detected_surface or inventory.declared_surface or "other_external"
+        return self.run_workspace(
+            [inventory],
+            facts,
+            {inventory.repo_id: sandbox},
+            agent_id=agent_id,
+        )
+
+    def run_workspace(
+        self,
+        inventories: list[RepositoryInventory],
+        facts: AppFactSet,
+        sandboxes: dict[str, RepositorySandbox],
+        agent_id: str = "profile-agent-001",
+    ) -> AppProfile:
+        if not inventories:
+            raise ValueError("at least one repository inventory is required")
+        missing = {
+            inventory.repo_id for inventory in inventories
+        } - set(sandboxes)
+        if missing:
+            raise ValueError(f"missing repository sandboxes: {sorted(missing)}")
+        first_surface = (
+            inventories[0].detected_surface
+            or inventories[0].declared_surface
+            or "other_external"
+        )
         work_item = WorkItem(
-            work_item_id=f"profile.{inventory.repo_id}",
+            work_item_id="profile.workspace",
             module_id="profile_intake",
-            surface=surface,
+            surface=first_surface,
             control_ids=["profile"],
             allowed_roots=["."],
             max_tool_rounds=self.max_rounds,
@@ -162,20 +205,23 @@ class ProfileAgent:
         )
         graph = _build_profile_agent_graph(
             provider=self.provider,
-            inventory=inventory,
+            inventories=inventories,
             facts=facts,
-            sandbox=sandbox,
+            sandboxes=sandboxes,
             work_item=work_item,
             max_rounds=self.max_rounds,
         )
         result = graph.invoke(
             {
-                "inventory": inventory.model_dump(mode="json"),
+                "inventories": [
+                    inventory.model_dump(mode="json") for inventory in inventories
+                ],
                 "facts": facts.model_dump(mode="json"),
                 "work_item": work_item.model_dump(mode="json"),
                 "agent_id": agent_id,
-                "attempt_id": f"profile.{inventory.repo_id}",
+                "attempt_id": "profile.workspace",
                 "tool_rounds": 0,
+                "tokens_used": 0,
             }
         )
         if "profile" not in result:
@@ -183,11 +229,30 @@ class ProfileAgent:
         return AppProfile.model_validate(result["profile"])
 
 
+def merge_profile_candidate(base: AppProfile, candidate: AppProfile) -> AppProfile:
+    """Merge model proposals without allowing them to overwrite deterministic fields."""
+    fields = dict(base.fields)
+    protected_sources = {"declared", "deterministic", "human_confirmed"}
+    for field_name, proposed in candidate.fields.items():
+        existing = fields.get(field_name)
+        if existing is not None and existing.source in protected_sources:
+            continue
+        if proposed.value is None or proposed.value == "unknown":
+            fields[field_name] = proposed.model_copy(
+                update={"source": "unresolved", "confidence": "low"}
+            )
+        else:
+            fields[field_name] = proposed.model_copy(
+                update={"source": "inferred", "confidence": proposed.confidence}
+            )
+    return base.model_copy(update={"status": "draft", "fields": fields})
+
+
 def _build_profile_agent_graph(
     provider: ModelProvider,
-    inventory: RepositoryInventory,
+    inventories: list[RepositoryInventory],
     facts: AppFactSet,
-    sandbox: RepositorySandbox,
+    sandboxes: dict[str, RepositorySandbox],
     work_item: WorkItem,
     max_rounds: int,
 ) -> Any:
@@ -197,41 +262,152 @@ def _build_profile_agent_graph(
     remain injected dependencies rather than writable graph state.
     """
 
+    context_manager = ReviewerContextManager(
+        ReviewerRuntimeConfig(active_window_size=3, context_window_tokens=8000)
+    )
+    executors = {
+        inventory.repo_id: ScopedToolExecutor(
+            sandboxes[inventory.repo_id],
+            work_item.model_copy(
+                update={
+                    "work_item_id": f"profile.{inventory.repo_id}",
+                    "surface": (
+                        inventory.detected_surface
+                        or inventory.declared_surface
+                        or "other_external"
+                    ),
+                }
+            ),
+        )
+        for inventory in inventories
+    }
+
     def initialize(state: ProfileAgentState) -> dict[str, Any]:
+        context = context_manager.create(
+            work_item,
+            (
+                "Build one AppProfile JSON draft for the complete workspace. Use the "
+                "repository inventory and deterministic facts as authoritative technical "
+                "inputs. Use unknown/unresolved when code cannot prove a business fact. "
+                "Return only the AppProfile object when finished."
+            ),
+        )
         return {
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "Build an AppProfile JSON draft from the supplied inventory and facts. "
-                        "Use unknown/unresolved when code cannot prove a business fact. "
-                        "Return only the AppProfile object when finished."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        {"inventory": inventory.model_dump(), "facts": facts.model_dump()},
-                        sort_keys=True,
-                    ),
-                },
-            ],
+            "context": context.model_dump(),
             "tool_rounds": 0,
         }
 
     def call_model(state: ProfileAgentState) -> dict[str, Any]:
         try:
+            current_context = context_manager.create(
+                work_item,
+                "Build an AppProfile JSON draft from workspace inventory and facts.",
+            )
+            if state.get("context"):
+                current_context = ReviewerContextState.model_validate(state["context"])
+            messages = context_manager.render_messages(current_context)
+            messages.insert(
+                2,
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "inventories": [
+                                inventory.model_dump() for inventory in inventories
+                            ],
+                            "facts": facts.model_dump(),
+                        },
+                        sort_keys=True,
+                    ),
+                },
+            )
+            compression_tokens = 0
+
+            def compress(
+                memory: CompressedReviewMemory | None,
+                retired_rounds: list[AgentRound],
+            ) -> CompressedReviewMemory:
+                nonlocal compression_tokens
+                payload = {
+                    "compressed_memory": memory.model_dump() if memory else None,
+                    "retired_rounds": [item.model_dump() for item in retired_rounds],
+                }
+                response = provider.complete(
+                    ModelRequest(
+                        work_item=work_item,
+                        attempt_id=state["attempt_id"],
+                        agent_id=state["agent_id"],
+                        request_kind="compression",
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": (
+                                    "Compress only the supplied Profile Agent exploration "
+                                    "rounds into a CompressedReviewMemory JSON object. "
+                                    "Do not invent facts."
+                                ),
+                            },
+                            {"role": "user", "content": json.dumps(payload, sort_keys=True)},
+                        ],
+                        tools=[],
+                        token_budget=4000,
+                    )
+                )
+                compression_tokens += (
+                    response.input_tokens
+                    + response.output_tokens
+                    + _approx_tokens(response.content)
+                )
+                if response.tool_calls or not response.content:
+                    raise ValueError("profile compression response must be structured JSON")
+                parsed = dict(_parse_json(response.content))
+                parsed["generation"] = memory.generation + 1 if memory is not None else 1
+                return CompressedReviewMemory.model_validate(parsed)
+
+            prepared_context, prepared_messages = context_manager.prepare_for_model(
+                current_context, messages, compress
+            )
+            remaining_tokens = 4000 - state.get("tokens_used", 0) - compression_tokens
+            if remaining_tokens < 100:
+                raise ContextBudgetExceeded("profile context budget exceeded")
             response = provider.complete(
                 ModelRequest(
                     work_item=work_item,
                     attempt_id=state["attempt_id"],
                     agent_id=state["agent_id"],
-                    messages=state["messages"],
+                    messages=prepared_messages,
                     tools=_profile_tool_schemas(),
-                    token_budget=4000,
+                    token_budget=remaining_tokens,
                 )
             )
-            return {"response": response.model_dump()}
+            tokens_used = (
+                state.get("tokens_used", 0)
+                + compression_tokens
+                + response.input_tokens
+                + response.output_tokens
+                + _approx_tokens(response.content)
+            )
+            if tokens_used > 4000:
+                raise ContextBudgetExceeded("profile token budget exceeded")
+            updates: dict[str, Any] = {
+                "response": response.model_dump(),
+                "messages": prepared_messages,
+                "tokens_used": tokens_used,
+            }
+            if not response.tool_calls:
+                round_item = AgentRound(
+                    round_number=len(current_context.active_rounds)
+                    + len(current_context.retired_rounds)
+                    + 1,
+                    model_response={"content": response.content},
+                    estimated_tokens=response.input_tokens + response.output_tokens,
+                )
+                updates["context"] = context_manager.record_round(
+                    prepared_context, round_item
+                ).model_dump()
+            return updates
+        except ContextBudgetExceeded as exc:
+            return {"error": str(exc)}
         except Exception as exc:
             return {"error": str(exc)}
 
@@ -241,39 +417,55 @@ def _build_profile_agent_graph(
             if tool_rounds > max_rounds:
                 raise RuntimeError("profile agent exceeded max_rounds")
             response = ModelResponse.model_validate(state["response"])
-            executor = ScopedToolExecutor(sandbox, work_item)
-            messages = list(state.get("messages", []))
-            messages.append(
-                {
-                    "role": "assistant",
-                    "tool_calls": [
-                        {
-                            "id": call.call_id,
-                            "type": "function",
-                            "function": {
-                                "name": call.name,
-                                "arguments": json.dumps(call.arguments, sort_keys=True),
-                            },
-                        }
-                        for call in response.tool_calls
-                    ],
-                }
-            )
+            current_context = ReviewerContextState.model_validate(state["context"])
+            tool_calls = []
+            tool_results = []
             for call in response.tool_calls:
                 if call.name == "get_repository_inventory":
-                    content = json.dumps(inventory.model_dump(mode="json"), sort_keys=True)
+                    repo_id = call.arguments.get("repo_id")
+                    selected = inventories
+                    if isinstance(repo_id, str):
+                        selected = [item for item in inventories if item.repo_id == repo_id]
+                    payload = [item.model_dump(mode="json") for item in selected]
+                    content = json.dumps(
+                        payload[0] if isinstance(repo_id, str) and payload else payload,
+                        sort_keys=True,
+                    )
                 elif call.name == "get_app_facts":
                     content = json.dumps(facts.model_dump(mode="json"), sort_keys=True)
                 else:
-                    content = serialize_tool_result(executor.execute(call))
-                messages.append(
+                    repo_id = call.arguments.get("repo_id")
+                    if not isinstance(repo_id, str) or repo_id not in executors:
+                        raise ValueError("profile code tools require a valid repo_id")
+                    result = executors[repo_id].execute(call)
+                    content = serialize_tool_result(result)
+                tool_calls.append(
                     {
-                        "role": "tool",
-                        "tool_call_id": call.call_id,
-                        "content": content,
+                        "id": call.call_id,
+                        "type": "function",
+                        "function": {
+                            "name": call.name,
+                            "arguments": json.dumps(call.arguments, sort_keys=True),
+                        },
                     }
                 )
-            return {"messages": messages, "tool_rounds": tool_rounds}
+                tool_results.append({"call_id": call.call_id, "content": content})
+            round_item = AgentRound(
+                round_number=len(current_context.active_rounds)
+                + len(current_context.retired_rounds)
+                + 1,
+                model_response={"tool_calls": tool_calls},
+                tool_calls=[call.model_dump() for call in response.tool_calls],
+                tool_results=tool_results,
+            )
+            next_context = context_manager.record_round(current_context, round_item)
+            return {
+                "context": next_context.model_dump(),
+                "messages": context_manager.render_messages(next_context),
+                "tool_rounds": tool_rounds,
+                "tokens_used": state.get("tokens_used", 0)
+                + sum(_approx_tokens(item.get("content")) for item in tool_results),
+            }
         except Exception as exc:
             return {"error": str(exc)}
 
@@ -321,15 +513,35 @@ def _parse_json(content: str) -> Mapping[str, Any]:
     return value
 
 
+def _approx_tokens(value: Any) -> int:
+    return max(0, (len(str(value)) + 3) // 4)
+
+
 def _profile_tool_schemas() -> list[dict[str, Any]]:
+    schemas = [*tool_schemas()]
+    for schema in schemas:
+        function = schema.get("function", {})
+        name = function.get("name")
+        if name in {"code_map_query", "code_map_path", "list_files", "search_code", "read_file"}:
+            properties = function.setdefault("parameters", {}).setdefault("properties", {})
+            properties["repo_id"] = {
+                "type": "string",
+                "description": (
+                    "Repository id to inspect; required when the workspace has "
+                    "multiple repositories."
+                ),
+            }
     return [
-        *tool_schemas(),
+        *schemas,
         {
             "type": "function",
             "function": {
                 "name": "get_repository_inventory",
                 "description": "Read the deterministic inventory for the assigned repository.",
-                "parameters": {"type": "object", "properties": {}},
+                "parameters": {
+                    "type": "object",
+                    "properties": {"repo_id": {"type": "string"}},
+                },
             },
         },
         {
