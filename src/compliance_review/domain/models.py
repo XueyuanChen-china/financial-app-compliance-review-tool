@@ -31,6 +31,8 @@ Confidence = Literal["high", "medium", "low"]
 WriteRisk = Literal["none", "possible", "high"]
 ReviewMode = Literal["full", "diff"]
 RunStatus = Literal["pending", "running", "completed", "failed"]
+ApplicabilityDecisionStatus = Literal["true", "false", "unknown"]
+CoverageUnitStatus = Literal["planned", "missing_surface", "unknown_applicability"]
 
 
 class ContractModel(BaseModel):
@@ -38,6 +40,8 @@ class ContractModel(BaseModel):
 
 
 class SourceRef(ContractModel):
+    source_id: Optional[str] = Field(default=None, min_length=1)
+    source_section: Optional[str] = Field(default=None, min_length=1)
     path: Optional[str] = None
     url: Optional[str] = None
     artifact_path: Optional[str] = None
@@ -54,6 +58,11 @@ class SourceRef(ContractModel):
         return value
 
 
+class EvidenceRequirement(ContractModel):
+    minimum_strength: EvidenceStrength
+    rationale: str = Field(min_length=1)
+
+
 class Control(ContractModel):
     control_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
     module_id: str = Field(min_length=1)
@@ -65,6 +74,8 @@ class Control(ContractModel):
     missing_evidence_policy: Literal["warn", "block"]
     source_refs: list[SourceRef] = Field(min_length=1)
     reuse_invalidation_keys: list[str] = Field(min_length=1)
+    obligation_ids: list[str] = Field(default_factory=list)
+    evidence_requirements: dict[Surface, EvidenceRequirement] = Field(default_factory=dict)
 
     @field_validator("required_surfaces")
     @classmethod
@@ -112,8 +123,47 @@ class ApplicabilityProfile(ContractModel):
     roots: dict[Surface, str] = Field(default_factory=dict)
 
 
+class ApplicabilityDecision(ContractModel):
+    control_id: str = Field(min_length=1)
+    expression: str = Field(min_length=1)
+    status: ApplicabilityDecisionStatus
+    reason: str = Field(min_length=1)
+
+
+class ApplicabilitySet(ContractModel):
+    contract: Literal["applicability_set.v1"] = "applicability_set.v1"
+    profile_version: str = Field(min_length=1)
+    control_version: str = Field(min_length=1)
+    decisions: list[ApplicabilityDecision] = Field(default_factory=list)
+    excluded_control_ids: list[str] = Field(default_factory=list)
+    unknown_control_ids: list[str] = Field(default_factory=list)
+
+
+class CoverageUnit(ContractModel):
+    coverage_unit_id: str = Field(pattern=r"^cu\.[A-Za-z0-9_.-]+$")
+    control_id: str = Field(min_length=1)
+    module_id: str = Field(min_length=1)
+    surface: Surface
+    applicability_status: ApplicabilityDecisionStatus
+    coverage_status: CoverageUnitStatus
+    required_evidence_strength: EvidenceStrength
+    reason: str = Field(min_length=1)
+    work_item_id: Optional[str] = None
+
+
+class CoverageSet(ContractModel):
+    contract: Literal["coverage_set.v1"] = "coverage_set.v1"
+    profile_version: str = Field(min_length=1)
+    control_version: str = Field(min_length=1)
+    units: list[CoverageUnit] = Field(default_factory=list)
+    excluded_control_ids: list[str] = Field(default_factory=list)
+    unknown_control_ids: list[str] = Field(default_factory=list)
+    missing_surfaces: list[Surface] = Field(default_factory=list)
+
+
 class Fact(ContractModel):
     fact_id: str = Field(min_length=1)
+    repo_id: Optional[str] = Field(default=None, min_length=1)
     source_surface: Surface
     fact_type: str = Field(min_length=1)
     observed_value: Any
@@ -153,6 +203,8 @@ class WorkItem(ContractModel):
     module_id: str = Field(min_length=1)
     surface: Surface
     control_ids: list[str] = Field(min_length=1)
+    coverage_unit_ids: list[str] = Field(default_factory=list)
+    collector_fact_refs: list[str] = Field(default_factory=list)
     allowed_roots: list[str] = Field(default_factory=list)
     target_hints: dict[str, list[str]] = Field(default_factory=dict)
     max_tool_rounds: int = Field(default=12, ge=1)

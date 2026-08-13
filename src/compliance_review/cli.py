@@ -26,8 +26,8 @@ from compliance_review.review import (
     ReviewManifestBuilder,
 )
 from compliance_review.review.models import ReviewManifest
-from compliance_review.setup import ReviewSetupService
 from compliance_review.setup.models import WorkspaceMaterial, WorkspaceRepository
+from compliance_review.setup.service import ReviewSetupError, ReviewSetupService
 
 app = typer.Typer(
     name="compliance-review",
@@ -121,20 +121,52 @@ def init_graphify(
             help="Compliance material path to register in workspace setup",
         ),
     ] = None,
+    repository_surface: Annotated[
+        Optional[list[str]],
+        typer.Option(
+            "--repository-surface",
+            help="Declared surface, repeat as repo_id=surface",
+        ),
+    ] = None,
+    profile_model: Annotated[
+        Optional[str],
+        typer.Option(help="Optional model for workspace Profile Agent inference"),
+    ] = None,
+    profile_base_url: Annotated[
+        str,
+        typer.Option(help="OpenAI-compatible Profile Agent endpoint"),
+    ] = "https://api.openai.com/v1/chat/completions",
 ) -> None:
     """Initialize a Workspace, or use legacy Graphify repository initialization."""
     repository = repository or []
     material = material or []
-    if workspace is not None or repository or material:
+    repository_surface = repository_surface or []
+    if workspace is not None or repository or material or repository_surface or profile_model:
         if workspace is None:
             raise typer.BadParameter("workspace path is required in setup mode")
         try:
             repositories = [_parse_workspace_repository(value) for value in repository]
+            surface_overrides = dict(
+                _parse_repository_surface(value) for value in repository_surface
+            )
+            repositories = [
+                item.model_copy(update={"declared_surface": surface_overrides[item.repo_id]})
+                if item.repo_id in surface_overrides
+                else item
+                for item in repositories
+            ]
             materials = [
                 WorkspaceMaterial(path=path.expanduser().resolve().as_posix())
                 for path in material
             ]
-            result = ReviewSetupService(workspace).initialize(repositories, materials)
+            provider = (
+                OpenAICompatibleProvider(profile_model, base_url=profile_base_url)
+                if profile_model
+                else None
+            )
+            result = ReviewSetupService(workspace, profile_provider=provider).initialize(
+                repositories, materials
+            )
         except (OSError, ValueError) as exc:
             raise typer.BadParameter(str(exc)) from exc
         typer.echo(
@@ -192,6 +224,161 @@ def _parse_workspace_repository(value: str) -> WorkspaceRepository:
     return WorkspaceRepository(
         repo_id=repo_id,
         path=Path(raw_path).expanduser().resolve().as_posix(),
+    )
+
+
+def _parse_repository_surface(value: str) -> tuple[str, Surface]:
+    if "=" not in value:
+        raise ValueError("repository surface must use repo_id=surface")
+    repo_id, raw_surface = value.split("=", 1)
+    if not repo_id or not raw_surface:
+        raise ValueError("repository surface must use repo_id=surface")
+    return repo_id, TypeAdapter(Surface).validate_python(raw_surface)
+
+
+@app.command("confirm-profile")
+def confirm_profile(
+    workspace: Annotated[Path, typer.Argument(help="Workspace root")],
+    value: Annotated[
+        Optional[list[str]],
+        typer.Option("--value", help="Profile value, repeat as field=json-or-text"),
+    ] = None,
+    repository_surface: Annotated[
+        Optional[list[str]],
+        typer.Option("--repository-surface", help="Resolve repo surface as repo_id=surface"),
+    ] = None,
+) -> None:
+    """Confirm profile fields and repository surface conflicts after re-validation."""
+    values: dict[str, object] = {}
+    for item in value or []:
+        if "=" not in item:
+            raise typer.BadParameter("--value must use field=json-or-text")
+        field, raw = item.split("=", 1)
+        try:
+            values[field] = json.loads(raw)
+        except json.JSONDecodeError:
+            values[field] = raw
+    try:
+        surfaces: dict[str, str] = dict(
+            _parse_repository_surface(item) for item in (repository_surface or [])
+        )
+        result = ReviewSetupService(workspace).confirm_profile(values, surfaces)
+    except (OSError, ValueError, ValidationError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(result.model_dump_json(indent=2))
+
+
+@app.command("compile-rules")
+def compile_rules(
+    workspace: Annotated[Path, typer.Argument(help="Workspace root")],
+    source: Annotated[
+        Optional[list[Path]],
+        typer.Option("--source", help="Policy source file or directory; repeatable"),
+    ] = None,
+    source_family: Annotated[
+        Optional[list[str]],
+        typer.Option(
+            "--source-family",
+            help="Source family mapping as path=country_regulator/google_play/other",
+        ),
+    ] = None,
+    model: Annotated[str, typer.Option(help="OpenAI-compatible model name")] = "gpt-4o-mini",
+    base_url: Annotated[
+        str,
+        typer.Option(help="OpenAI-compatible chat completions endpoint"),
+    ] = "https://api.openai.com/v1/chat/completions",
+) -> None:
+    """Compile source materials into obligations and validated controls."""
+    from compliance_review.compilation.service import (
+        Phase2CompilationError,
+        Phase2CompilationService,
+    )
+
+    try:
+        paths = [item.expanduser().resolve() for item in (source or [])]
+        families: dict[str, str] = {}
+        for item in source_family or []:
+            if "=" not in item:
+                raise ValueError("--source-family must use path=family")
+            raw_path, family = item.split("=", 1)
+            path = Path(raw_path).expanduser().resolve()
+            if not family:
+                raise ValueError("source family cannot be empty")
+            families[path.as_posix()] = family
+            if path not in paths:
+                paths.append(path)
+        if not paths:
+            workspace_data = json.loads(
+                (workspace.expanduser().resolve() / "workspace.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            paths = [Path(item["path"]) for item in workspace_data.get("materials", [])]
+        if not paths:
+            raise ValueError("provide --source or initialize workspace materials first")
+        result = Phase2CompilationService(
+            workspace,
+            OpenAICompatibleProvider(model, base_url=base_url),
+        ).compile(paths, source_families=families)
+    except (OSError, ValueError, Phase2CompilationError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(
+        json.dumps(
+            {
+                "sources": len(result.source_registry.sources),
+                "obligations": len(result.obligations.obligations),
+                "controls": len(result.controls_draft.controls),
+                "validated": result.control_validation.valid,
+                "artifacts": [
+                    "setup/sources.json",
+                    "setup/obligations.json",
+                    "setup/controls_draft.json",
+                    "setup/control_validation.json",
+                    "setup/controls.json",
+                ],
+            },
+            indent=2,
+        )
+    )
+
+
+@app.command("prepare-review")
+def prepare_review(
+    workspace: Annotated[Path, typer.Argument(help="Workspace root")],
+    run_id: Annotated[
+        Optional[str], typer.Option(help="Stable run ID; generated when omitted")
+    ] = None,
+    max_concurrency: Annotated[
+        int, typer.Option(help="Maximum parallel Reviewer work items")
+    ] = 3,
+) -> None:
+    """Compile confirmed setup state into a Runtime-ready review handoff."""
+    try:
+        result = ReviewSetupService(workspace).compile(
+            run_id=run_id,
+            max_concurrency=max_concurrency,
+        )
+    except (OSError, ValueError, ReviewSetupError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(
+        json.dumps(
+            {
+                "run_id": result.run_id,
+                "work_items": len(result.work_items),
+                "coverage_units": len(result.coverage.units if result.coverage else []),
+                "excluded_controls": (
+                    result.coverage.excluded_control_ids if result.coverage else []
+                ),
+                "unknown_controls": (
+                    result.coverage.unknown_control_ids if result.coverage else []
+                ),
+                "missing_surfaces": (
+                    result.coverage.missing_surfaces if result.coverage else []
+                ),
+                "manifest": f"runs/{result.run_id}/manifest.json",
+            },
+            indent=2,
+        )
     )
 
 

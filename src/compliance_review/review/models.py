@@ -24,6 +24,9 @@ class ReviewManifest(ReviewContractModel):
     surface_roots: dict[Surface, str] = Field(default_factory=dict)
     work_items: list[WorkItem] = Field(default_factory=list)
     excluded_controls: list[ExcludedControl] = Field(default_factory=list)
+    coverage_unit_ids: list[str] = Field(default_factory=list)
+    unknown_control_ids: list[str] = Field(default_factory=list)
+    missing_surfaces: list[Surface] = Field(default_factory=list)
     source_profile_version: str = Field(min_length=1)
     source_control_version: str = Field(min_length=1)
 
@@ -50,7 +53,12 @@ class ModelRequest(ReviewContractModel):
     messages: list[dict[str, Any]] = Field(min_length=1)
     tools: list[dict[str, Any]] = Field(default_factory=list)
     token_budget: int = Field(default=4000, ge=100)
-    request_kind: Literal["review", "compression"] = "review"
+    request_kind: Literal[
+        "review",
+        "compression",
+        "obligation_extraction",
+        "control_compilation",
+    ] = "review"
 
 
 class ModelResponse(ReviewContractModel):

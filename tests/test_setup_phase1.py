@@ -56,6 +56,8 @@ def test_app_facts_reuse_collectors_without_llm() -> None:
     assert facts.contract == "app_fact_set.v1"
     assert any(fact.fact_type == "android_manifest_permission" for fact in facts.facts)
     assert any(result["collector_id"] == "android_manifest" for result in facts.collector_results)
+    assert all(fact.repo_id == "android" for fact in facts.facts)
+    assert all(fact.fact_id.startswith("fact.android.") for fact in facts.facts)
 
 
 def test_setup_service_persists_conservative_profile_draft(tmp_path: Path) -> None:
@@ -104,6 +106,53 @@ def test_profile_confirmation_writes_only_confirmed_profile(tmp_path: Path) -> N
         (tmp_path / "workspace" / "setup" / "app_profile_confirmation.json").read_text()
     )
     assert confirmation["status"] == "confirmed"
+
+
+def test_nested_manifest_path_is_preserved_in_inventory_and_facts(tmp_path: Path) -> None:
+    root = tmp_path / "android"
+    manifest = root / "app" / "src" / "main" / "AndroidManifest.xml"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android">'
+        '<uses-permission android:name="android.permission.CAMERA" /></manifest>',
+        encoding="utf-8",
+    )
+    inventory = build_repository_inventory(WorkspaceRepository(repo_id="mobile", path=str(root)))
+    facts = collect_app_facts([inventory])
+
+    assert inventory.detection_signals[0].path == "app/src/main/AndroidManifest.xml"
+    manifest_facts = [
+        fact for fact in facts.facts if fact.fact_type == "android_manifest_permission"
+    ]
+    assert manifest_facts[0].repo_id == "mobile"
+    assert manifest_facts[0].source_refs[0].path == (
+        f"{root}/app/src/main/AndroidManifest.xml"
+    )
+
+
+def test_confirmation_rejects_unresolved_repository_surface(tmp_path: Path) -> None:
+    service = ReviewSetupService(tmp_path / "workspace")
+    service.initialize(
+        [
+            WorkspaceRepository(
+                repo_id="web",
+                path=(FIXTURES / "frontend").as_posix(),
+                declared_surface="android_native",
+            )
+        ]
+    )
+
+    with pytest.raises(ValueError, match="repository surface unresolved"):
+        service.confirm_profile(
+            {
+                "app_name": "Example Loan",
+                "package_name": "com.example.loan",
+                "jurisdiction": "Pakistan",
+                "business_type": ["personal_loan"],
+                "self_lending": True,
+            }
+        )
+    assert not (tmp_path / "workspace" / "setup" / "app_profile.json").exists()
 
 
 def test_profile_agent_returns_structured_object_without_write_tools() -> None:
@@ -182,3 +231,45 @@ def test_profile_agent_runs_model_tool_loop_inside_langgraph_subgraph() -> None:
     assert profile.status == "draft"
     assert len(provider.requests) == 2
     assert provider.requests[1].messages[-1]["tool_call_id"] == "profile-tool-1"
+
+
+def test_setup_profile_agent_supports_multiple_repositories_without_overwriting_base(
+    tmp_path: Path,
+) -> None:
+    response = {
+        "contract": "app_profile.v1",
+        "version": "1.0",
+        "status": "draft",
+        "fields": {
+            "business_type": {
+                "value": ["personal_loan"],
+                "source": "inferred",
+                "confidence": "medium",
+                "evidence": [],
+            },
+            "evidence_surfaces": {
+                "value": ["backend_code"],
+                "source": "inferred",
+                "confidence": "high",
+                "evidence": [],
+            },
+        },
+    }
+    provider = StaticModelProvider(lambda request: ModelResponse(content=json.dumps(response)))
+    service = ReviewSetupService(tmp_path / "workspace", profile_provider=provider)
+    result = service.initialize(
+        [
+            WorkspaceRepository(repo_id="web", path=(FIXTURES / "frontend").as_posix()),
+            WorkspaceRepository(repo_id="mobile", path=(FIXTURES / "android").as_posix()),
+        ]
+    )
+
+    assert result.profile.value_for("business_type") == ["personal_loan"]
+    assert result.profile.value_for("evidence_surfaces") == [
+        "android_native",
+        "frontend_h5",
+    ]
+    assert result.profile.value_for("repository_roots") == {
+        "android_native": [(FIXTURES / "android").resolve().as_posix()],
+        "frontend_h5": [(FIXTURES / "frontend").resolve().as_posix()],
+    }

@@ -84,7 +84,11 @@ unresolved
 
 ## 6. Profile Agent Subgraph
 
-Profile Agent 是一个独立的 LangGraph 子图，不直接写文件。它的最小图结构是：
+Profile Agent 是一个独立的 LangGraph 子图，不直接写文件。它现在以整个 Workspace 为输入，
+可以同时理解 frontend、Android、backend 等多个仓库。每次代码工具调用都必须带 `repo_id`，
+由子图把调用路由到对应的 `RepositorySandbox`。
+
+它的最小图结构是：
 
 ```text
 START
@@ -107,10 +111,25 @@ read_file
 list_files
 ```
 
-它只能返回 `AppProfile` 对象，应用层经过 Pydantic 和 ProfileValidator 校验后，才由 `ArtifactStore` 写入 draft artifact。
-Profile 子图使用独立的状态对象和工具循环，不复用 Reviewer 主图的运行状态；后续如果需要，也可以单独为它接入 LangGraph checkpointer。
+它只能返回 `AppProfile` 对象。应用层不会直接接受整个模型输出，而是将其作为候选字段，
+与 deterministic profile 合并：`evidence_surfaces`、`review_scope`、`repository_roots` 等
+deterministic 字段不能被模型覆盖。合并结果经过 Pydantic 和 ProfileValidator 校验后，才由
+`ArtifactStore` 写入 draft artifact。
 
-没有 LLM 时，Setup Service 会生成保守的 deterministic draft；有 LLM 时可注入 Profile Agent，对代码可证明的字段进行补充推断。
+Profile 子图复用 Reviewer 的 `ReviewerContextManager`、active/retired rounds 和工具调用预算，
+但不复用 Reviewer 的 Work Item 结论或运行状态。Profile Agent 的上下文仍会每轮保留 inventory
+和 AppFacts，避免压缩或轮次淘汰后丢失确定性输入。
+
+没有 LLM 时，Setup Service 会生成保守的 deterministic draft；有 LLM 时，可以使用：
+
+```bash
+compliance-review init ./my-review \
+  --repository web=/path/to/web \
+  --repository android=/path/to/android \
+  --profile-model <model-name>
+```
+
+这个可选参数才会启动 Profile Agent；不提供时不会联网，仍只执行 deterministic intake。
 
 ## 7. Profile confirmation
 
@@ -130,11 +149,24 @@ setup/profile_validation.json
 setup/app_profile_confirmation.json
 ```
 
-只有显式调用 `ReviewSetupService.confirm_profile()` 并补齐关键字段后，才会写入：
+确认时会重新加载 `repository_inventory.json` 和 `app_facts.json`，重新执行
+`ProfileValidator`。仓库 surface 冲突必须显式解决，不能只补 AppProfile 字段。例如：
+
+```python
+service.confirm_profile(
+    values={"business_type": ["personal_loan"]},
+    repository_surfaces={"backend": "backend_code"},
+)
+```
+
+只有显式确认、补齐关键字段且二次校验无 errors/conflicts 后，才会写入：
 
 ```text
-setup/app_profile.json
+    setup/app_profile.json
 ```
+
+Collector facts 在 Setup 聚合层会带上 `repo_id`，并生成 repository-scoped `fact_id`；
+同一 surface 下多个仓库的同名依赖、权限或 endpoint 不会互相覆盖。
 
 ## 8. ArtifactStore 安全边界
 

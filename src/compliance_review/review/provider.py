@@ -61,6 +61,11 @@ class OpenAICompatibleProvider:
             "tool_choice": "auto",
             "temperature": 0,
         }
+        if request.request_kind in {
+            "obligation_extraction",
+            "control_compilation",
+        }:
+            body["response_format"] = {"type": "json_object"}
         encoded = json.dumps(body).encode("utf-8")
         http_request = urllib.request.Request(
             self.base_url,

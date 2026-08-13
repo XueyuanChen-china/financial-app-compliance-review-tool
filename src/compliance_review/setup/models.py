@@ -72,6 +72,7 @@ class AppFactSet(ContractModel):
 
 
 class ProfileEvidence(ContractModel):
+    repo_id: Optional[str] = Field(default=None, min_length=1)
     path: Optional[str] = None
     symbol: Optional[str] = None
     fact_id: Optional[str] = None

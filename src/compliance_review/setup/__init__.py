@@ -10,9 +10,19 @@ from compliance_review.setup.models import (
     ProfileValidationResult,
     RepositoryInventory,
 )
-from compliance_review.setup.profile import ProfileAgent, ProfileValidator, build_profile_draft
+from compliance_review.setup.planning import (
+    ApplicabilityEngine,
+    CoverageUnitBuilder,
+    WorkItemPlan,
+    WorkItemPlanner,
+)
+from compliance_review.setup.profile import (
+    ProfileAgent,
+    ProfileValidator,
+    build_profile_draft,
+    merge_profile_candidate,
+)
 from compliance_review.setup.repository_inventory import build_repository_inventory
-from compliance_review.setup.service import ReviewSetupResult, ReviewSetupService
 
 __all__ = [
     "AppFactSet",
@@ -25,8 +35,31 @@ __all__ = [
     "ProfileValidator",
     "RepositoryInventory",
     "ReviewSetupResult",
+    "ReviewSetupError",
     "ReviewSetupService",
+    "ApplicabilityEngine",
+    "CoverageUnitBuilder",
+    "WorkItemPlan",
+    "WorkItemPlanner",
     "build_profile_draft",
+    "merge_profile_candidate",
     "build_repository_inventory",
     "collect_app_facts",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Load the service lazily to avoid persistence/setup model import cycles."""
+    if name in {"ReviewSetupError", "ReviewSetupResult", "ReviewSetupService"}:
+        from compliance_review.setup.service import (
+            ReviewSetupError,
+            ReviewSetupResult,
+            ReviewSetupService,
+        )
+
+        return {
+            "ReviewSetupError": ReviewSetupError,
+            "ReviewSetupResult": ReviewSetupResult,
+            "ReviewSetupService": ReviewSetupService,
+        }[name]
+    raise AttributeError(name)

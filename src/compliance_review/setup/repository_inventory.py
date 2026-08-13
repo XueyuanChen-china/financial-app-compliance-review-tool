@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from compliance_review.domain.models import Surface
@@ -17,7 +18,24 @@ def build_repository_inventory(
 ) -> RepositoryInventory:
     root = Path(repository.path).expanduser().resolve()
     sandbox = RepositorySandbox(root)
-    files = set(sandbox.list_files("**/*", limit=5000))
+    manifest_paths = sandbox.list_files("**/AndroidManifest.xml", limit=100)
+    package_paths = sandbox.list_files("**/package.json", limit=100)
+    gradle_paths = sandbox.list_files("**/build.gradle*", limit=100)
+    pom_paths = sandbox.list_files("**/pom.xml", limit=100)
+    api_paths = sorted(
+        {
+            path
+            for pattern in (
+                "**/*.openapi.json",
+                "**/*.openapi.yaml",
+                "**/*.openapi.yml",
+                "**/swagger.json",
+                "**/swagger.yaml",
+                "**/swagger.yml",
+            )
+            for path in sandbox.list_files(pattern, limit=100)
+        }
+    )
     signals: list[DetectionSignal] = []
     detected: list[Surface] = []
 
@@ -28,37 +46,58 @@ def build_repository_inventory(
             DetectionSignal(signal_type=signal_type, path=path, detail=detail)
         )
 
-    has_android_manifest = "AndroidManifest.xml" in files or any(
-        path.endswith("/AndroidManifest.xml") for path in files
-    )
+    has_android_manifest = bool(manifest_paths)
     if has_android_manifest:
-        add("android_native", "android_manifest", "AndroidManifest.xml", "Android manifest found")
-    has_gradle = any(path.endswith(("build.gradle", "build.gradle.kts")) for path in files)
+        add(
+            "android_native",
+            "android_manifest",
+            manifest_paths[0],
+            "Android manifest found",
+        )
+    has_gradle = bool(gradle_paths)
     if has_gradle and has_android_manifest:
-        add("android_native", "gradle_build", "build.gradle", "Gradle build file found")
-    if "package.json" in files:
-        add("frontend_h5", "package_manifest", "package.json", "Node package manifest found")
-        package_text = sandbox.read_text("package.json")
+        add("android_native", "gradle_build", gradle_paths[0], "Gradle build file found")
+    for package_path in package_paths:
+        try:
+            package = json.loads(sandbox.read_text(package_path))
+        except (OSError, ValueError, TypeError):
+            continue
+        dependencies = {
+            name.lower()
+            for group in ("dependencies", "devDependencies", "peerDependencies")
+            for name in (package.get(group, {}) if isinstance(package.get(group, {}), dict) else {})
+        }
         for framework in ("react", "vue", "@angular/core", "svelte"):
-            if framework in package_text.lower():
+            if framework.lower() in dependencies:
+                add(
+                    "frontend_h5",
+                    "package_manifest",
+                    package_path,
+                    "Frontend package manifest found",
+                )
                 signals.append(
                     DetectionSignal(
                         signal_type="frontend_framework",
-                        path="package.json",
+                        path=package_path,
                         detail=f"frontend framework dependency found: {framework}",
                     )
                 )
                 break
-    if any(path.endswith("pom.xml") for path in files) or (has_gradle and not has_android_manifest):
-        add("backend_code", "backend_build_or_layout", "", "backend build/layout signal found")
+    if pom_paths or (has_gradle and not has_android_manifest):
+        add(
+            "backend_code",
+            "backend_build_or_layout",
+            (pom_paths or gradle_paths)[0],
+            "backend build/layout signal found",
+        )
     if any(
         path.lower().endswith((".openapi.json", ".openapi.yaml", ".openapi.yml"))
         or path.lower().endswith(("swagger.json", "swagger.yaml", "swagger.yml"))
-        for path in files
+        for path in api_paths
     ):
         api_path = next(
             path
-            for path in sorted(files)
+            for path in sorted(api_paths)
             if path.lower().endswith(
                 (
                     ".openapi.json",
