@@ -23,6 +23,27 @@ class SourceSection(ContractModel):
     text: str = Field(min_length=1)
     ordinal: int = Field(ge=1)
     page: Optional[int] = Field(default=None, ge=1)
+    page_end: Optional[int] = Field(default=None, ge=1)
+    location: Optional[str] = None
+
+
+class SourceSectionBatch(ContractModel):
+    """A bounded model input containing complete sections from one source."""
+
+    batch_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    source_id: str = Field(min_length=1)
+    sections: list[SourceSection] = Field(min_length=1)
+    estimated_input_tokens: int = Field(ge=1)
+
+
+SectionDecision = Literal["obligations_extracted", "no_obligation"]
+
+
+class SectionCoverageDecision(ContractModel):
+    section_id: str = Field(min_length=1)
+    decision: SectionDecision
+    obligation_ids: list[str] = Field(default_factory=list)
+    reason: Optional[str] = None
 
 
 class ComplianceSource(ContractModel):
@@ -54,6 +75,15 @@ class Obligation(ContractModel):
     applicability_expression: str = Field(min_length=1)
     required_surfaces: list[Surface] = Field(min_length=1)
     source_refs: list[SourceRef] = Field(min_length=1)
+
+
+class ObligationExtractionBatchResult(ContractModel):
+    contract: Literal["obligation_extraction_batch.v1"] = "obligation_extraction_batch.v1"
+    version: str = Field(min_length=1)
+    source_id: str = Field(min_length=1)
+    batch_id: str = Field(min_length=1)
+    section_decisions: list[SectionCoverageDecision] = Field(default_factory=list)
+    obligations: list[Obligation] = Field(default_factory=list)
 
 
 class ObligationSet(ContractModel):
@@ -97,6 +127,7 @@ class ControlValidationResult(ContractModel):
 
 class Phase2CompilationResult(ContractModel):
     source_registry: SourceRegistry
+    extraction_batches: list[ObligationExtractionBatchResult] = Field(default_factory=list)
     obligations: ObligationSet
     controls_draft: ControlDraftSet
     control_validation: ControlValidationResult

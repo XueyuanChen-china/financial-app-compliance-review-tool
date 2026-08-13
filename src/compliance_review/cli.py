@@ -324,6 +324,7 @@ def compile_rules(
                 "validated": result.control_validation.valid,
                 "artifacts": [
                     "setup/sources.json",
+                    "setup/obligation_extraction_batches.json",
                     "setup/obligations.json",
                     "setup/controls_draft.json",
                     "setup/control_validation.json",

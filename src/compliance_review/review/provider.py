@@ -66,7 +66,17 @@ class OpenAICompatibleProvider:
             "control_compilation",
             "verification",
         }:
-            body["response_format"] = {"type": "json_object"}
+            if request.response_schema:
+                body["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": request.request_kind,
+                        "strict": True,
+                        "schema": request.response_schema,
+                    },
+                }
+            else:
+                body["response_format"] = {"type": "json_object"}
         encoded = json.dumps(body).encode("utf-8")
         http_request = urllib.request.Request(
             self.base_url,

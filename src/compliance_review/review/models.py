@@ -63,6 +63,7 @@ class ModelRequest(ReviewContractModel):
     messages: list[dict[str, Any]] = Field(min_length=1)
     tools: list[dict[str, Any]] = Field(default_factory=list)
     token_budget: int = Field(default=4000, ge=100)
+    response_schema: Optional[dict[str, Any]] = None
     request_kind: Literal[
         "review",
         "compression",

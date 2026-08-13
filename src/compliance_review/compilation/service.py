@@ -3,8 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable, Optional
 
+from compliance_review.compilation.batching import (
+    BatchPlanner,
+    merge_obligation_batches,
+    validate_batch_coverage,
+    validate_registry_coverage,
+)
 from compliance_review.compilation.llm import ControlCompiler, ObligationExtractor
 from compliance_review.compilation.models import (
+    ObligationSet,
     Phase2CompilationResult,
     SourceRegistry,
 )
@@ -26,11 +33,13 @@ class Phase2CompilationService:
         workspace_root: Path,
         provider: ModelProvider,
         source_builder: Optional[SourceRegistryBuilder] = None,
+        batch_planner: Optional[BatchPlanner] = None,
     ) -> None:
         self.workspace_root = workspace_root.expanduser().resolve()
         self.provider = provider
         self.store = ArtifactStore(self.workspace_root)
         self.source_builder = source_builder or SourceRegistryBuilder()
+        self.batch_planner = batch_planner or BatchPlanner()
         self.validator = ControlValidator()
         self.obligation_extractor = ObligationExtractor(provider)
         self.control_compiler = ControlCompiler(provider)
@@ -48,7 +57,28 @@ class Phase2CompilationService:
         self.store.write_source_registry(registry)
         self._ensure_extractable(registry)
 
-        obligations = self.obligation_extractor.extract(_source_payload(registry))
+        batches = self.batch_planner.plan(registry)
+        extraction_results = []
+        for batch in batches:
+            extraction = self.obligation_extractor.extract(batch)
+            try:
+                validate_batch_coverage(batch, extraction)
+            except ValueError as exc:
+                raise Phase2CompilationError(
+                    f"obligation extraction coverage failed for {batch.batch_id}: {exc}"
+                ) from exc
+            extraction_results.append(extraction)
+        try:
+            validate_registry_coverage(registry, extraction_results)
+            merged = merge_obligation_batches(extraction_results)
+        except ValueError as exc:
+            raise Phase2CompilationError(f"obligation extraction coverage failed: {exc}") from exc
+        obligations = ObligationSet(
+            version="1.0",
+            status="draft",
+            obligations=merged,
+        )
+        self.store.write_obligation_extraction_batches(extraction_results)
         self.store.write_obligations(obligations)
 
         drafts = self.control_compiler.compile(
@@ -70,6 +100,7 @@ class Phase2CompilationService:
         self.store.write_controls(controls)
         return Phase2CompilationResult(
             source_registry=registry,
+            extraction_batches=extraction_results,
             obligations=obligations,
             controls_draft=drafts,
             control_validation=validation,
@@ -83,21 +114,3 @@ class Phase2CompilationService:
             raise Phase2CompilationError(
                 "source extraction failed or produced no text for: " + ", ".join(failed)
             )
-
-
-def _source_payload(registry: SourceRegistry) -> dict[str, object]:
-    return {
-        "contract": registry.contract,
-        "version": registry.version,
-        "sources": [
-            {
-                "source_id": source.source_id,
-                "title": source.title,
-                "version": source.version,
-                "source_family": source.source_family,
-                "media_type": source.media_type,
-                "sections": [section.model_dump(mode="json") for section in source.sections],
-            }
-            for source in registry.sources
-        ],
-    }

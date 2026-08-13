@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from pydantic import BaseModel
 
@@ -59,6 +59,12 @@ class ArtifactStore:
 
     def write_obligations(self, obligations: BaseModel) -> Path:
         return self._write_model("setup/obligations.json", obligations)
+
+    def write_obligation_extraction_batches(self, batches: Sequence[BaseModel]) -> Path:
+        return self._write_json(
+            "setup/obligation_extraction_batches.json",
+            [batch.model_dump(mode="json") for batch in batches],
+        )
 
     def write_controls_draft(self, controls: BaseModel) -> Path:
         return self._write_model("setup/controls_draft.json", controls)

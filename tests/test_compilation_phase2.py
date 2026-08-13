@@ -91,9 +91,17 @@ def _provider_for_valid_compilation() -> StaticModelProvider:
             return ModelResponse(
                 content=json.dumps(
                     {
-                        "contract": "obligation_set.v1",
+                        "contract": "obligation_extraction_batch.v1",
                         "version": "1.0",
-                        "status": "draft",
+                        "source_id": source_id,
+                        "batch_id": payload["batch_id"],
+                        "section_decisions": [
+                            {
+                                "section_id": section,
+                                "decision": "obligations_extracted",
+                                "obligation_ids": ["obl.loan.disclosure"],
+                            }
+                        ],
                         "obligations": [
                             {
                                 "obligation_id": "obl.loan.disclosure",
@@ -176,13 +184,16 @@ def test_invalid_control_draft_does_not_write_validated_controls(tmp_path: Path)
 
     def invalid_response(request: object) -> ModelResponse:
         kind = request.request_kind  # type: ignore[attr-defined]
+        payload = json.loads(request.messages[1]["content"])  # type: ignore[attr-defined]
         if kind == "obligation_extraction":
             return ModelResponse(
                 content=json.dumps(
                     {
-                        "contract": "obligation_set.v1",
+                        "contract": "obligation_extraction_batch.v1",
                         "version": "1.0",
-                        "status": "draft",
+                        "source_id": payload["source_id"],
+                        "batch_id": payload["batch_id"],
+                        "section_decisions": [],
                         "obligations": [],
                     }
                 )
@@ -202,7 +213,7 @@ def test_invalid_control_draft_does_not_write_validated_controls(tmp_path: Path)
     with pytest.raises(Phase2CompilationError):
         Phase2CompilationService(tmp_path / "workspace", invalid_provider).compile([source])
     assert not (tmp_path / "workspace" / "setup" / "controls.json").exists()
-    assert (tmp_path / "workspace" / "setup" / "control_validation.json").is_file()
+    assert (tmp_path / "workspace" / "setup" / "sources.json").is_file()
 
 
 def test_validator_requires_complete_section_mapping_and_control_provenance() -> None:

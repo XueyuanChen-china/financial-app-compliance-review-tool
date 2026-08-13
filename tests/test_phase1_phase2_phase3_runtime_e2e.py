@@ -44,9 +44,17 @@ def test_phase1_phase2_phase3_runtime_handoff(tmp_path: Path) -> None:
             return ModelResponse(
                 content=json.dumps(
                     {
-                        "contract": "obligation_set.v1",
+                        "contract": "obligation_extraction_batch.v1",
                         "version": "1.0",
-                        "status": "draft",
+                        "source_id": source["source_id"],
+                        "batch_id": payload["batch_id"],
+                        "section_decisions": [
+                            {
+                                "section_id": section,
+                                "decision": "obligations_extracted",
+                                "obligation_ids": ["obl.loan.disclosure"],
+                            }
+                        ],
                         "obligations": [
                             {
                                 "obligation_id": "obl.loan.disclosure",
