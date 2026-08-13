@@ -3,6 +3,9 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
+
+from compliance_review.domain.models import DiffFile, RepositoryDiff
 
 
 @dataclass(frozen=True)
@@ -42,15 +45,105 @@ class GitRepository:
             )
         status = self._run(("status", "--porcelain=v1", "--untracked-files=all")) or ""
         changed = tuple(
-            line[3:].split(" -> ")[-1].strip()
-            for line in status.splitlines()
-            if len(line) >= 4
+            line[3:].split(" -> ")[-1].strip() for line in status.splitlines() if len(line) >= 4
         )
         return GitMetadata(
             revision=revision,
             is_git_repository=True,
             is_dirty=bool(status.strip()),
             changed_files=changed,
+        )
+
+    def diff(
+        self,
+        repo_id: str,
+        base_revision: str | None,
+        head_revision: str | None = None,
+    ) -> RepositoryDiff:
+        """Return a structured base-to-head diff without flattening repositories."""
+        metadata = self.metadata()
+        if not metadata.is_git_repository or metadata.revision is None:
+            return RepositoryDiff(
+                repo_id=repo_id,
+                base_revision=base_revision,
+                head_revision=metadata.revision,
+                comparable=False,
+                error_code=metadata.error_code or "not_a_git_repository",
+            )
+        if not base_revision:
+            return RepositoryDiff(
+                repo_id=repo_id,
+                head_revision=head_revision or metadata.revision,
+                comparable=False,
+                error_code="base_revision_missing",
+            )
+        head = head_revision or metadata.revision
+        if self._run(("rev-parse", "--verify", f"{base_revision}^{{commit}}")) is None:
+            return RepositoryDiff(
+                repo_id=repo_id,
+                base_revision=base_revision,
+                head_revision=head,
+                comparable=False,
+                error_code="base_revision_not_found",
+            )
+        if self._run(("rev-parse", "--verify", f"{head}^{{commit}}")) is None:
+            return RepositoryDiff(
+                repo_id=repo_id,
+                base_revision=base_revision,
+                head_revision=head,
+                comparable=False,
+                error_code="head_revision_not_found",
+            )
+        args: tuple[str, ...] = ("diff", "--name-status", "--find-renames", base_revision, head)
+        if head == metadata.revision:
+            args = ("diff", "--name-status", "--find-renames", base_revision)
+        output = self._run(args)
+        if output is None:
+            return RepositoryDiff(
+                repo_id=repo_id,
+                base_revision=base_revision,
+                head_revision=head,
+                comparable=False,
+                error_code="diff_failed",
+            )
+        files: list[DiffFile] = []
+        for line in output.splitlines():
+            fields = line.split("\t")
+            if len(fields) < 2:
+                continue
+            status = fields[0]
+            if status.startswith("R") and len(fields) >= 3:
+                files.append(
+                    DiffFile(
+                        repo_id=repo_id,
+                        path=fields[2],
+                        previous_path=fields[1],
+                        change_type="rename",
+                    )
+                )
+                continue
+            change_types: dict[str, Literal["add", "modify", "delete", "rename"]] = {
+                "A": "add",
+                "M": "modify",
+                "D": "delete",
+            }
+            change_type = change_types.get(status[:1])
+            if change_type is not None:
+                files.append(DiffFile(repo_id=repo_id, path=fields[1], change_type=change_type))
+        tracked_paths = {item.path for item in files}
+        status_output = self._run(("status", "--porcelain=v1", "--untracked-files=all")) or ""
+        for line in status_output.splitlines():
+            if line.startswith("?? "):
+                path = line[3:].strip()
+                if path not in tracked_paths:
+                    files.append(DiffFile(repo_id=repo_id, path=path, change_type="add"))
+        return RepositoryDiff(
+            repo_id=repo_id,
+            base_revision=base_revision,
+            head_revision=head,
+            comparable=True,
+            files=files,
+            working_tree_included=head == metadata.revision,
         )
 
     def _run(self, args: tuple[str, ...]) -> str | None:
