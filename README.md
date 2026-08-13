@@ -71,6 +71,12 @@ compliance-review full-review ./my-review \
   --model <model-name> \
   --max-concurrency 3
 
+# 在已有 baseline Snapshot 的基础上执行增量审查
+compliance-review diff-review ./my-review \
+  --baseline-run-id <completed-run-id> \
+  --model <model-name> \
+  --max-concurrency 3
+
 # 查询已经初始化的代码地图
 compliance-review code-map-query \
   --repo /path/to/backend-repository \

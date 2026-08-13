@@ -145,6 +145,8 @@ class ValidatedReviewRow(ReviewContractModel):
     row: Optional[ControlSurfaceResult] = None
     valid: bool
     suspicious: bool
+    result_origin: Literal["reviewed", "reused"] = "reviewed"
+    previous_run_id: Optional[str] = None
     issues: list[ValidationIssue] = Field(default_factory=list)
 
 
@@ -187,6 +189,13 @@ class FullReviewRunResult(ReviewContractModel):
     coverage_gate: CoverageGateResult
     snapshot: Snapshot
     report_path: str = Field(min_length=1)
+
+
+class DiffReviewRunResult(FullReviewRunResult):
+    diff_path: str = Field(min_length=1)
+    impact_path: str = Field(min_length=1)
+    reuse_plan_path: str = Field(min_length=1)
+    regression_path: str = Field(min_length=1)
 
 
 class ScopedToolResult(ReviewContractModel):

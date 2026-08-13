@@ -576,7 +576,14 @@ class CoverageGate:
             validated = validated_by_id.get(row_id)
             resolution = result_by_id[unit.control_id]
             reviewed_row = validated.row if validated is not None else None
-            origin: Literal["reviewed", "manual_required", "blocked", "not_applicable", "waived"]
+            origin: Literal[
+                "reviewed",
+                "reused",
+                "manual_required",
+                "blocked",
+                "not_applicable",
+                "waived",
+            ]
             execution_status: ExecutionStatus
             evidence_status: EvidenceStatus
             if unit.coverage_status == "not_applicable":
@@ -599,7 +606,7 @@ class CoverageGate:
                 and reviewed_row.evidence_status == "complete"
                 and resolution.status in {"pass", "fail"}
             ):
-                origin = "reviewed"
+                origin = "reused" if validated.result_origin == "reused" else "reviewed"
                 execution_status = "completed"
                 evidence_status = "complete"
             else:
@@ -618,6 +625,7 @@ class CoverageGate:
                     execution_status=execution_status,
                     evidence_status=evidence_status,
                     result_origin=origin,
+                    previous_run_id=validated.previous_run_id if validated else None,
                     resolution_status=resolution.status,
                 )
             )
@@ -637,7 +645,7 @@ class CoverageGate:
             and set(coverage_ids) == set(expected_ids)
             and all(
                 row.result_origin
-                in {"reviewed", "manual_required", "blocked", "not_applicable", "waived"}
+                in {"reviewed", "reused", "manual_required", "blocked", "not_applicable", "waived"}
                 for row in rows
             )
         )

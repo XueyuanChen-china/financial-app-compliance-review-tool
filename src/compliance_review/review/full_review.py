@@ -10,6 +10,10 @@ from compliance_review.collectors.base import CollectorResult
 from compliance_review.domain.models import ControlSet, Snapshot, WorkItem
 from compliance_review.persistence import ArtifactStore
 from compliance_review.repository import GitRepository, RepositorySandbox
+from compliance_review.review.diff_review import (
+    coverage_unit_fingerprint,
+    repository_input_fingerprint,
+)
 from compliance_review.review.finalization import (
     ComplianceResolver,
     CoverageGate,
@@ -127,6 +131,26 @@ class FullReviewService:
             ],
             missing_surfaces=setup.coverage.missing_surfaces,
             run_status="completed",
+            repository_revisions={
+                inventory.repo_id: inventory.git_revision or "unversioned"
+                for inventory in setup.inventories
+            },
+            repository_fingerprints={
+                inventory.repo_id: repository_input_fingerprint(inventory, setup.sandboxes)
+                for inventory in setup.inventories
+            },
+            reuse_fingerprints={
+                unit.coverage_unit_id: coverage_unit_fingerprint(
+                    unit,
+                    controls,
+                    setup.profile,
+                    setup.applicability,
+                    setup.app_facts,
+                    setup.inventories,
+                    setup.sandboxes,
+                )
+                for unit in setup.coverage.units
+            },
         )
         report = render_markdown_report(snapshot, gate)
         self.store.write_run_model(setup.run_id, "review_summary.json", summary)
@@ -164,6 +188,8 @@ def render_markdown_report(snapshot: Snapshot, gate: object) -> str:
         f"- Run: `{snapshot.run_id}`",
         f"- CI decision: **{snapshot.ci_status.upper()}**",
         f"- Coverage ledger complete: `{str(coverage_gate.complete).lower()}`",
+        f"- Reviewed: `{len(snapshot.reviewed_rows)}`",
+        f"- Reused: `{len(snapshot.reused_rows)}`",
         f"- Missing surfaces: {', '.join(snapshot.missing_surfaces) or 'none'}",
         "",
         "## Control Summary",

@@ -18,14 +18,15 @@ from compliance_review.collectors import (
     ManifestCollector,
 )
 from compliance_review.config.loader import ConfigLoadError, load_controls, load_profile
-from compliance_review.domain.models import ControlSet, Surface
+from compliance_review.domain.models import ControlSet, Snapshot, Surface
 from compliance_review.repository import GitRepository, ReadOnlyRepositoryTools, RepositorySandbox
 from compliance_review.review import (
-    FullReviewService,
-    LangGraphReviewRuntime,
     OpenAICompatibleProvider,
     ReviewManifestBuilder,
 )
+from compliance_review.review.diff_review import DiffReviewService
+from compliance_review.review.full_review import FullReviewService
+from compliance_review.review.langgraph_runtime import LangGraphReviewRuntime
 from compliance_review.review.models import ReviewManifest
 from compliance_review.setup.models import WorkspaceMaterial, WorkspaceRepository
 from compliance_review.setup.service import ReviewSetupError, ReviewSetupService
@@ -549,6 +550,56 @@ def full_review(
                 "run_id": result.snapshot.run_id,
                 "ci_status": result.snapshot.ci_status,
                 "coverage_complete": result.coverage_gate.complete,
+                "report": result.report_path,
+            },
+            indent=2,
+        )
+    )
+
+
+@app.command("diff-review")
+def diff_review(
+    workspace: Annotated[Path, typer.Argument(help="Workspace root")],
+    baseline_run_id: Annotated[str, typer.Option(help="Completed baseline run ID")],
+    model: Annotated[str, typer.Option(help="OpenAI-compatible model name")],
+    base_url: Annotated[
+        str, typer.Option(help="OpenAI-compatible chat completions URL")
+    ] = "https://api.openai.com/v1/chat/completions",
+    run_id: Annotated[Optional[str], typer.Option(help="Stable run identifier")] = None,
+    max_concurrency: Annotated[int, typer.Option(help="Maximum parallel Reviewer work items")] = 3,
+) -> None:
+    """Run deterministic Git impact planning, safe reuse, and incremental review."""
+    try:
+        workspace = workspace.expanduser().resolve()
+        setup = ReviewSetupService(workspace).compile(
+            run_id=run_id,
+            mode="diff",
+            max_concurrency=max_concurrency,
+        )
+        controls = ControlSet.model_validate(
+            json.loads((workspace / "setup" / "controls.json").read_text(encoding="utf-8"))
+        )
+        snapshot = Snapshot.model_validate(
+            json.loads(
+                (workspace / "runs" / baseline_run_id / "snapshot.json").read_text(encoding="utf-8")
+            )
+        )
+        provider = OpenAICompatibleProvider(model=model, base_url=base_url)
+        result = DiffReviewService(
+            workspace,
+            LangGraphReviewRuntime(provider=provider, max_concurrency=max_concurrency),
+            verifier_provider=provider,
+        ).run(setup, controls, snapshot)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(
+        json.dumps(
+            {
+                "run_id": result.snapshot.run_id,
+                "baseline_run_id": result.snapshot.baseline_run_id,
+                "ci_status": result.snapshot.ci_status,
+                "reviewed": len(result.snapshot.reviewed_rows),
+                "reused": len(result.snapshot.reused_rows),
                 "report": result.report_path,
             },
             indent=2,

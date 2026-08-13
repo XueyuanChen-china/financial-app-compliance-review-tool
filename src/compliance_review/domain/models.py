@@ -32,6 +32,15 @@ WriteRisk = Literal["none", "possible", "high"]
 ReviewMode = Literal["full", "diff"]
 RunStatus = Literal["pending", "running", "completed", "failed"]
 CiStatus = Literal["pass", "warn", "block"]
+ChangeType = Literal["add", "modify", "delete", "rename"]
+ResultOrigin = Literal[
+    "reviewed",
+    "reused",
+    "manual_required",
+    "blocked",
+    "not_applicable",
+    "waived",
+]
 ApplicabilityDecisionStatus = Literal["true", "false", "unknown"]
 CoverageUnitStatus = Literal[
     "planned",
@@ -281,13 +290,8 @@ class CoverageManifestRow(ContractModel):
     attempt_id: Optional[str] = None
     execution_status: ExecutionStatus
     evidence_status: EvidenceStatus
-    result_origin: Literal[
-        "reviewed",
-        "manual_required",
-        "blocked",
-        "not_applicable",
-        "waived",
-    ]
+    result_origin: ResultOrigin
+    previous_run_id: Optional[str] = None
     resolution_status: ControlStatus
 
 
@@ -315,3 +319,77 @@ class Snapshot(ContractModel):
     missing_surfaces: list[Surface] = Field(default_factory=list)
     regressions: list[str] = Field(default_factory=list)
     run_status: RunStatus
+    repository_revisions: dict[str, str] = Field(default_factory=dict)
+    repository_fingerprints: dict[str, str] = Field(default_factory=dict)
+    reuse_fingerprints: dict[str, str] = Field(default_factory=dict)
+
+
+class DiffFile(ContractModel):
+    repo_id: str = Field(min_length=1)
+    path: str = Field(min_length=1)
+    change_type: ChangeType
+    surface: Optional[Surface] = None
+    previous_path: Optional[str] = None
+
+
+class RepositoryDiff(ContractModel):
+    repo_id: str = Field(min_length=1)
+    base_revision: Optional[str] = None
+    head_revision: Optional[str] = None
+    comparable: bool
+    files: list[DiffFile] = Field(default_factory=list)
+    error_code: Optional[str] = None
+    working_tree_included: bool = False
+
+
+class DiffResult(ContractModel):
+    contract: Literal["diff_result.v1"] = "diff_result.v1"
+    baseline_run_id: Optional[str] = None
+    repositories: list[RepositoryDiff] = Field(default_factory=list)
+    files: list[DiffFile] = Field(default_factory=list)
+    comparable: bool
+    errors: list[str] = Field(default_factory=list)
+    unmapped_repo_ids: list[str] = Field(default_factory=list)
+
+
+class CoverageImpact(ContractModel):
+    coverage_unit_id: str = Field(min_length=1)
+    affected: bool
+    reasons: list[str] = Field(default_factory=list)
+    repository_ids: list[str] = Field(default_factory=list)
+
+
+class ReuseDecision(ContractModel):
+    coverage_unit_id: str = Field(min_length=1)
+    reusable: bool
+    current_fingerprint: str = Field(min_length=1)
+    previous_fingerprint: Optional[str] = None
+    previous_run_id: Optional[str] = None
+    reasons: list[str] = Field(default_factory=list)
+
+
+class ReusePlan(ContractModel):
+    contract: Literal["reuse_plan.v1"] = "reuse_plan.v1"
+    baseline_run_id: Optional[str] = None
+    review_unit_ids: list[str] = Field(default_factory=list)
+    reused_unit_ids: list[str] = Field(default_factory=list)
+    terminal_non_review_unit_ids: list[str] = Field(default_factory=list)
+    decisions: list[ReuseDecision] = Field(default_factory=list)
+    complete: bool
+
+
+class RegressionChange(ContractModel):
+    coverage_unit_id: str = Field(min_length=1)
+    control_id: str = Field(min_length=1)
+    previous_status: Optional[ControlStatus] = None
+    current_status: ControlStatus
+    classification: Literal["regression", "warning", "improvement", "unchanged"]
+    reason: str = Field(min_length=1)
+
+
+class RegressionComparison(ContractModel):
+    contract: Literal["regression_comparison.v1"] = "regression_comparison.v1"
+    baseline_run_id: Optional[str] = None
+    current_run_id: str = Field(min_length=1)
+    changes: list[RegressionChange] = Field(default_factory=list)
+    ci_status: CiStatus

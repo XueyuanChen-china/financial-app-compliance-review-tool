@@ -98,6 +98,11 @@ class ArtifactStore:
         temporary.replace(target)
         return target
 
+    def read_run_json(self, run_id: str, name: str) -> Any:
+        """Read one confined run artifact for deterministic handoff reuse."""
+        target = self._confined_target(f"runs/{run_id}/{name}")
+        return json.loads(target.read_text(encoding="utf-8"))
+
     def prepare_run_artifacts(self, run_id: str) -> dict[str, Path]:
         """Create the runtime handoff paths without starting Reviewer execution."""
         run_root = self._confined_target(f"runs/{run_id}")
