@@ -9,7 +9,11 @@ from typing import Any
 from compliance_review.domain.models import ControlSurfaceResult, ReviewResult, WorkItem
 from compliance_review.repository import RepositorySandbox
 from compliance_review.review.events import AppendOnlyEventLog
-from compliance_review.review.models import ModelRequest, WorkerExecution
+from compliance_review.review.models import (
+    ModelRequest,
+    WorkerExecution,
+    validate_review_result_assignment,
+)
 from compliance_review.review.provider import ModelProvider, tool_schemas
 from compliance_review.review.tools import ScopedToolExecutor, serialize_tool_result
 
@@ -240,16 +244,10 @@ def _parse_review_result(
         result = ReviewResult.model_validate(json.loads(text))
     except (json.JSONDecodeError, ValueError) as exc:
         raise RuntimeError(f"invalid structured review result: {exc}") from exc
-    if result.work_item_id != work_item.work_item_id:
-        raise RuntimeError("review result work_item_id does not match assigned work item")
-    if result.attempt_id != attempt_id:
-        raise RuntimeError("review result attempt_id does not match current attempt")
-    if result.agent_id != agent_id:
-        raise RuntimeError("review result agent_id does not match current worker")
-    expected = {(control_id, work_item.surface) for control_id in work_item.control_ids}
-    actual = {(row.control_id, row.surface) for row in result.rows}
-    if not expected.issubset(actual):
-        raise RuntimeError("review result does not cover every assigned control")
+    try:
+        validate_review_result_assignment(result, work_item, attempt_id, agent_id)
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
     return result
 
 

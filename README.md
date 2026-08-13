@@ -8,7 +8,14 @@ Repository navigation uses a local Graphify CLI behind the project's `CodeMapPro
 
 ## Status
 
-The repository is in architecture and foundation setup. See [the implementation plan](docs/implementation-plan.md) for the full design and delivery roadmap.
+The MVP pipeline now covers setup, source-to-control compilation, parallel Reviewer
+execution, deterministic validation, targeted verification, final resolution, coverage
+gating, snapshots, and Markdown reports. Reviewer results are confined to their assigned
+Work Item and Collector Fact capabilities; file anchors use content revisions so dirty or
+untracked changes invalidate stale evidence. Coverage distinguishes reviewed,
+manual-required, blocked, and not-applicable rows. Trusted waiver input, diff/reuse,
+anchor relocation, retry/resume, and CI process exit codes remain later-phase work. See
+[the implementation plan](docs/implementation-plan.md) for the delivery roadmap.
 
 ## Quick Start
 
@@ -58,6 +65,11 @@ compliance-review run-review \
   --model <model-name> \
   --checkpoint-db runs/review-2026-01/review-checkpoints.sqlite \
   --thread-id review-2026-01
+
+# 执行完整审查，产出 Snapshot、Coverage Manifest 和最终报告
+compliance-review full-review ./my-review \
+  --model <model-name> \
+  --max-concurrency 3
 
 # 查询已经初始化的代码地图
 compliance-review code-map-query \

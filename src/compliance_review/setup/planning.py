@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,9 +38,7 @@ class WorkItemPlan:
 class ApplicabilityEngine:
     """Evaluate every Control with the finite, non-eval applicability DSL."""
 
-    def evaluate(
-        self, profile: ApplicabilityProfile, controls: ControlSet
-    ) -> ApplicabilitySet:
+    def evaluate(self, profile: ApplicabilityProfile, controls: ControlSet) -> ApplicabilitySet:
         decisions: list[ApplicabilityDecision] = []
         excluded: list[str] = []
         unknown: list[str] = []
@@ -90,9 +89,21 @@ class CoverageUnitBuilder:
         missing_surfaces: set[Surface] = set()
         for control in controls.controls:
             decision = decision_by_control[control.control_id]
-            if decision.status == "false":
-                continue
             for surface in control.required_surfaces:
+                if decision.status == "false":
+                    units.append(
+                        CoverageUnit(
+                            coverage_unit_id=f"cu.{control.control_id}.{surface}",
+                            control_id=control.control_id,
+                            module_id=control.module_id,
+                            surface=surface,
+                            applicability_status=decision.status,
+                            coverage_status="not_applicable",
+                            required_evidence_strength=control.minimum_evidence_strength[surface],
+                            reason="control applicability evaluated false",
+                        )
+                    )
+                    continue
                 surface_available = surface in profile.evidence_surfaces and (
                     surface not in _ROOT_BACKED_SURFACES or surface in profile.roots
                 )
@@ -148,9 +159,24 @@ class WorkItemPlanner:
         controls_by_id = {control.control_id: control for control in controls.controls}
         grouped: dict[tuple[str, Surface], list[CoverageUnit]] = defaultdict(list)
         for unit in coverage.units:
+            if unit.coverage_status != "planned":
+                continue
             grouped[(unit.module_id, unit.surface)].append(unit)
 
         roots = self._surface_roots(profile, inventories)
+        surface_counts: dict[Surface, int] = defaultdict(int)
+        for inventory in inventories:
+            inventory_surface = inventory.detected_surface or inventory.declared_surface
+            if inventory_surface is not None:
+                surface_counts[inventory_surface] += 1
+        duplicate_surfaces = sorted(
+            surface for surface, count in surface_counts.items() if count > 1
+        )
+        if duplicate_surfaces:
+            raise ValueError(
+                "multiple repositories share an evidence surface, but coverage is not "
+                f"repository-scoped: {duplicate_surfaces}"
+            )
         sandboxes: dict[Surface, RepositorySandbox] = {}
         work_items: list[WorkItem] = []
         assigned: dict[str, str] = {}
@@ -166,7 +192,8 @@ class WorkItemPlanner:
             fact_refs = sorted(
                 fact.fact_id for fact in facts.facts if fact.source_surface == surface
             )
-            work_item_id = f"wi.{module_id}.{surface}"
+            safe_module_id = re.sub(r"[^A-Za-z0-9_.-]+", "-", module_id).strip("-")
+            work_item_id = f"wi.{safe_module_id or 'module'}.{surface}"
             work_items.append(
                 WorkItem(
                     work_item_id=work_item_id,
@@ -183,8 +210,7 @@ class WorkItemPlanner:
                         ],
                         "coverage_status": [unit.coverage_status for unit in units],
                         "required_evidence_strength": [
-                            f"{unit.control_id}:{unit.required_evidence_strength}"
-                            for unit in units
+                            f"{unit.control_id}:{unit.required_evidence_strength}" for unit in units
                         ],
                     },
                     max_tool_rounds=12,
@@ -210,8 +236,7 @@ class WorkItemPlanner:
         profile: ApplicabilityProfile, inventories: Sequence[RepositoryInventory]
     ) -> dict[Surface, Path]:
         roots: dict[Surface, Path] = {
-            surface: Path(root).expanduser().resolve()
-            for surface, root in profile.roots.items()
+            surface: Path(root).expanduser().resolve() for surface, root in profile.roots.items()
         }
         for inventory in inventories:
             surface = inventory.detected_surface or inventory.declared_surface

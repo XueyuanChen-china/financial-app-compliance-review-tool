@@ -64,6 +64,7 @@ class OpenAICompatibleProvider:
         if request.request_kind in {
             "obligation_extraction",
             "control_compilation",
+            "verification",
         }:
             body["response_format"] = {"type": "json_object"}
         encoded = json.dumps(body).encode("utf-8")
@@ -138,8 +139,8 @@ def tool_schemas() -> list[dict[str, Any]]:
     """Return the only tools a Reviewer may request."""
     return [
         {
-                "type": "function",
-                "function": {
+            "type": "function",
+            "function": {
                 "name": "code_map_query",
                 "description": (
                     "Query the bounded Graphify code map for candidate symbols and relations."

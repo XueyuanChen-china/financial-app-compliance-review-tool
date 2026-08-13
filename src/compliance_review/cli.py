@@ -18,9 +18,10 @@ from compliance_review.collectors import (
     ManifestCollector,
 )
 from compliance_review.config.loader import ConfigLoadError, load_controls, load_profile
-from compliance_review.domain.models import Surface
+from compliance_review.domain.models import ControlSet, Surface
 from compliance_review.repository import GitRepository, ReadOnlyRepositoryTools, RepositorySandbox
 from compliance_review.review import (
+    FullReviewService,
     LangGraphReviewRuntime,
     OpenAICompatibleProvider,
     ReviewManifestBuilder,
@@ -68,10 +69,7 @@ def validate(
     except ConfigLoadError as exc:
         raise typer.BadParameter(str(exc)) from exc
 
-    typer.echo(
-        f"valid: profile={loaded_profile.app_name} "
-        f"controls={len(loaded_controls.controls)}"
-    )
+    typer.echo(f"valid: profile={loaded_profile.app_name} controls={len(loaded_controls.controls)}")
 
 
 @app.command("code-map-query")
@@ -156,8 +154,7 @@ def init_graphify(
                 for item in repositories
             ]
             materials = [
-                WorkspaceMaterial(path=path.expanduser().resolve().as_posix())
-                for path in material
+                WorkspaceMaterial(path=path.expanduser().resolve().as_posix()) for path in material
             ]
             provider = (
                 OpenAICompatibleProvider(profile_model, base_url=profile_base_url)
@@ -196,9 +193,7 @@ def init_graphify(
             raise typer.BadParameter(str(exc)) from exc
         profile_root = (profile or Path()).parent
         targets = [
-            (profile_root / root).resolve()
-            if not Path(root).is_absolute()
-            else Path(root)
+            (profile_root / root).resolve() if not Path(root).is_absolute() else Path(root)
             for surface, root in loaded_profile.roots.items()
             if surface in {"frontend_h5", "android_native", "backend_code"}
         ]
@@ -309,9 +304,7 @@ def compile_rules(
                 paths.append(path)
         if not paths:
             workspace_data = json.loads(
-                (workspace.expanduser().resolve() / "workspace.json").read_text(
-                    encoding="utf-8"
-                )
+                (workspace.expanduser().resolve() / "workspace.json").read_text(encoding="utf-8")
             )
             paths = [Path(item["path"]) for item in workspace_data.get("materials", [])]
         if not paths:
@@ -348,9 +341,7 @@ def prepare_review(
     run_id: Annotated[
         Optional[str], typer.Option(help="Stable run ID; generated when omitted")
     ] = None,
-    max_concurrency: Annotated[
-        int, typer.Option(help="Maximum parallel Reviewer work items")
-    ] = 3,
+    max_concurrency: Annotated[int, typer.Option(help="Maximum parallel Reviewer work items")] = 3,
 ) -> None:
     """Compile confirmed setup state into a Runtime-ready review handoff."""
     try:
@@ -372,9 +363,7 @@ def prepare_review(
                 "unknown_controls": (
                     result.coverage.unknown_control_ids if result.coverage else []
                 ),
-                "missing_surfaces": (
-                    result.coverage.missing_surfaces if result.coverage else []
-                ),
+                "missing_surfaces": (result.coverage.missing_surfaces if result.coverage else []),
                 "manifest": f"runs/{result.run_id}/manifest.json",
             },
             indent=2,
@@ -421,9 +410,7 @@ def collect(
     """Run one deterministic Collector and print its structured result."""
     try:
         sandbox = RepositorySandbox(repo)
-        parsed_surface = (
-            TypeAdapter(Surface).validate_python(surface) if surface else None
-        )
+        parsed_surface = TypeAdapter(Surface).validate_python(surface) if surface else None
         if collector == "manifest":
             result = ManifestCollector().collect(sandbox)
         elif collector == "dependencies":
@@ -523,3 +510,46 @@ def run_review(
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.echo(summary.model_dump_json(indent=2))
+
+
+@app.command("full-review")
+def full_review(
+    workspace: Annotated[Path, typer.Argument(help="Workspace root")],
+    model: Annotated[str, typer.Option(help="OpenAI-compatible model name")],
+    base_url: Annotated[
+        str, typer.Option(help="OpenAI-compatible chat completions URL")
+    ] = "https://api.openai.com/v1/chat/completions",
+    run_id: Annotated[Optional[str], typer.Option(help="Stable run identifier")] = None,
+    max_concurrency: Annotated[int, typer.Option(help="Maximum parallel Reviewer work items")] = 3,
+) -> None:
+    """Run setup handoff, parallel review, verification, resolution, and report."""
+    try:
+        workspace = workspace.expanduser().resolve()
+        setup = ReviewSetupService(workspace).compile(
+            run_id=run_id, max_concurrency=max_concurrency
+        )
+        controls = ControlSet.model_validate(
+            json.loads((workspace / "setup" / "controls.json").read_text(encoding="utf-8"))
+        )
+        provider = OpenAICompatibleProvider(model=model, base_url=base_url)
+        result = FullReviewService(
+            workspace,
+            LangGraphReviewRuntime(
+                provider=provider,
+                max_concurrency=max_concurrency,
+            ),
+            verifier_provider=provider,
+        ).run(setup, controls)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(
+        json.dumps(
+            {
+                "run_id": result.snapshot.run_id,
+                "ci_status": result.snapshot.ci_status,
+                "coverage_complete": result.coverage_gate.complete,
+                "report": result.report_path,
+            },
+            indent=2,
+        )
+    )

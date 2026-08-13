@@ -39,6 +39,22 @@ def test_search_code_works_without_git() -> None:
     assert matches[0].line_number == 2
 
 
+def test_git_search_combines_allowed_root_and_file_glob(tmp_path: Path) -> None:
+    import subprocess
+
+    (tmp_path / "allowed").mkdir()
+    (tmp_path / "forbidden").mkdir()
+    (tmp_path / "allowed" / "inside.py").write_text("needle\n", encoding="utf-8")
+    (tmp_path / "forbidden" / "outside.py").write_text("needle\n", encoding="utf-8")
+    subprocess.run(("git", "init"), cwd=tmp_path, check=True, capture_output=True)
+    subprocess.run(("git", "add", "."), cwd=tmp_path, check=True, capture_output=True)
+
+    tools = ReadOnlyRepositoryTools(RepositorySandbox(tmp_path))
+    matches = tools.search_code("needle", roots=("allowed",), file_globs=("*.py",))
+
+    assert [match.path for match in matches] == ["allowed/inside.py"]
+
+
 def test_git_metadata_is_structured_for_non_git_fixture() -> None:
     metadata = GitRepository(FIXTURES).metadata()
 

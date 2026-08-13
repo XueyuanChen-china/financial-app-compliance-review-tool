@@ -31,9 +31,7 @@ class ArtifactStore:
     def write_workspace(self, workspace: ComplianceWorkspace) -> Path:
         return self._write_model("workspace.json", workspace)
 
-    def write_repository_inventory(
-        self, inventories: list[RepositoryInventory]
-    ) -> Path:
+    def write_repository_inventory(self, inventories: list[RepositoryInventory]) -> Path:
         return self._write_json(
             "setup/repository_inventory.json",
             [inventory.model_dump(mode="json") for inventory in inventories],
@@ -79,6 +77,20 @@ class ArtifactStore:
 
     def write_review_manifest(self, run_id: str, manifest: BaseModel) -> Path:
         return self._write_model(f"runs/{run_id}/manifest.json", manifest)
+
+    def write_run_model(self, run_id: str, name: str, value: BaseModel) -> Path:
+        return self._write_model(f"runs/{run_id}/{name}", value)
+
+    def write_run_json(self, run_id: str, name: str, value: Any) -> Path:
+        return self._write_json(f"runs/{run_id}/{name}", value)
+
+    def write_run_text(self, run_id: str, name: str, value: str) -> Path:
+        target = self._confined_target(f"runs/{run_id}/{name}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_name(f".{target.name}.tmp")
+        temporary.write_text(value, encoding="utf-8")
+        temporary.replace(target)
+        return target
 
     def prepare_run_artifacts(self, run_id: str) -> dict[str, Path]:
         """Create the runtime handoff paths without starting Reviewer execution."""

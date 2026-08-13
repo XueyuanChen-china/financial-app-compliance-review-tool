@@ -175,10 +175,10 @@ compliance-review run-review \
 当前仍未实现：
 
 - `interrupt()` 驱动的人工确认和 `Command(resume=...)` 交互。
-- Deterministic Validator、Single Verifier、Resolver 和 Coverage Gate。
 - Snapshot 增量复用和回归比较。
+- retry/resume、anchor relocation 和 CI process exit code 等 Day 6 能力。
 
-这些能力应继续作为后续图节点接入，而不是重新塞回 Reviewer 子图。尤其是最终 PASS/FAIL 不能由 Reviewer 或 LangGraph 调度状态直接决定。
+Day 4 已在 Parent Graph 之外实现 `ResultValidator -> SuspiciousRouter -> Single Targeted Verifier -> ComplianceResolver -> CoverageGate`，并生成 Snapshot 与 Markdown Report。最终 PASS/FAIL 由普通 Python 逻辑根据完整 coverage denominator 和验证后的 evidence 决定，不由 Reviewer 或 LangGraph 调度状态直接决定。当前实现以代码、测试和 `docs/day4-learning-notes.md` 为准。
 
 ## 7. 兼容策略
 

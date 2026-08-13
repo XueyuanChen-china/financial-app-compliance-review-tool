@@ -4,7 +4,17 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from compliance_review.domain.models import ReviewMode, ReviewResult, Surface, WorkItem
+from compliance_review.domain.models import (
+    ControlStatus,
+    ControlSurfaceResult,
+    CoverageGateResult,
+    ResolvedControlResult,
+    ReviewMode,
+    ReviewResult,
+    Snapshot,
+    Surface,
+    WorkItem,
+)
 
 
 class ReviewContractModel(BaseModel):
@@ -58,6 +68,7 @@ class ModelRequest(ReviewContractModel):
         "compression",
         "obligation_extraction",
         "control_compilation",
+        "verification",
     ] = "review"
 
 
@@ -67,6 +78,33 @@ class ModelResponse(ReviewContractModel):
     input_tokens: int = Field(default=0, ge=0)
     output_tokens: int = Field(default=0, ge=0)
     provider_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+def validate_review_result_assignment(
+    result: ReviewResult,
+    work_item: WorkItem,
+    attempt_id: str,
+    agent_id: str,
+) -> None:
+    """Require an exact, duplicate-free result for the assigned Work Item."""
+    if result.work_item_id != work_item.work_item_id:
+        raise ValueError("review result work_item_id does not match assigned work item")
+    if result.attempt_id != attempt_id:
+        raise ValueError("review result attempt_id does not match current attempt")
+    if result.agent_id != agent_id:
+        raise ValueError("review result agent_id does not match current worker")
+    if result.execution_status != "completed":
+        raise ValueError("successful reviewer response must have completed execution status")
+    expected = {(control_id, work_item.surface) for control_id in work_item.control_ids}
+    actual = [(row.control_id, row.surface) for row in result.rows]
+    actual_set = set(actual)
+    if len(actual) != len(actual_set):
+        raise ValueError("review result contains duplicate control-surface rows")
+    if actual_set != expected:
+        raise ValueError(
+            "review result rows must exactly match assigned controls and surface: "
+            f"expected={sorted(expected)} actual={sorted(actual_set)}"
+        )
 
 
 class WorkerExecution(ReviewContractModel):
@@ -89,6 +127,65 @@ class ReviewRunSummary(ReviewContractModel):
     completed: int = Field(default=0, ge=0)
     failed: int = Field(default=0, ge=0)
     event_log_path: str = Field(min_length=1)
+
+
+class ValidationIssue(ReviewContractModel):
+    code: str = Field(min_length=1)
+    severity: Literal["error", "suspicious"]
+    message: str = Field(min_length=1)
+
+
+class ValidatedReviewRow(ReviewContractModel):
+    row_id: str = Field(min_length=1)
+    control_id: str = Field(min_length=1)
+    surface: Surface
+    work_item_id: Optional[str] = None
+    attempt_id: Optional[str] = None
+    row: Optional[ControlSurfaceResult] = None
+    valid: bool
+    suspicious: bool
+    issues: list[ValidationIssue] = Field(default_factory=list)
+
+
+class ResultValidationResult(ReviewContractModel):
+    contract: Literal["result_validation.v1"] = "result_validation.v1"
+    valid: bool
+    rows: list[ValidatedReviewRow] = Field(default_factory=list)
+    suspicious_row_ids: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+
+
+class SuspiciousReviewSet(ReviewContractModel):
+    contract: Literal["suspicious_review_set.v1"] = "suspicious_review_set.v1"
+    row_ids: list[str] = Field(default_factory=list)
+    reasons: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class VerifierDecision(ReviewContractModel):
+    row_id: str = Field(min_length=1)
+    decision: Literal["confirm", "object", "correction"]
+    reason: str = Field(min_length=1)
+    recommended_status: Optional[ControlStatus] = None
+    anchor_ids: list[str] = Field(default_factory=list)
+
+
+class VerifierResult(ReviewContractModel):
+    contract: Literal["verifier_result.v1"] = "verifier_result.v1"
+    status: Literal["not_required", "completed", "partial", "failed"]
+    decisions: list[VerifierDecision] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+
+
+class FullReviewRunResult(ReviewContractModel):
+    contract: Literal["full_review_run_result.v1"] = "full_review_run_result.v1"
+    summary: ReviewRunSummary
+    validation: ResultValidationResult
+    suspicious: SuspiciousReviewSet
+    verifier: VerifierResult
+    resolved_controls: list[ResolvedControlResult]
+    coverage_gate: CoverageGateResult
+    snapshot: Snapshot
+    report_path: str = Field(min_length=1)
 
 
 class ScopedToolResult(ReviewContractModel):
