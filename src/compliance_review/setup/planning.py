@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 import re
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Sequence
 
+from compliance_review.collectors.base import CollectorResult
 from compliance_review.domain.models import (
     ApplicabilityDecision,
     ApplicabilityProfile,
@@ -31,8 +33,9 @@ _ROOT_BACKED_SURFACES: set[Surface] = {
 @dataclass(frozen=True)
 class WorkItemPlan:
     work_items: list[WorkItem]
-    sandboxes: dict[Surface, RepositorySandbox]
+    sandboxes: dict[str, RepositorySandbox]
     coverage: CoverageSet
+    collector_results: dict[str, CollectorResult]
 
 
 class ApplicabilityEngine:
@@ -145,7 +148,7 @@ class CoverageUnitBuilder:
 
 
 class WorkItemPlanner:
-    """Group Coverage Units by Module x Surface without changing the denominator."""
+    """Group Coverage Units by Module x Surface and preserve repository roots."""
 
     def plan(
         self,
@@ -163,46 +166,59 @@ class WorkItemPlanner:
                 continue
             grouped[(unit.module_id, unit.surface)].append(unit)
 
-        roots = self._surface_roots(profile, inventories)
-        surface_counts: dict[Surface, int] = defaultdict(int)
+        collector_results = _collector_results(facts)
+        repositories_by_surface: dict[Surface, list[RepositoryInventory]] = defaultdict(list)
         for inventory in inventories:
             inventory_surface = inventory.detected_surface or inventory.declared_surface
             if inventory_surface is not None:
-                surface_counts[inventory_surface] += 1
-        duplicate_surfaces = sorted(
-            surface for surface, count in surface_counts.items() if count > 1
-        )
-        if duplicate_surfaces:
-            raise ValueError(
-                "multiple repositories share an evidence surface, but coverage is not "
-                f"repository-scoped: {duplicate_surfaces}"
-            )
-        sandboxes: dict[Surface, RepositorySandbox] = {}
+                repositories_by_surface[inventory_surface].append(inventory)
+
+        sandboxes: dict[str, RepositorySandbox] = {}
         work_items: list[WorkItem] = []
         assigned: dict[str, str] = {}
         for module_id, surface in sorted(grouped):
             units = sorted(grouped[(module_id, surface)], key=lambda item: item.coverage_unit_id)
-            surface_root = roots.get(surface)
-            if surface_root is None:
-                surface_root = run_root / "surface_inputs" / surface
-                surface_root.mkdir(parents=True, exist_ok=True)
-            sandbox = RepositorySandbox(Path(surface_root))
-            sandboxes[surface] = sandbox
+            repositories = repositories_by_surface.get(surface, [])
+            if repositories:
+                repository_ids = [inventory.repo_id for inventory in repositories]
+                sandbox_root = _sandbox_root(repositories)
+                allowed_roots = [
+                    _relative_root(sandbox_root, Path(inventory.path)) for inventory in repositories
+                ]
+                repository_id = repository_ids[0] if len(repository_ids) == 1 else "workspace"
+                id_prefix = repository_id if len(repository_ids) == 1 else "workspace"
+            else:
+                repository_ids = ["workspace"]
+                repository_id = "workspace"
+                id_prefix = "workspace"
+                sandbox_root = run_root / "surface_inputs" / surface
+                sandbox_root.mkdir(parents=True, exist_ok=True)
+                allowed_roots = ["."]
+            sandbox = RepositorySandbox(sandbox_root)
+            safe_module_id = _safe_identifier(module_id)
+            safe_repository_id = _safe_identifier(id_prefix)
+            work_item_id = f"wi.{safe_repository_id}.{safe_module_id}.{surface}"
+            sandboxes[work_item_id] = sandbox
             control_list = [controls_by_id[unit.control_id] for unit in units]
+            repository_id_set = set(repository_ids)
             fact_refs = sorted(
-                fact.fact_id for fact in facts.facts if fact.source_surface == surface
+                fact.fact_id
+                for result in collector_results.values()
+                if result.source_surface == surface
+                and (repository_id == "workspace" or result.repo_id in repository_id_set)
+                for fact in result.facts
             )
-            safe_module_id = re.sub(r"[^A-Za-z0-9_.-]+", "-", module_id).strip("-")
-            work_item_id = f"wi.{safe_module_id or 'module'}.{surface}"
             work_items.append(
                 WorkItem(
                     work_item_id=work_item_id,
                     module_id=module_id,
+                    repository_id=repository_id,
+                    repository_ids=repository_ids,
                     surface=surface,
                     control_ids=[unit.control_id for unit in units],
                     coverage_unit_ids=[unit.coverage_unit_id for unit in units],
                     collector_fact_refs=fact_refs,
-                    allowed_roots=["."],
+                    allowed_roots=allowed_roots,
                     target_hints={
                         "control_titles": [control.title for control in control_list],
                         "applicability": [
@@ -212,6 +228,7 @@ class WorkItemPlanner:
                         "required_evidence_strength": [
                             f"{unit.control_id}:{unit.required_evidence_strength}" for unit in units
                         ],
+                        "repository_ids": repository_ids,
                     },
                     max_tool_rounds=12,
                     max_files_read=20,
@@ -229,17 +246,28 @@ class WorkItemPlanner:
             work_items=work_items,
             sandboxes=sandboxes,
             coverage=coverage.model_copy(update={"units": updated_units}),
+            collector_results=collector_results,
         )
 
-    @staticmethod
-    def _surface_roots(
-        profile: ApplicabilityProfile, inventories: Sequence[RepositoryInventory]
-    ) -> dict[Surface, Path]:
-        roots: dict[Surface, Path] = {
-            surface: Path(root).expanduser().resolve() for surface, root in profile.roots.items()
-        }
-        for inventory in inventories:
-            surface = inventory.detected_surface or inventory.declared_surface
-            if surface is not None:
-                roots.setdefault(surface, Path(inventory.path).expanduser().resolve())
-        return roots
+
+def _collector_results(facts: AppFactSet) -> dict[str, CollectorResult]:
+    results = [CollectorResult.model_validate(item) for item in facts.collector_results]
+    return {
+        f"{item.repo_id or 'workspace'}/{item.collector_id}/{index}": item
+        for index, item in enumerate(results, start=1)
+    }
+
+
+def _sandbox_root(repositories: Sequence[RepositoryInventory]) -> Path:
+    paths = [Path(repository.path).expanduser().resolve() for repository in repositories]
+    return Path(os.path.commonpath([path.as_posix() for path in paths]))
+
+
+def _relative_root(root: Path, repository: Path) -> str:
+    relative = repository.resolve().relative_to(root.resolve()).as_posix()
+    return relative or "."
+
+
+def _safe_identifier(value: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-")
+    return safe or "item"

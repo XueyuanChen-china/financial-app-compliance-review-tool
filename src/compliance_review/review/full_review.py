@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Mapping, Protocol
 
 from compliance_review.collectors.base import CollectorResult
-from compliance_review.domain.models import ControlSet, Snapshot, Surface, WorkItem
+from compliance_review.domain.models import ControlSet, Snapshot, WorkItem
 from compliance_review.persistence import ArtifactStore
 from compliance_review.repository import GitRepository, RepositorySandbox
 from compliance_review.review.finalization import (
@@ -27,7 +27,7 @@ class RuntimeProtocol(Protocol):
         self,
         manifest_run_id: str,
         work_items: list[WorkItem],
-        sandboxes: Mapping[Surface, RepositorySandbox],
+        sandboxes: Mapping[str, RepositorySandbox],
         output_root: Path,
         event_log_path: Path | None = None,
         thread_id: str | None = None,
@@ -79,7 +79,7 @@ class FullReviewService:
                 "Control Set required surfaces do not match the compiled coverage denominator"
             )
         run_root = self.workspace_root / "runs" / setup.run_id
-        collector_results = collector_results_from_setup(setup)
+        collector_results = dict(setup.collector_results)
         summary = self.runtime.run(
             manifest_run_id=setup.run_id,
             work_items=setup.work_items,

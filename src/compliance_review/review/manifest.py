@@ -49,7 +49,7 @@ class ReviewManifestBuilder:
             run_id=run_id,
             mode=mode,
             default_max_concurrency=max_concurrency,
-            surface_roots=dict(profile.roots),
+            surface_roots={surface: root for surface, root in profile.roots.items()},
             work_items=work_items,
             excluded_controls=excluded,
             source_profile_version=profile.version,

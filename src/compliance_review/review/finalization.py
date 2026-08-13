@@ -63,7 +63,7 @@ class ResultValidator:
         summary: ReviewRunSummary,
         coverage: CoverageSet,
         controls: ControlSet,
-        sandboxes: Mapping[Surface, RepositorySandbox],
+        sandboxes: Mapping[str, RepositorySandbox],
         work_items: Sequence[WorkItem] = (),
         collector_results: Mapping[str, CollectorResult] | None = None,
     ) -> ResultValidationResult:
@@ -277,6 +277,7 @@ class ResultValidator:
                             unit.control_id,
                             unit.surface,
                             sandboxes,
+                            selected_execution.work_item_id,
                         )
                     )
                 cited_fact_ids = {
@@ -729,7 +730,8 @@ def _validate_anchor(
     anchor: EvidenceAnchor,
     control_id: str,
     surface: Surface,
-    sandboxes: Mapping[Surface, RepositorySandbox],
+    sandboxes: Mapping[str, RepositorySandbox],
+    work_item_id: str,
 ) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
     if control_id not in anchor.control_ids:
@@ -739,7 +741,7 @@ def _validate_anchor(
     if anchor.path is None:
         issues.append(_suspicious("anchor_without_path", "Anchor has no exact file path."))
         return issues
-    sandbox = sandboxes.get(surface)
+    sandbox = sandboxes.get(work_item_id) or sandboxes.get(surface)
     if sandbox is None:
         issues.append(_error("anchor_surface_unavailable", "No sandbox exists for anchor surface."))
         return issues

@@ -31,7 +31,7 @@ class ReviewManifest(ReviewContractModel):
     run_id: str = Field(min_length=1)
     mode: ReviewMode
     default_max_concurrency: int = Field(default=3, ge=1, le=32)
-    surface_roots: dict[Surface, str] = Field(default_factory=dict)
+    surface_roots: dict[str, str] = Field(default_factory=dict)
     work_items: list[WorkItem] = Field(default_factory=list)
     excluded_controls: list[ExcludedControl] = Field(default_factory=list)
     coverage_unit_ids: list[str] = Field(default_factory=list)
