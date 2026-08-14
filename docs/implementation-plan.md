@@ -18,7 +18,7 @@
 4. 将审查任务拆成相互隔离的 Work Items，并发交给多个 Reviewer Agent。
 5. 对每个 `Control x Required Surface` 单独记录证据、缺口和建议状态。
 6. 通过确定性 Validator 阻止证据不足的 Control 被直接判为 PASS。
-7. 使用单个 Verifier 对可疑、高风险或冲突结果进行定向质检。
+7. 将高风险或冲突结果记录为结构化校验标记，不让它们绕过确定性裁决。
 8. 生成 Full Baseline Snapshot。
 9. 根据 Git Diff 只重审受影响 Controls，并安全复用未受影响结果。
 10. 识别 `PASS -> FAIL` 等 Compliance Regression，并输出 Markdown 报告和 CI 状态。
@@ -42,7 +42,6 @@ Work Item 只是上下文与调度容器。即使一个 Work Item 包含多个�
 - Code Map Provider 帮助定位代码节点和关系。
 - Collector 提取可重复的技术事实。
 - Reviewer Agent 调查代码并提出建议。
-- Verifier Agent 对疑点进行质检。
 - Deterministic Validator 校验事实、证据强度和覆盖完整性。
 - Deterministic Resolver 计算最终 Control 状态。
 - Coverage Gate 计算当前运行能否结束以及 CI 是否允许通过。
@@ -89,16 +88,9 @@ Work Item 只是上下文与调度容器。即使一个 Work Item 包含多个�
                         |
                         v
              Deterministic Validator
-                 |              |
-             validated       suspicious
-                 |              |
-                 |              v
-                 |        Single Verifier
-                 |         Targeted QA
-                 |              |
-                 +-------+------+
-                         |
-                         v
+                    errors + flags
+                        |
+                        v
               Deterministic Resolver
                          |
                   Coverage Gate
@@ -216,7 +208,7 @@ Parent 是 LangGraph 驱动的状态化调度图，不是一个可以自由创�
 - 控制并发数、超时、重试和恢复。
 - 为每个 Reviewer 创建独立的 reviewer subgraph 和上下文。
 - 聚合结构化结果。
-- 调用 Validator、Verifier、Resolver 和 Reporter。
+- 调用 Validator、Resolver、Coverage Gate 和 Reporter。
 - 记录不可变事件和运行状态。
 
 默认并发数为 3，可通过 LangGraph invocation config 调整，但不允许 Worker 自己继续派生 Agent。
@@ -269,19 +261,14 @@ LangGraph 一次可以 fan-out 全部 Work Items，但运行时 `max_concurrency
 在 LangGraph 内部等待执行槽位，不额外引入 RabbitMQ、Celery 或其他外部队列。Work Item 终态后释放临时
 conversation/context，只保留结构化结果和 evidence anchors。
 
-### 6.4 单 Verifier
+### 6.4 校验标记与人工复核
 
-Verifier 不并行复审所有 Work Items。Validator 先筛选以下项目：
+Validator 会把问题分成两类：
 
-- 高严重度 Control 推荐 PASS。
-- 证据强度刚好达到最低门槛。
-- Evidence Facts 与 Reviewer observations 冲突。
-- Evidence Anchor 无法重新定位。
-- 同一 Control 在不同 Surfaces 上结论冲突。
-- Reviewer 置信度较低或存在 unsupported inference。
-- `fail` 与 `indeterminate` 边界不清晰。
+- `error`：确定性正确性失败，例如证据缺失、锚点无效、证据强度不足、越界或 PASS 缺少完整证据。它会阻止该行作为有效终态进入 Resolver。
+- `flag`：需要人工关注但不自动推翻结论，例如高严重度 PASS、刚好达到最低证据门槛、锚点发生唯一迁移或跨 Surface 存在冲突。
 
-Verifier 只读取疑点相关的结构化结果与最小代码范围，输出 objection、confirmation 或 correction recommendation。它同样不能直接决定最终状态。
+当前权威链路不再调用 LLM Verifier。旧 `SuspiciousRouter`、`TargetedVerifier` 和相关模型仅作为历史调用方兼容层保留，不能改变 Resolver 或 Coverage Gate 的结果。人工复核要求通过 Coverage Gate 和中文报告显式记录。
 
 ### 6.5 Planner 的处理
 
@@ -452,7 +439,7 @@ Validator 负责：
 - 检查 required surfaces 和 minimum evidence strength。
 - 检查 backend/manual/regulator evidence gaps。
 - 检查 Agent 是否越界使用其他 Surface 的证据。
-- 将疑点路由给 Verifier。
+- 将高风险或冲突结果写入 `flags`，供人工复核和报告展示；flags 不改变确定性裁决规则。
 
 Resolver 采用显式规则，例如：
 
@@ -465,7 +452,7 @@ Resolver 采用显式规则，例如：
 存在有效人工豁免                          -> WAIVED
 ```
 
-最终结果不是 Reviewer 与 Verifier 的多数投票结果。
+最终结果不是 Reviewer 的自由文本结论，而是 Validator、Resolver 和 Coverage Gate 的确定性结果。
 
 ## 11. Coverage Gate
 
@@ -577,7 +564,6 @@ runs/<run_id>/
         tool_calls.jsonl
         reviewer_result.yaml
         validation_result.yaml
-  verifier/
   coverage_manifest.yaml
   control_results.yaml
   snapshot.yaml
@@ -628,7 +614,6 @@ src/compliance_review/
     manifest_builder.py
     scheduler.py
     reviewer_worker.py
-    verifier.py
     retry.py
   validation/
     schemas.py
@@ -693,13 +678,12 @@ examples/
 
 验收已通过：3 个 Work Items 可并行执行，结果目录和 context fingerprint 互相隔离，工具越界读取会被拒绝。
 
-### Day 4 - Validation, Verifier and Full Review
+### Day 4 - Validation and Full Review
 
 - 实现 result schema、anchor 和 evidence consistency validation。
-- 实现 suspicious routing。
-- 实现单 Verifier 的 targeted QA。
+- 将 `error` 与人工关注用的 `flag` 分开。
 - 实现 deterministic Resolver 与 Coverage Gate。
-- 跑通 Full Review、Snapshot 和 Markdown Report。
+- 跑通 Full Review、Snapshot 和中文 Markdown Report。
 
 验收：Reviewer 推荐 PASS 但必需 backend evidence 缺失时，最终不得 PASS。
 
@@ -729,7 +713,7 @@ examples/
 - 固定可复现 sample app/repository fixture。
 - 完成三个演示场景。
 - 完善 README、架构说明和设计取舍。
-- 可选增加 GitHub Actions 示例。
+- 接入 GitHub Actions，运行 pytest、Ruff、mypy 和合规集成测试。
 - 冻结第一版范围，不继续扩张架构。
 
 ## 18. 演示场景
@@ -776,10 +760,10 @@ Git Diff
 
 - Collector -> Facts -> Work Item
 - Reviewer adapter -> result validation
-- suspicious result -> Verifier
+- validation flags -> human-readable report
 - reviewed + reused -> Snapshot
 - Snapshot -> deterministic report
-- interrupted run -> resume
+- interrupted run -> durable attempt resume
 
 ### Agent 测试
 
@@ -793,11 +777,11 @@ Git Diff
 |---|---|---|
 | Reviewer 选择性漏读 | 漏报 | 确定性 Work Items、Control-Surface receipt、Coverage Gate |
 | Agent 返回错误位置 | 证据不可追溯 | snippet hash、revision、anchor relocation |
-| 多 Agent 结论不一致 | 状态漂移 | 统一 schema、单 Verifier、确定性 Resolver |
+| 多 Agent 结论不一致 | 状态漂移 | 统一 schema、flags、确定性 Resolver |
 | 旧 PASS 被错误复用 | 严重回归漏报 | 完整 reuse fingerprint，默认保守失效 |
 | Collector 正则漏检 | 错误宣称完整 | parser/coverage status 和 limitations |
 | 上下文过大 | Agent 偷懒或超限 | Work Item 隔离、读取限制、独立 Context |
-| 多 Agent 成本高 | 延迟和预算增加 | Reviewer 并行，Verifier 按需执行 |
+| 多 Agent 成本高 | 延迟和预算增加 | Reviewer 并行、Work Item 限额和 checkpoint |
 | 敏感源码或密钥泄露 | 安全风险 | 只读 sandbox、redaction、provider policy |
 | 一周范围过满 | 质量下降 | 每日纵向验收，优先守住核心闭环 |
 
@@ -830,10 +814,9 @@ Git Diff
 ```text
 Graphify Code Map + Generic Collectors
 -> Parallel Reviewer Agents
--> Deterministic Validation
--> Single Targeted Verifier
+-> Deterministic Validation and Flags
 -> Deterministic Resolution and Coverage
 -> Snapshot, Regression and CI
 ```
 
-Multi-Agent 的价值体现在并行调查、上下文隔离和定向质检，而不是让多个 Agent 投票决定合规结论。
+Multi-Agent 的价值体现在并行调查和上下文隔离，而不是让多个 Agent 投票决定合规结论。

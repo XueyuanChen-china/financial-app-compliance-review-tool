@@ -1,0 +1,729 @@
+Preview: Permissions and APIs that Access Sensitive Information
+Disclaimer:
+Policy summaries and Key Considerations are overviews only; always refer to the full policy for compliance. The full policy takes precedence in case of conflict.
+Policy preview
+This article previews changes from our April 2026 policy updates.
+To better protect user privacy, we're updating our
+Location Permissions
+policy. We're introducing the
+location button
+as the recommended minimum scope for precise location in line with our user data and sensitive permissions requirements.
+(effective October 28, 2026)
+We're introducing the
+Contacts Permissions
+policy to govern broad access of users' contacts. Apps that don't need broad access must use the
+Android Contact Picker
+, a more secure, easy-to-integrate alternative that minimizes data collection and improves user safety.
+(This is a new policy, and will be effective October 28, 2026.)
+To view the current “Permissions and APIs that Access Sensitive Information” article, visit
+this page
+.
+Policy Summary
+To promote user trust, Google Play mandates that requesting permissions and APIs that access sensitive user data must be necessary for the app's core functionalities as promoted in your Google Play listing and limited to user consented purposes. Sensitive data must never be misused, under-disclosed, or accessed unnecessarily. Request permissions and sensitive APIs incrementally, explaining each level. Use data only as consented to, and obtain new consent for other purposes. Please review the full policy to ensure compliance.
+Requests for permission and APIs that access sensitive information should make sense to users. You may only request permissions and APIs that access sensitive information that are necessary to implement current features or services in your app that are promoted in your Google Play listing. You may not use permissions or APIs that access sensitive information that give access to user or device data for undisclosed, unimplemented, or disallowed features or purposes. Personal or sensitive data accessed through permissions or APIs that access sensitive information may never be sold nor shared for a purpose facilitating sale.
+Request permissions and APIs that access sensitive information to access data in context (via incremental requests), so that users understand why your app is requesting the permission. Use the data only for purposes that the user has consented to. If you later wish to use the data for other purposes, you must ask users and make sure they affirmatively agree to the additional uses.
+Restricted Permissions
+Policy Summary
+To safeguard user privacy, Google Play defines restricted permissions, subjecting them to additional requirements and mandates apps to responsibly use these permissions and not to manipulate users into granting access. Respect user choices when they decline permission requests and provide alternatives. Be aware that certain restricted permissions might have further additional requirements. Please review the full policy to ensure compliance.
+Full Policy
+In addition to the above, restricted permissions are permissions that are designated as
+Dangerous
+,
+Special
+,
+Signature
+, or as documented below. These permissions are subject to the following additional requirements and restrictions:
+User or device data accessed through Restricted Permissions is considered as personal and sensitive user data. The requirements of the
+User Data policy
+apply.
+Respect users’ decisions if they decline a request for a Restricted Permission, and users may not be manipulated or forced into consenting to any non-critical permission. You must make a reasonable effort to accommodate users who do not grant access to sensitive permissions (for example, allowing a user to manually enter a phone number if they’ve restricted access to Call Logs).
+Use of permissions in violation of Google Play
+malware policies
+(including
+Elevated Privilege Abuse
+) is expressly prohibited.
+Certain Restricted Permissions may be subject to additional requirements as detailed below. The objective of these restrictions is to safeguard user privacy. We may make limited exceptions to the requirements below in very rare cases where apps provide a highly compelling or critical feature and where there is no alternative method available to provide the feature. We evaluate proposed exceptions against the potential privacy or security impacts on users.
+Key Considerations
+Do
+Don't
+If a user denies a restricted permission, your app must honor that decision without manipulation.
+Don't use permissions to violate Google Play's
+Malware
+policy, including
+Elevated Privilege Abuse
+.
+Offer a different way to perform a function if a user denies a permission, such as allowing manual data entry.
+Don't manipulate or deceive users. Never pressure or trick users into granting permissions.
+Follow the
+User Data
+policy, because all data accessed through these permissions is sensitive.
+Don't deny a user a reasonable alternative if they decline a Restricted Permission; ensure the app remains functional.
+Request dangerous permissions (for example,
+READ_CALENDAR
+) with a runtime request and a clear explanation.
+Don't request without justification. Only request a restricted permission for a compelling, critical feature that has no alternative.
+Direct users to the system settings page for approval of special permissions (for example,
+SYSTEM_ALERT_WINDOW
+).
+Restricted Permissions with minimum scope alternatives
+System pickers and alternatives like
+Sharesheet
+are designed to support a privacy-oriented path for developers. Photos, Videos, Contacts, and other personal and sensitive data gated by restricted permissions should be treated with privacy best practices. Your app should only request and carry the sensitive permissions below if minimum scope alternatives are not sufficient to provide your core functionality. For more information, see our
+Help Center
+.
+Contacts Permissions
+All user Contacts are personal and sensitive data subject to the
+User Data
+policy.
+Apps that target Android 17 or later (API level 37+) may only request the
+READ_CONTACTS
+permission if the
+Android Contact Picker
+is not sufficient for your app to provide core functionality. Apps that still request the
+READ_CONTACTS
+permission must submit a Play Console declaration to demonstrate access needs for Contacts and why Contact Picker would not suffice.
+Apps may not disclose or publish non-public Contacts data unless authorized by the individual data subjects (the contacts themselves).
+Photo and Video Permissions
+All user Photos are personal and sensitive data subject to the
+User Data
+policy.
+Apps that target Android 13 or later (API level 33+) may only request the
+READ_MEDIA_IMAGES
+and
+READ_MEDIA_VIDEO
+permissions if system pickers (like the
+Android Photo Picker
+) are not sufficient for your app to provide core functionality. Apps that still request the
+READ_MEDIA_IMAGES
+and
+READ_MEDIA_VIDEO
+permissions must submit a Play Console declaration to demonstrate access needs for Photos and why Android Photo Picker (or alternatives) would not suffice.
+SMS and Call Log Permissions
+Policy Summary
+Google Play imposes strict restrictions on accessing highly sensitive SMS and Call Log data. Your app must be the designated default handler for SMS, Phone, or Assistant to request these permissions. Usage is limited
+only
+to documented core app functionality that is absolutely essential for your app's primary purpose. This data must never be used for advertising or any other unapproved purpose. Please review the full policy to ensure compliance.
+Full Policy
+SMS and Call Log Permissions are regarded as personal and sensitive user data subject to the
+Personal and Sensitive Information
+policy, and the following restrictions:
+Restricted Permission
+Requirement
+Call Log permission group (for example,
+READ_CALL_LOG
+,
+WRITE_CALL_LOG
+,
+PROCESS_OUTGOING_CALLS
+)
+It must be actively registered as the default Phone or Assistant handler on the device.
+SMS permission group (for example,
+READ_SMS
+,
+SEND_SMS
+,
+WRITE_SMS
+,
+RECEIVE_SMS
+,
+RECEIVE_WAP_PUSH
+,
+RECEIVE_MMS
+)
+It must be actively registered as the default SMS or Assistant handler on the device.
+Apps lacking default SMS, Phone, or Assistant handler capability may not declare use of the above permissions in the manifest. This includes placeholder text in the manifest. Additionally, apps must be actively registered as the default SMS, Phone, or Assistant handler before prompting users to accept any of the above permissions and must immediately stop using the permission when they’re no longer the default handler. The permitted uses and exceptions are available on
+this Help Center page
+.
+Apps may only use the permission (and any data derived from the permission) to provide approved core app functionality Core functionality is defined as the main purpose of the app. This may include a set of core features, which must all be prominently documented and promoted in the app’s description. Without the core feature(s), the app is “broken” or rendered unusable. The transfer, sharing, or licensed use of this data must only be for providing core features or services within the app, and its use may not be extended for any other purpose (for example, improving other apps or services, advertising, or marketing purposes). You may not use alternative methods (including other permissions, APIs, or third-party sources) to derive data attributed to Call Log or SMS related permissions.
+Key Considerations
+Do
+Don't
+Submit a
+declaration form
+in your Play Console.
+Don't request SMS/Call Log permissions without a core need justification.
+Clearly document the core functionality requiring access to your users.
+Don't use this data for advertising or other purposes.
+Use policy-compliant alternatives like the
+SMS Retriever API
+where possible.
+Don't store or share unnecessary SMS or Call Log data.
+Stop accessing data immediately upon losing default handler status.
+Don't attempt to derive this data using alternative methods.
+Review the
+permitted uses and exceptions
+of the SMS and Call log permissions.
+Location Permissions
+Policy Summary
+To protect user privacy, the background location policy requires apps to provide a strong justification and obtain explicit user consent for access. Device location data is limited to essential functions that directly benefit the user and are central to the app's core purpose; it is never permitted solely for advertising or analytics. Minimize your requests, choosing lesser sensitive options like coarse location and foreground access whenever possible. Foreground Services access of device location must be user-initiated and temporary, while background is only for critical features. Please review the full policy to ensure compliance.
+Full Policy
+Device location
+is regarded as personal and sensitive user data subject to the
+Personal and Sensitive Information
+policy and the
+Background Location policy
+, and the following requirements:
+Apps may not access data protected by device location permissions (for example,
+ACCESS_FINE_LOCATION
+,
+ACCESS_COARSE_LOCATION
+,
+ACCESS_BACKGROUND_LOCATION
+) after it is no longer necessary to deliver current features or services in your app.
+Apps may not request location permissions from users for the sole purpose of advertising or analytics. Apps that extend permitted usage of this data for serving advertising must be in compliance with our
+Ads policy
+.
+Apps that request device location permissions (including the
+Android location button
+), will be subject to a developer console declaration process and review for appropriate access. Apps that request device location data without adequate justification or fail to meet the following minimum scope requirements are disallowed.
+Minimum scope requirements for device location APIs
+You must request the minimum permission scope necessary to provide the current feature or service requiring device location, (for example, coarse if your use case does not require precise location, and foreground if your use case does not require background), and users should reasonably expect that the feature or service needs the level of location requested.
+For apps targeting Android SDK version 37 (Android 17) or higher:
+If your use case requires precise location (ACCESS_FINE_LOCATION) only for one-time, user-initiated actions; you must implement the use of the
+Android location button
+, utilizing the
+onlyForLocationButton
+permission flag in your app’s manifest.
+Eligibility for the
+ACCESS_FINE_LOCATION
+permission is only extended to apps where the declared location features cannot be adequately supported by either the Android location button (for apps targeting Android 17 or higher) or the
+ACCESS_COARSE_LOCATION
+permission (applicable across all Android versions).
+Background location may only be used to provide features beneficial to the user and relevant to the core functionality of the app.
+Apps are allowed to access location using foreground service (when the app only has foreground access for example, "while in use") permission if the use:
+has been initiated as a continuation of an in-app user-initiated action, and
+is terminated immediately after the intended use case of the user-initiated action is completed by the application.
+Apps designed specifically for children must comply with the
+Google Play Families Policies
+.
+For more information on the policy requirements, see
+Understanding location in the background permissions
+.
+Key Considerations
+Do
+Don't
+Comply with the
+Designed for Families
+policy for apps targeting children.
+Don't use
+device location
+solely for advertising or analytics purposes.
+Review
+important permission requirements
+before you submit your app for publishing.
+Don't access data after it's no longer needed.
+Complete the
+Console declaration
+for
+background location
+.
+Don't request device location for apps directed at children.
+Don't sell device location.
+All Files Access Permission
+Policy Summary
+Google Play policy treats access to user files and directories as sensitive and high risk access, so we restrict use of the
+MANAGE_EXTERNAL_STORAGE
+permission on Android 11+. You must have essential core app functionality that requires broad access to this permission for a user-facing purpose, and never for third parties. This helps prevent unnecessary data collection and protects users' privacy. Apps requesting this permission must clearly prompt users so they can make an informed privacy decision, and get approval through Play’s app review. Please review the full policy to ensure compliance.
+Full Policy
+Files and directory attributes on a user’s device are regarded as personal and sensitive user data subject to the
+Personal and Sensitive Information
+policy and the following requirements:
+Apps should only request access to device storage which is critical for the app to function, and may not request access to device storage on behalf of any third-party for any purpose that is unrelated to critical user-facing app functionality.
+Android devices running R or later, will require the
+MANAGE_EXTERNAL_STORAGE
+permission in order to manage access in shared storage. All apps that target R and request broad access to shared storage (“All files access”) must successfully pass an appropriate access review prior to publishing. Apps allowed to use this permission must clearly prompt users to enable “All files access” for their app under “Special app access” settings. For more information on the R requirements, please see this
+help article
+.
+Key Considerations
+Do
+Don't
+Prioritize using privacy-friendly alternatives instead, like
+Storage Access Framework
+or
+MediaStore API
+.
+Don't request the
+MANAGE_EXTERNAL_STORAGE
+permission for non-permitted use-cases like Media Files access or any File selection activity where the user manually selects individual files.
+Declare
+this permission when you submit a declaration form in your Play Console.
+Don't misrepresent the core functionality of your app.
+Clearly define and document your app's core functionality in your app review.
+Don't store or share data beyond essential and disclosed needs.
+Clearly prompt users to enable “
+All files access
+” for your app under “Special app access” settings.
+Ensure you review the
+Android R requirements
+for more information.
+Package (App) Visibility Permission
+Policy Summary
+Accessing a user's installed app inventory is sensitive data. Google Play policy strictly limits broad visibility (
+QUERY_ALL_PACKAGES
+), allowing it only for core app functionality that requires extensive knowledge of installed apps for interoperability. You must prioritize using finite, targeted queries to access specific apps when possible, which is more privacy-friendly. Under no circumstances can data from the installed app inventory be sold or shared for advertising or analytics monetization. Please review the full policy to ensure compliance.
+Full Policy
+The inventory of installed apps queried from a device are regarded as personal and sensitive user data subject to the
+Personal and Sensitive Information
+policy,  and the following requirements:
+Apps that have a core purpose to launch, search, or interoperate with other apps on the device, may obtain scope-appropriate visibility to other installed apps on the device as outlined below:
+Broad app visibility:
+Broad visibility is the capability of an app to have extensive (or “broad”) visibility of the installed apps (“packages”) on a device.
+For apps targeting
+API level 30 or later
+, broad visibility to installed apps via the
+QUERY_ALL_PACKAGES
+permission is restricted to specific use cases where awareness of and/or interoperability with any and all apps on the device are required for the app to function.
+You may not use
+QUERY_ALL_PACKAGES
+if your app can operate with a more
+targeted scoped package visibility declaration
+(for example, querying and interacting with specific packages instead of requesting broad visibility).
+Use of alternative methods to approximate the broad visibility level associated with
+QUERY_ALL_PACKAGES
+permission are also restricted to user-facing core app functionality and interoperability with any apps discovered via this method.
+Please see this
+Help Center article
+for allowable use cases for the
+QUERY_ALL_PACKAGES
+permission.
+Limited app visibility
+: Limited visibility is when an app minimizes access to data by querying for specific apps using more targeted (instead of “broad”) methods(for example, querying for specific apps that satisfy your app’s manifest declaration). You may use this method to query for apps in cases where your app has policy compliant interoperability, or management of these apps.
+Visibility to the inventory of installed apps on a device must be directly related to the core purpose or core functionality that users access within your app.
+App inventory data queried from Play-distributed apps may never be sold nor
+shared
+for analytics or ads monetization purposes.
+Key Considerations
+Do
+Don't
+Submit a
+declaration form
+in your Play Console for
+QUERY_ALL_PACKAGES
+and any other high-risk permissions.
+Don't request
+QUERY_ALL_PACKAGES
+if your need can be met with finite, targeted queries.
+For your app review, clearly document why your app needs app visibility whether broad or more targeted.
+Don't gain broad app visibility via methods not explicitly allowed by policy.
+Access only the minimum data needed.
+Don't provide false information about your app's core functionality or data needs.
+Review the
+Permitted uses of the QUERY_ALL_PACKAGES permission
+for allowable use cases.
+Don't collect or use unnecessary data from installed app data.
+Accessibility API
+Policy Summary
+Google Play permits the use of the AccessibilityService API across a wide range of applications. However, only services designed to help people with disabilities access their devices or overcome challenges due to their disabilities are eligible to declare themselves as accessibility tools by setting isAccessibilityTool=true in their metadata. These apps are exempt from the prominent disclosure and consent requirements. For all other uses, or if not declaring your app as an accessibility tool, you will be required to complete an accessibility declaration in Play Console and must implement a clear in-app disclosure explaining data access and use, and obtain affirmative user consent. Please review the full policy to ensure compliance.
+Full Policy
+The Accessibility API cannot be used to:
+Change user settings without their permission or prevent the ability for users to disable or uninstall any app or service unless authorized by a parent or guardian through a parental control app or by authorized administrators through enterprise management software;
+Work around Android built-in platform security controls, privacy controls and notifications; or
+Change or leverage the user interface in a way that is deceptive or otherwise violates Google Play Developer Policies.
+The Accessibility API is not designed and cannot be requested for:
+remote call audio recording
+an app that autonomously initiates, plans, and executes actions or decisions
+The use of the Accessibility API must be documented in the Google Play listing.
+Guidelines for
+IsAccessibilityTool
+Apps with a core functionality intended to directly support people with disabilities are eligible to use the
+IsAccessibilityTool
+to appropriately publicly designate themselves as an accessibility app.
+Apps not eligible for
+IsAccessibilityTool
+may not use the flag and must meet prominent disclosure and consent requirements as outlined in the
+User Data
+policy as the accessibility related functionality is not obvious to the user.
+Apps must use more narrowly scoped
+APIs and permissions
+in lieu of the Accessibility API when possible to achieve the desired functionality.
+Please refer to the
+AccessibilityService API
+help center article for more information regarding prohibited use cases and guidance for using IsAccessibilityTool.
+Key Considerations
+Do
+Don't
+Declare
+isAccessibilityTool=true
+accurately if your app’s main goal is disability support in your service’s metadata file.
+Don't misuse the
+isAccessibilityTool
+flag. Don’t use it if your app is not a disability support tool.
+Provide a clear Play Console declaration and demo video if using AccessibilityService API.
+Don't change user settings without permission, bypass privacy controls, or record remote call audio.
+Implement clear in-app disclosure and obtain user consent if not a designated accessibility tool.
+Don't use the API to autonomously initiate, plan, and execute actions or decisions.
+Complete an accessibility declaration when you submit a
+declaration form
+in your Play Console if you have not declared your app to be an accessibility tool but use the
+AccessibilityService API
+.
+Don't deceive or mislead users. The API cannot be used to change or leverage the UI in a deceptive way.
+Limit data collection and use strictly to the disclosed and declared purposes.
+Don't collect unnecessary data. The data collected must be strictly limited to the disclosed purposes.
+Use more narrowly scoped
+APIs and permissions
+in lieu of the Accessibility API when possible to achieve the desired functionality.
+Don't bypass disclosure requirements. Disclosures cannot be a substitute for privacy policy or other app descriptions.
+Request Install Packages Permission
+Policy Summary
+REQUEST_INSTALL_PACKAGES
+permission allows apps to request the installation of other app packages. This permission is restricted to the app's core functionality, specifically when the primary purpose directly involves sending, receiving, or enabling user-initiated installation of app packages. Using this permission to update your app, change its functionality or bundle other APKs for silent or unauthorized installation (except enterprise management) is prohibited. All installations must be a direct, active choice by the user. Apps targeting Android 8+ must hold this permission in order to use
+Intent.ACTION_INSTALL_PACKAGE
+. Please review the full policy to ensure compliance.
+Full Policy
+The
+REQUEST_INSTALL_PACKAGES
+permission allows an application to request the installation of app packages.​​ To use this permission, your app’s core functionality must include:
+Sending or receiving app packages; and
+Enabling user-initiated installation of app packages.
+Permitted functionalities include:
+Web browsing or search
+Communication services that support attachments
+File sharing, transfer, or management
+Enterprise device management
+Backup and restore
+Device Migration/Phone Transfer
+Companion app to sync phone to wearable or IoT device (for example, smart watch or smart TV)
+Core functionality is defined as the main purpose of the app. The core functionality, as well as any core features that comprise this core functionality, must all be prominently documented and promoted in the app's description.
+The
+REQUEST_INSTALL_PACKAGES
+permission may not be used to perform self updates, modifications, or the bundling of other APKs in the asset file unless for device management purposes. All updates or installing of packages must abide by Google Play’s
+Device and Network Abuse policy
+and must be initiated and driven by the user.
+Key Considerations
+Do
+Don't
+Clearly and prominently document the core functionality requiring this permission in your app’s Google Play description and when you submit a
+declaration form
+in your Play Console.
+Don't request this permission for a functionality that is not directly related to the primary purpose of your app. This includes Peer-to-Peer (P2P) sharing. P2P must be the primary purpose of the app in order to qualify as a permitted use.
+Adhere strictly to the permitted functionalities including web browsing/search, file sharing / transfer / management, enterprise device management, backup/restore, device migration / phone transfer, companion app to sync phone to wearable or IoT device.
+Don't request this permission when the required task can be done with a less intrusive method.
+Ensure your app prevents background or unintended installations. All app package installations must be explicitly initiated by the user.
+Don't change how your app uses this permission without first revising your Play Console declaration with updated and accurate information. Deceptive and undeclared uses of this permission are prohibited.
+Body Sensor Permissions
+Policy Summary
+To safeguard user privacy, Google Play mandates that access to highly sensitive body sensor data (such as heart rate, SpO2, and skin temperature) is  subject to our
+User Data
+policy and
+Health apps
+policy.
+Starting with Android 16, apps must migrate from the general
+android.permission.BODY_SENSORS
+permission to new, granular health permissions. For example, you will use
+android.permission.health.READ_HEART_RATE
+to access heart rate data. This change affects all apps that target Android 16 or higher across all form factors, including Wear OS. For a complete list of changes, see
+Behavior changes: Apps targeting Android 16 or higher
+page. We review all requests for body sensor permissions—both legacy and new—to ensure your app's use case directly benefits the user and strictly complies with our policies.
+Full Policy
+Access to data from sensors that measure physical parameters of the body (such as heart rate, SpO₂, and skin temperature) is considered personal and sensitive user data
+.
+Apps requesting access are subject to the requirements outlined in the
+User Data policy
+and the
+Health apps policy
+. This applies to requests for
+android.permission.BODY_SENSORS
+and
+android.permission.BODY_SENSORS_BACKGROUND
+permissions across all form factors including phones, tablets, and Wear OS devices.
+Starting in Android 16, the broad
+BODY_SENSORS
+permission is being transitioned in favor of granular, more privacy preserving
+android.permissions.health.
+* permissions for specific data types (for example,
+android.permission.health.READ_HEART_RATE
+,
+android.permission.health.READ_OXYGEN_SATURATION
+,
+android.permission.health.READ_SKIN_TEMPERATURE
+).
+Apps targeting Android 16 or higher must use these specific permissions for APIs previously requiring
+BODY_SENSORS
+. See the
+Behavior changes: Apps targeting Android 16 or higher
+page for full details.
+All requests for body sensor permissions (both legacy and new granular permissions) will be reviewed so that the intended use of this personal and sensitive data aligns with approved use cases that directly benefit the user.
+Approved use cases primarily involve features for fitness and wellness tracking (for example, real-time workout monitoring), medical or condition monitoring, health research (with appropriate approvals), or enhancing wearable companion app features.
+For comprehensive policy guidance, including prohibited uses, acceptable use cases, and detailed requirements, see the
+Android Health Permissions: Guidance & FAQs
+.
+Do
+Don't
+Use specific granular health permissions like
+android.permission.health.READ_HEART_RATE
+instead of the broad
+BODY_SENSORS
+permission
+.
+Don’t declare
+BODY_SENSORS
+when a more specific health permission is available.
+Ensure your app has a core, user-benefiting feature (for example, for fitness tracking or health monitoring) that strictly requires the data.
+Don't access data without a clear, direct user benefit.
+Comply with the
+User Data
+and
+Health apps
+policies.
+Don't request or use body sensor data for unapproved purposes, such as for general advertising, analytics, or profiling users based on inferred health conditions.
+Request only the minimum permissions necessary and the specific data required for your app's intended purpose.
+Don't ignore or attempt to bypass the fundamental
+User Data
+and
+Health apps
+policies.
+Consult the
+Android Health Permissions: Guidance & FAQs
+for a full list of use cases and requirements.
+Health Connect by Android Permissions
+Policy Summary
+Access to Health Connect data is restricted to apps with approved health, fitness, medical care, or health research core use cases. You must strictly limit data access to the minimum scope necessary for these approved functions and obtain explicit user consent before sharing any health data with third parties. Transparency is key, so provide clear disclosures and a comprehensive privacy policy explaining data collection, use, management, and deletion. Secure user data against unauthorized access and comply with all applicable laws and regulations (for example, HIPAA, GDPR). Please review the full policy to ensure compliance.
+Full Policy
+Health Connect
+is an Android platform that allows health and fitness apps to store and share the same on-device data, within a unified ecosystem. It also offers a single place for users to control which apps can read and write health and fitness data, including health records. Health Records may include medical history, diagnoses, treatments, medications, lab results, and other clinical data, obtained from healthcare providers or institutions, or through supported third-party health platforms.
+Health Connect supports reading and writing a
+variety of data types
+, from steps to body temperature, to health record data.
+Data accessed through Health Connect Permissions is regarded as personal and sensitive user data subject to the
+User Data policy
+. If your app qualifies as a health app or has health-related features and accesses health data including Health Connect data, it must also comply with the
+Health apps policy
+.
+Please see this
+Android developer guide
+on how to get started with Health Connect. To request access to Health Connect data types and other FAQs, see
+Android Health Permissions: Guidance & FAQs
+.
+Apps distributed through Google Play must meet the following policy requirements in order to read and/or write data to Health Connect.
+Appropriate Access to and Use of Health Connect
+Health Connect may only be used in accordance with the applicable policies, terms and conditions, and for approved use cases as set forth in this policy. This means you may only request access to permissions when your application or service meets one of the approved use cases.
+Approved use cases include: fitness and wellness, rewards, fitness coaching, corporate wellness, medical care, health research, and games. Applications granted access to these use cases may not extend its use to undisclosed or non-permitted purposes.
+Only applications or services with one or more features designed to benefit users' health and fitness are permitted to request access to Health Connect Permissions. These include:
+Applications or services allowing users
+to directly journal, report, monitor, and/or analyze
+their physical activity, sleep, mental well-being, nutrition, health measurements, physical descriptions, health records, and/or other health or fitness-related descriptions and measurements.
+Applications or services allowing users
+to store their physical activity, sleep, mental well-being, nutrition, health measurements, physical descriptions
+,
+health records,
+and/or other health or fitness-related descriptions and measurements on their device, and share their data with other on-device apps that satisfy these use cases.
+Applications or services enabling users to manage chronic conditions, medical treatments, or care support.
+Access to Health Connect may not be used in violation of this policy or other applicable Health Connect terms and conditions or policies, including for the following purposes:
+Do not use Health Connect in developing, or for incorporation into, applications, environments or activities where the use or failure of Health Connect could reasonably be expected to lead to death, personal injury, harm to individuals, or environmental or property damage (such as the creation or operation of nuclear facilities, air traffic control, life support systems, or weaponry).
+Do not access data obtained through Health Connect using headless apps. Apps must display a clearly identifiable icon in the app tray, device app settings, notification icons, etc.
+Do not use Health Connect with apps that sync data between incompatible devices or platforms.
+Do not use Health Connect to connect to applications, services, or features that solely target children.
+Take reasonable and appropriate steps to protect all applications or systems that make use of Health Connect against unauthorized or unlawful access, use, destruction, loss, alteration, or disclosure.
+It is also your responsibility to ensure compliance with any regulatory or legal requirements that may apply based on your intended use of Health Connect and any data from Health Connect. For example, if you are a covered entity or business associate subject to the Health Insurance Portability and Accountability Act (HIPAA), you must comply with applicable requirements for your access and use of information from Health Connect. If you are a developer subject to the General Data Protection Regulation (GDPR) for EU users, you must similarly comply with your obligations under the GDPR. These laws and regulations may require you to execute additional agreements prior to sharing data (for example, a Business Associate Agreement or Data Processing Agreement) with the relevant entities involved in your processing activities. It is also the responsibility of app developers to determine whether their activities require such agreements. Developers must provide evidence of such agreement or compliance to Google upon request.
+Except as explicitly noted in the labeling or information provided by Google for specific Google products or services, Google does not endorse the use of or warrant the accuracy of any data contained in Health Connect for any use or purpose, and, in particular, for research, health, or medical uses. Google disclaims all liability associated with use of data obtained through Health Connect.
+Limited Use
+When using Health Connect, data access and use must adhere to specific limitations:
+Data use should be limited to providing or improving the appropriate use case or features visible in the application's user interface.
+User data may only be transferred to third parties with explicit user consent: for security purposes (for example, to investigate abuse), to comply with applicable laws or regulations, or as part of mergers/acquisitions.
+Human access to user data is restricted unless explicit user consent is obtained, for security purposes, to comply with laws, or when aggregated for internal operations as per legal requirements.
+All other transfers, uses, or sale of Health Connect data is prohibited, including:
+Transferring or selling user data to third parties like advertising platforms, data brokers, or any information resellers.
+Transferring, selling, or using user data for serving ads, including personalized or interest-based advertising.
+Transferring, selling, or using user data to determine credit-worthiness or for lending purposes.
+Transferring, selling, or using user data with any product or service that may qualify as a medical device, unless the medical device app complies with all applicable regulations, including obtaining necessary clearances or approvals from relevant regulatory bodies (for example, U.S. FDA) for its intended use of Health Connect data, and the user has provided explicit consent for such use.
+Transferring, selling, or using user data for any purpose or in any manner involving Protected Health Information (as defined by HIPAA) unless user-initiated and in compliance with HIPAA regulations.
+Minimum Scope
+You must only request access to the permissions that are necessary to implementing your product's features or services. Such access requests should be specific and limited to the data which is needed.
+Transparent and Accurate Notice and Control
+Health Connect handles health and fitness data that includes personal and sensitive information. Developers must provide clear and accessible disclosures about their data practices through a comprehensive privacy policy. These disclosures must include:
+Accurate representation of the identity of the application or service requesting access to user data.
+Clear and accurate information explaining the types of data being accessed, requested, and/or collected. The data must be related to a user-facing feature or recommendation offered in your app.
+Explanation for how the data will be used and/or shared: if you request data for one reason, but the data will also be utilized for a secondary purpose, you must disclose all use cases to users.
+User help documentation explaining how users can manage and delete their data from the app, and what happens to the data when an account is deactivated and/or deleted.
+Information regarding handling all personal and sensitive user data securely, including transmitting it using modern cryptography (for example, over HTTPS).
+For more information on requirements for apps connecting to Health Connect, please see this
+Help Center
+article.
+Key Considerations
+Do
+Don't
+Your app must comply with the
+Health apps policy
+if it qualifies as a health app or has health-related features and accesses health data including
+Health Connect data
+.
+Don't use
+Health Connect
+in high-risk apps (for example, aviation, control of life-critical systems such as pacemakers) or in apps that solely target children.
+See
+Android Health Permissions: Guidance and FAQs
+to request access to Health Connect data types and other FAQs.
+Don't sell or transfer user data for advertising, creditworthiness, or data brokers.
+Submit a
+declaration form
+in your Play Console and provide a clear and detailed justification explaining how your app will use the data to benefit the user.
+Don't use with medical devices without required regulatory compliance/clearances.
+Request only the minimum necessary data types.
+Don't access
+Health Connect data
+for secondary or unapproved purposes.
+Securely handle user data (for example, use modern cryptography).
+Don't request data permissions beyond your app's core functionality.
+VPN Service
+Policy Summary
+The VpnService base class allows developers to create secure VPN solutions. Google Play permits its use only for apps with core VPN functionality or those requiring a remote server for essential features such as parental control, app usage tracking, device security, network tools, web browsers, or carrier services. It is paramount that VpnService is never used to collect personal or sensitive user data without prominent disclosure and explicit consent. Furthermore, redirecting or manipulating user traffic from other apps for monetization is strictly prohibited. All apps using VpnService must clearly document this in their Google Play listing and encrypt all data from the device to the VPN tunnel endpoint. Please review the full policy to ensure compliance.
+Full Policy
+The
+VpnService
+is a base class for applications to extend and build their own VPN solutions. Only apps that use the VpnService and have VPN as their core functionality can create a secure device-level tunnel to a remote server. Exceptions include apps that require a remote server for core functionality such as:
+Parental control and enterprise management apps
+App usage tracking
+Device security apps (for example, anti-virus, mobile device management, firewall)
+Network related tools (for example, remote access)
+Web browsing apps
+Carrier apps that require the use of VPN functionality to provide telephony or connectivity services
+The VpnService cannot be used to:
+Collect personal and sensitive user data without prominent disclosure and consent.
+Redirect or manipulate user traffic from other apps on a device for monetization purposes (for example, redirecting ads traffic through a country different than that of the user).
+Apps that use the VpnService must:
+Document use of the VpnService in the Google Play listing, and
+Must encrypt the data from the device to VPN tunnel end point, and
+Abide by all
+Developer Program Policies
+including the
+Ad Fraud
+,
+Permissions
+, and
+Malware
+policies.
+Do
+Don't
+Document use of the
+VpnService
+clearly in the Google Play listing.
+Don't use
+VpnService
+for purposes other than core VPN or specified exceptions.
+Must encrypt the data from the device to the VPN tunnel end point.
+Don't collect personal and sensitive user data without prominent disclosure and consent.
+Ensure your app's core functionality aligns with VPN use or permitted exceptions.
+Don't redirect or manipulate user traffic from other apps on a device for monetization purposes (for example, redirecting ads traffic through a country different than that of the user).
+Provide prominent in-app disclosure and obtain explicit consent for any sensitive data collection.
+Exact Alarm Permission
+Policy Summary
+USE_EXACT_ALARM
+permission on Android 13+ is a highly restricted permission used only for apps whose core, user-facing functionality genuinely requires precise timing, like dedicated alarm, timer, or calendar applications with event notifications. If your app does
+not
+have this specific core need, consider using
+SCHEDULE_EXACT_ALARM
+permission instead. It provides the same functionality but access must be granted by the user. This policy prevents misuse that impacts system resources. Please review the full policy to ensure compliance.
+Full Policy
+A new permission,
+USE_EXACT_ALARM
+, will be introduced that will grant access to
+exact alarm functionality
+in apps starting with Android 13 (API target level 33).
+USE_EXACT_ALARM
+is a restricted permission and apps must only declare this permission if their core functionality supports the need for an exact alarm. Apps that request this restricted permission are subject to review, and those that do not meet the acceptable use case criteria will be disallowed from publishing on Google Play.
+Acceptable use cases for using the Exact Alarm Permission
+Your app must use the
+USE_EXACT_ALARM
+functionality only when your app’s core, user facing functionality requires precisely-timed actions, such as:
+The app is an alarm or timer app.
+The app is a calendar app that shows event notifications.
+If you have a use case for exact alarm functionality that’s not covered above, you should evaluate if using
+SCHEDULE_EXACT_ALARM
+as an alternative is an option.
+For more information on exact alarm functionality, please see this
+developer guidance
+.
+Key Considerations
+Do
+Don't
+Request the auto granted version of the permission,
+USE_EXACT_ALARM
+, only if your app's core functionality is of alarm or calendar.
+Don't use this permission for non-critical features that do not directly contribute to the app's main purpose.
+Use
+SCHEDULE_EXACT_ALARM
+instead if the above criteria is not met.
+Complete Play Console
+declaration
+to indicate app functionality.
+Review the
+new permission to use exact alarms
+for more information on exact alarm functionality.
+Full-Screen Intent Permission
+Policy Summary
+On Android 14+, the
+USE_FULL_SCREEN_INTENT
+permission is auto-granted
+only
+for apps whose core function is setting alarms or handling calls. For any other use case, you must obtain explicit user consent and clearly explain your need. This policy prevents the misuse of full-screen intents for non-critical purposes and requires that your use does not interfere with or disrupt the user's device, other apps, or overall usability. Please review the full policy to ensure compliance.
+Full Policy
+For apps targeting Android 14 (API target level 34) and above,
+USE_FULL_SCREEN_INTENT
+is a
+special apps access permission
+. Apps will only be automatically granted to use the
+USE_FULL_SCREEN_INTENT
+permission if the core functionality of their app falls under one of the below categories that require high priority notifications:
+setting an alarm
+receiving phone or video calls
+Apps that request this permission are subject to review, and those that do not meet the above criteria will not be automatically granted this permission. In that case, apps must request permission from the user to use
+USE_FULL_SCREEN_INTENT
+.
+As a reminder, any usage of the
+USE_FULL_SCREEN_INTENT
+permission must comply with all
+Google Play Developer Policies
+, including our
+Mobile Unwanted Software
+,
+Device and Network Abuse
+, and
+Ads
+policies. Full-screen intent notifications cannot interfere with, disrupt, damage, or access the user’s device in an unauthorized manner. Additionally, apps should not interfere with other apps or the usability of the device.
+Learn more about the
+USE_FULL_SCREEN_INTENT
+permission in our
+Help Center
+.
+Key Considerations
+Do
+Don't
+Request user consent for the permission and provide a clear explanation for the request if not auto-granted.
+Don't use this permission for non-core or low-priority features.
+Limit use to necessary high-priority notifications/alerts.
+Don't use this permission to interfere with devices or other apps.
+Submit a
+declaration form
+in your Play Console to establish pre-grant eligibility for the full-screen intent permission if targeting Android 14+
+Don't use this permission for disruptive ads or disruptive notifications.
+Learn more about the
+USE_FULL_SCREEN_INTENT
+permission
+and its requirements.
+Age Signals API and User Data
+Policy Summary
+To help protect user’s data, you may only use data provided by the Age Signals API to provide age-appropriate experiences in the app receiving this data. These guidelines ensure that you use the API strictly to meet compliance requirements and not for commercial gain or tracking.
+Full Policy
+This policy defines the conditions for your use of the
+Age Signals API
+, which provides access to personal and sensitive user age and parental consent data.
+You may only use the data accessed via the Age Signals API for the sole purpose of complying with
+applicable legal and regulatory obligations
+such as providing age appropriate experiences within your app.
+You are strictly prohibited from using this data for the following purposes, including but not limited to:
+Advertising, marketing, or personalization purposes, including the serving of targeted ads
+Data analytics, user profiling, or business intelligence
+Selling, sharing, or transferring the data to any third party for any reason, except as strictly required by law
+Key Considerations
+Do
+Don't
+Limit data use to regulatory compliance use cases.
+Don't use this data to perform marketing or targeting advertising.
+Check for parental consent requirements.
+Don’t use this data to perform analytics or user profiling.
+Ensure the user’s experiences match the user’s age.
+Don’t share this data with a third-party for any reason except as required by law.
+Help us improve this policy article by taking a
+2-minute survey
+.

@@ -1,0 +1,157 @@
+SDK Requirements
+App developers often rely on third-party code (for example, an SDK) to integrate key functionality and services for their apps. When including an SDK in your app, you want to make sure that you can keep your users safe and your app secure from any vulnerabilities. In this section, we demonstrate how some of our existing privacy and security requirements apply in the SDK context and are designed to help developers safely and securely integrate SDKs into their apps.
+If you include an SDK in your app, you are responsible for ensuring that their third-party code and practices do not cause your app to violate Google Play Developer Program Policies. It is important to be aware of how the SDKs in your app handle user data and to ensure you know what permissions they use, what data they collect, and why. Remember, an SDK's collection and handling of user data must align with your app's policy compliant use of said data.
+To help ensure your use of an SDK does not violate policy requirements, read and understand the following policies in their entirety and note some of their existing requirements pertaining to SDKs below:
+User Data Policy
+You must be transparent in how you handle user data (for example, information collected from or about a user, including device information). That means disclosing the access, collection, use, handling, and sharing of user data from your app, and limiting the use of the data to the policy compliant purposes disclosed.
+If you include third party code (for example, an SDK) in your app, you must ensure that the third party code used in your app, and that third party’s practices with respect to user data from your app, are compliant with Google Play Developer Program policies, which include use and disclosure requirements. For example, you must ensure that your SDK providers do not sell personal and sensitive user data from your app. This requirement applies regardless of whether user data is transferred after being sent to a server, or by embedding third-party code in your app.
+Personal and Sensitive User Data
+Limit the access, collection, use, and sharing of personal and sensitive user data acquired through the app to app and service functionality and policy conforming purposes reasonably expected by the user:
+Apps that extend usage of personal and sensitive user data for serving advertising must comply with Google Play’s Ads policy.
+Handle all personal and sensitive user data securely, including transmitting it using modern cryptography (for example, over HTTPS).
+Use a runtime permissions request whenever available, prior to accessing data gated by Android permissions
+Sale of Personal and Sensitive User Data
+Do not sell personal and sensitive user data.
+"Sale" means the exchange or transfer of personal and sensitive user data to a third party for monetary consideration.
+User-initiated transfer of personal and sensitive user data (for example, when the user is using a feature of the app to transfer a file to a third party, or when the user chooses to use a dedicated purpose research study app), is not regarded as sale.
+Prominent Disclosure & Consent Requirements
+In cases where your app’s access, collection, use, or sharing of personal and sensitive user data may not be within the reasonable expectation of the user of the product or feature in question, you must meet the prominent disclosure and consent requirements of the
+User Data policy
+.
+If your app integrates third party code (for example, an SDK) that is designed to collect personal and sensitive user data by default, you must, within 2 weeks of receipt of a request from Google Play (or, if Google Play’s request provides for a longer time period, within that time period), provide sufficient evidence demonstrating that your app meets the Prominent Disclosure and Consent requirements of this policy, including with regard to the data access, collection, use, or sharing via the third party code.
+Remember to ensure your use of third party code (for example, an SDK) does not cause your app to violate the
+User Data policy
+.
+Refer to this
+Help Center
+article for more information on the Prominent Disclosure and Consent requirement.
+Examples of SDK-caused violations
+An app with an SDK that collects personal and sensitive user data and doesn’t treat this data as subject to this User Data policy, access, data handling (including disallowed sale), and prominent disclosure and consent requirements.
+An app integrates an SDK that collects personal and sensitive user data by default in violation of this policy’s requirements regarding user consent and prominent disclosure.
+An app with an SDK that claims to collect personal and sensitive user data only to provide anti-fraud and anti-abuse functionality for the app, but the SDK also shares the data it collects with third parties for advertising or analytics.
+An app includes an SDK that transmits users’ installed packages information without meeting the prominent disclosure guidelines and/or
+privacy policy guidelines
+.
+Also refer to the
+Mobile Unwanted Software policy
+.
+Additional Requirements for Personal and Sensitive Data Access
+The table below describes requirements for specific activities.
+Activity
+Requirement
+Your app collects or links persistent device identifiers (for example, IMEI, IMSI, SIM Serial #, etc.)
+Persistent device identifiers may not be linked to other personal and sensitive user data or resettable device identifiers except for the purposes of:
+Telephony linked to a SIM identity (for example, wifi calling linked to a carrier account), and
+Enterprise device management apps using device owner mode.
+These uses must be prominently disclosed to users as specified in the
+User Data policy
+.
+Please
+consult this resource
+for alternative unique identifiers.
+Please read the
+Ads policy
+for additional guidelines for Android Advertising ID.
+Your app targets children
+Your app may only include SDKs that have self-certified for use in child-directed services. See
+Families Self-Certified Ads SDK Program
+for full policy language and requirements.
+Examples of SDK-caused violations
+An app using an SDK which links IMEI and Location
+An app with an SDK which connects Android Advertising ID (AAID) to persistent device identifiers for any advertising purpose or analytics purpose.
+An app using an SDK that connects AAID and email address for analytics purposes.
+Data safety section
+All developers must complete a clear and accurate Data safety section for every app detailing collection, use, and sharing of user data. This includes data collected and handled through any third-party libraries or SDKs used in their apps. The developer is responsible for the accuracy of the label and keeping this information up-to-date. Where relevant, the section must be consistent with the disclosures made in the app’s privacy policy.
+Please refer to this
+Help Center
+article for additional information on completing the Data safety section.
+See the full
+User Data policy
+.
+Permissions and APIs that Access Sensitive Information Policy
+Requests for permission and APIs that access sensitive information should make sense to users. You may only request permissions and APIs that access sensitive information that are necessary to implement current features or services in your app that are promoted in your Google Play listing. You may not use permissions or APIs that access sensitive information that give access to user or device data for undisclosed, unimplemented, or disallowed features or purposes. Personal or sensitive data accessed through permissions or APIs that access sensitive information may never be sold nor shared for a purpose facilitating sale.
+See the full
+Permissions and APIs that Access Sensitive Information policy
+.
+Examples of SDK-caused violations
+Your app includes an SDK which requests location in the background for an unallowed or undisclosed purpose.
+Your app includes an SDK which transmits IMEI derived from the read_phone_state Android permission without user consent.
+Malware Policy
+Our Malware policy is simple, the Android ecosystem including the Google Play store, and user devices should be free from malicious behaviors (for example, malware). Through this fundamental principle we strive to provide a safe Android ecosystem for our users and their Android devices.
+Malware is any code that could put a user, a user's data, or a device at risk. Malware includes, but is not limited to, Potentially Harmful Applications (PHAs), binaries, or framework modifications, consisting of categories such as trojans, phishing, and spyware apps, and we are continuously updating and adding new categories.
+The requirements of this policy also apply to any third party code (for example, an SDK) that you include in your app.
+See the full
+Malware policy
+.
+Examples of SDK-caused violations
+An app that includes SDK libraries from providers that distribute malicious software.
+An app that violates the Android permissions model, or steals credentials (such as OAuth tokens) from other apps.
+Apps that abuse features to prevent them from being uninstalled or stopped.
+An app that disables SELinux.
+An app includes an SDK that violates the Android permissions model by gaining elevated privileges through the access of device data for an undisclosed purpose.
+An app includes an SDK with code that tricks users into subscribing to or purchasing content via their mobile phone bill.
+Privilege escalation apps that root devices without user permission are classified as rooting apps.
+Spyware
+Spyware is a malicious application, code, or behavior that collects, exfiltrates, or shares user or device data that is not related to policy compliant functionality.
+Malicious code or behavior that can be considered as spying on the user or exfiltrates data without adequate notice or consent is also regarded as spyware.
+See the full
+Spyware policy.
+For example, SDK-caused spyware violations include, but are not limited to:
+An app that uses an SDK which transmits data from audio or call recordings when it is not related to policy compliant app functionality.
+An app with malicious third party code (for example, an SDK) that transmits data off device in a manner that is unexpected to the user and/or without adequate user notice or consent.
+Mobile Unwanted Software Policy
+Transparent behavior and clear disclosures
+All code should deliver on promises made to the user. Apps should provide all communicated functionality. Apps should not confuse users.
+Example violations:
+Ad fraud
+Social Engineering
+Protect user data
+Be clear and transparent about the access, use, collection, and sharing of personal and sensitive user data. Uses of user data in must adhere to all relevant User Data Policies, where applicable, and take all precautions to protect the data.
+Example violations:
+Data Collection (cf Spyware)
+Restricted Permissions abuse
+See the full
+Mobile Unwanted Software policy
+.
+Device and Network Abuse Policy
+We don’t allow apps that interfere with, disrupt, damage, or access in an unauthorized manner the user’s device, other devices or computers, servers, networks, application programming interfaces (APIs), or services, including but not limited to other apps on the device, any Google service, or an authorized carrier’s network.
+Apps or third-party code (for example, SDKs) with interpreted languages (JavaScript, Python, Lua, etc.) loaded at run time (for example, not packaged with the app) must not allow potential violations of Google Play policies.
+We don’t allow code that introduces or exploits security vulnerabilities. Check out the
+App Security Improvement Program
+to find out about the most recent security issues flagged to developers.
+See the full
+Device and Network Abuse policy
+.
+Examples of SDK-caused violations
+Apps that facilitate proxy services to third parties may only do so in apps where that is the primary, user-facing core purpose of the app.
+Your app includes an SDK that downloads executable code, such as dex files or native code, from a source other than Google Play.
+Your app includes an SDK containing a webview with added JavaScript Interface that loads untrusted web content (for example, http:// URL) or unverified URLs obtained from untrusted sources (for example, URLs obtained with untrusted Intents).
+Your app includes an SDK that contains code used for updating its own APK
+Your app includes an SDK that exposes users to a security vulnerability by downloading files over an insecure connection.
+Your app is using an SDK which contains code to download or install applications from unknown sources outside of Google Play.
+Your app includes an SDK that uses foreground services without an appropriate use case.
+Your app includes an SDK that uses foreground services for a policy compliant reason, but it is not declared in your app's manifest.
+Deceptive Behavior Policy
+We don't allow apps that attempt to deceive users or enable dishonest behavior including but not limited to apps which are determined to be functionally impossible. Apps must provide an accurate disclosure, description and images/video of their functionality in all parts of the metadata. Apps must not attempt to mimic functionality or warnings from the operating system or other apps. Any changes to device settings must be made with the user's knowledge and consent and be reversible by the user.
+See the full
+Deceptive Behavior policy
+.
+Behavior Transparency
+Your app’s functionality should be reasonably clear to users; don’t include any hidden, dormant, or undocumented features within your app. Techniques to evade app reviews are not allowed. Apps may be required to provide additional details to ensure user safety, system integrity, and policy compliance.
+Example of an SDK-caused violation
+Your app includes an SDK that uses techniques to evade app reviews.
+What Google Play Developer Policies are commonly associated with SDK-caused violations?
+To help you ensure that any third-party code your app is using complies with Google Play Developer Program Policies, please refer to the following policies in their entirety:
+User Data policy
+Permissions and APIs that Access Sensitive Information
+Device & Network Abuse policy
+Malware
+Mobile Unwanted Software
+Families Self-Certified Ads SDK Program
+Ads policy
+Deceptive Behavior
+Google Play Developer Program Policies
+While these policies are more commonly at issue, it is important to remember that bad SDK code could cause your app to violate a different policy not referenced above. Remember to review and stay up to date with all policies in their entirety as it is your responsibility as an app developer to ensure that your SDKs handle your app data in a policy compliant manner.
+To learn more, please visit our
+Help Center
+.

@@ -19,6 +19,7 @@ dependencies = [
   "langgraph-checkpoint-sqlite>=2.0,<3",
   "pypdf>=5,<7",
   "python-docx>=1.1,<2",
+  "python-dotenv>=1.0,<2",
   "rich>=13.7,<15",
   "typer>=0.12,<1",
 ]

@@ -1,0 +1,441 @@
+--- page 1 ---
+GOVERNMENT OF PAKISTAN 
+SECURITIES AND EXCHANGE COMMISSION OF PAKISTAN 
+-.-.-.- 
+Islamabad, the 14th June, 2022  
+NOTIFICATION 
+S.R.O. 807(I)/2022.- In exercise of the powers conferred by sub-section (2) of section 282B of 
+the Companies Ordinance, 1984 (XLVII of 1984), the Securities and Exchange Commission of Pakistan 
+hereby makes the following amendments in the Non-Banking Finance Companies and Notified Entities 
+Regulations, 2008, the same having been previously  published in the official Gazette vide  S.R.O 435 
+(I)/2022 dated March 15, 2022 and S.R.O 436 (I)/2022 dated March 25, 2022 namely: - 
+ 
+AMENDMENTS 
+In the aforesaid Regulations,  
+1. In regulation 2, - 
+ 
+(a) after sub clause (xi), the following new clause shall be added, namely:  
+ 
+(xiaa) “ Data processing”  shall mean any operation or set of operations which is 
+performed upon the User’s data, whether or not by automatic means, such as 
+collection, recording, organization, storage, adaptation or alteration, retrieval, 
+consultation, use, disclosure by transmiss ion, dissemination or otherwise making 
+available, aligning or combining, blocking, erasing or destroying of data; 
+ 
+(b) after sub clause (xxv), the following new clause shall be added, namely:  
+ 
+(xxva) “Lender” in relation to P2P Lending means a person or entity extending a loan 
+to a borrower through the Platform for the Price and on the terms and conditions 
+determined by the P2P Service Provider and where context permits, a lender shall also 
+include the P2P Service Provider; 
+ 
+(c) after sub clause (xxxiva), the following new clauses shall be added, namely:  
+ 
+(i) (xxxivb) “P2P Service Provider”  shall means and include a Lending NBFC 
+providing P2P Services; 
+(ii) (xxxivc) “P2P Services” shall mean the services provided by a Lending NBFC 
+permitted under these Regulations for facilitating P2P Lending transactions 
+through the P2P Lending Platform and shall include the provision of the 
+Platform and activities provided in these Regulations for P2P Lending; 
+(iii)  (xxxivd) “Participant” in relation to P2P Lending  means a person who has 
+entered into an arrangement/agreement with a P2P Lending Platform to lend 
+or borrow through a P2P Lending Platform; 
+(iv)  (xxxive) “Peer to Peer Lending” or “P2P Lending” shall mean the extension of 
+loans by the lender to the borrower through the P2P Lending Platform; 
+(v) (xxxive) “Peer to Peer Lending Platform” or “P2P Lending Platform " shall 
+mean an intermediary providing P2P services through online medium or 
+otherwise to the participants who have entered into an arrangement with that 
+platform to lend or to borrow money;  
+ 
+
+
+--- page 2 ---
+(vi) (xxxivf) “Price” means the amount determined by the P2P Service Provider for 
+each transaction and includes the principal amount plus the profit/rate of return 
+determined based on the factors prescribed in these Regulations;”; 
+ 
+(d) after sub clause (xlviii), the following new clause shall be added, namely:  
+ 
+(xlix) “User(s)” shall mean any person or entity using the P2P Lending Platform for the 
+transaction and shall include the borrowers and lenders; 
+ 
+2. In regulation 15B, in sub-regulation (2), after the first proviso,  
+I. For the full stop at the end a colon may be substituted,  
+II. After the aforesaid amendment, the following new proviso shall be added, namely: - 
+ 
+“Provided further that for an NBFC that is exclusively engaged in the business of issuance of 
+guarantees against, - 
+(i) financing to SMEs; and  
+(ii) debt instruments issued for financing SMEs,  
+  the Contingent Liabilities shall not exceed 10 times of the equity.” 
+3. After “PART III A” the following new Part shall be added, namely:  
+ 
+“PART III B 
+ 
+Requirements for Peer to Peer Lending 
+ 
+35A. Eligibility Requirements of P2P Service Provider.- (1) Except as provided under these regulations, 
+no company shall provide P2P Services or undertake business as a P2P Service Provider. 
+  
+(2) A Lending NBFC, having valid license, may apply to the  Commission for permission to operate as 
+P2P Service Provider, subject to the following requirements, - 
+(i) It shall have a minimum additional equity of Rs.20 million or such higher amount as the 
+Commission may notify, over and above the minimum equity require ment as specified under 
+schedule I of Non-Banking Finance Companies and Notified Entities Regulations, 2008. 
+(ii) It shall have the necessary demonstrable technological, entrepreneurial and managerial 
+resources to offer such services to the participants. 
+(iii) It shall have a viable business plan for conducting the business as P2P Service Provider. 
+(iv) It shall submit a plan for implementation of a robust and secure Information Technology system. 
+(v) It shall comply with any other condition as may be required by the Commission.  
+ 
+35B. Application for Permission to work as P2P Service Provider . – (1) A Lending NBFC desirous of 
+operating as P2P Service Provider, shall apply to the Commission on the form specified in Schedule XVI 
+to these Regulations along with the information specified in regulation 35A and Annexure to Schedule 
+XVI. 
+(2) Before granting permission as a P2P Service Provider under these regulations, the Commission 
+may, among others, require the Chief Executive Officer to provide an undertaking regarding, - 
+i. the systems readiness;  
+ii. availability of sufficient human, financial and other resources to carry out 
+operations;  
+iii. availability of adequate security measures, systems capacity, business continuity 
+plan and procedures, risk management, data integrity and confidentiality, record 
+keeping and audit trail, for daily operations and to meet emergencies; and 
+
+
+--- page 3 ---
+iv. availability of sufficient IT and technical support arrangements. 
+35C. Grant of Permission of P2P Lending Platform.- (1) The Commission shall, after making necessary 
+inquiries and after obtaining such further information, as it may consider necessary, and after being 
+satisfied that the conditions specified under regulation 35A and 35B are fulfilled, grant permission on 
+the format specified in Schedule-XVII to operate as P2P Service Provider, subject to such conditions that 
+it may consider fit to impose. 
+ 
+(2) Permission granted shall be valid on perpetual basis until it is cancelled, suspended or the license 
+of the P2P Service Provider as a Lending NBFC is cancelled, suspended or revoked. 
+(3) The applicant shall ensure that during the validity of permission as a P2P Service Provider, if there 
+are any material deviations from the representations made at the time of submission of 
+application, the same are brought to the attention of the Commission immediately. 
+(4) Before offering services as a P2P Service Provider, the company shall put in place the technology 
+platform, enter into all other legal documentations required and submit a report for evaluation to 
+its board of directors, duly certified by the auditor, on readiness of systems, controls and position 
+of compliance with the conditions of permission granted by the Commission. 
+ 
+35D. Scope of Activities of P2P Service Provider.- (1) A P2P Service Provider shall, -  
+ 
+a) act as an intermediary providing an online marketplace or platform to the participants 
+for direct lending and borrowing;  
+b) contribute at least fifteen percent or such higher percentage as it may agree with the 
+lenders in each loan disbursed through the platfo rm provided that the agreed loan 
+contribution shall stand at par in rights, terms of recovery and repayment to lenders; 
+c) store and process all data relating to its activities and participants on hardware, 
+within Pakistan or as permitted by the Commission;  
+d) undertake due diligence of the Participants;  
+e) undertake credit assessment and risk profiling of the borrowers, disclose it to the 
+lenders and provide advice relating to P2P Services on the credibility of borrowers, 
+determining the credit worthiness of the borrowers, extending loan to borrowers and 
+determining the Price of transactions for Users on its Platform;  
+f) lend money to borrowers/participate in the transaction and facilitate disbursement 
+and repayment of loan amount;  
+g) determine the terms of finance including its extension, renewal etc.;  
+h) require prior and explicit consent of the Participant to access its credit information; 
+and  
+i) establish systems and controls for maintaining accurate and up-to-date records of 
+investors’ monies held, disbursed, recovered, income and expenses charged etc. 
+ 
+(2) A P2P Service Provider through the P2P Lending Platform shall not, -  
+ 
+a. raise deposits as defined under Section 84 of the Companies Act, 2017 or involve in 
+any illegal activity;  
+b. lend on its own through the P2P Lending Platform in any other way, except as 
+otherwise provided in sub-regulation (1) above;  
+c. facilitate or permit any secured lending linked to its platform; 
+d. permit direct international flow of funds; and  
+e. undertake any activity in relation to P2P Lending, other than those specifically stated 
+in relation to P2P Lending under these Regulations. 
+ 
+
+
+--- page 4 ---
+35E. Prudential Norms. - (1) A P2P Service Provider shall inter -alia comply with the following 
+requirement, namely, - 
+a) the aggregate loans taken by a borrower at any point of time, across all P2P Lending Platforms, 
+shall be subject to a cap of Rs.1,000,000/-;  
+b) the exposure of a single lender to the same borrower, across all P2P Lending Platforms, shall 
+not exceed Rs. 500,000/-;  
+c) maximum limit for a single lender on all P2P Lending Platforms, shall be as under: 
+(i) for an individual, sole proprietor, provident/gratuity fund, trust, charitable institution 
+and section 42 company: Rs.1,000,000; and 
+(ii) other Lenders: Rs. 10,000,000.  
+d) the maturity of the loans shall not exceed 12 months;  
+e) lenders shall be high net worth persons having net worth of at least Rs.15 million excluding 
+personal residence; 
+f) eligibility for borrower shall be assessed on factors including but not limited to purchase history 
+with distributors/suppliers, satisfactory -good repayment history (Credit Bureau Services), 
+Satisfactory-Good market reputation and business operating history of one year; and  
+g) prices for the transactions shall be determined based on categories , characteristics, credit 
+scoring of each borrower etc. and shall be provided to the lenders for decision making. 
+ 
+(2) The following entities /persons shall not be allowed as borrowers on a P2P Lending Platform, 
+-  
+ 
+a) commercially or financially complex structures (i.e. investment fund companies or financial 
+institutions);  
+b) public-listed companies and their subsidiaries;  
+c) companies with no specific business plan or the companies whose business plan is to merge or 
+acquire an unidentified entity (i.e. blind pool); 
+d) associated persons, companies and undertaking of P2P Service Provider; and 
+e) any other type of entity / person that is specified by the P2P Service Provider, in line with its 
+own risk management policy. 
+ 
+(3) The P2P Lending Platform shall obtain explicit declaration from the Lenders stating that they 
+have understood all the risks associated with the lending transactions and that there exists a 
+likelihood of loss of principal and profit/ interest in case of default by a borrower.  
+(4) No loan shall be disbursed unless the individual lender(s) have approved the individual 
+recipient(s) of the loan and have agreed to the applicable terms and conditions. 
+(5) The P2P Lending Platform shall verify or obtain an undertaking from the borr ower or lender, 
+as applicable, that the limits specified under the regulations are being adhered to. 
+(6) The specified conditions and limits applicable for P2P Lending may be changed by the 
+Commission while granting permission or at any stage, based on the val id reasons to be 
+recorded in writing, on a case to case basis. 
+ 
+35F. Revocation and suspension of Permission. - (1) The Commission may suspend or revoke the 
+permission of any P2P Service Provider where it has determined that the P2P Service Provider, 
+  
+(a) has not provided correct information at the time of submission of the application; 
+(b) has committed breach of the requirements specified under these Regulations;  
+(c) has lost the capacity to provide the P2P Services; or  
+(d) where in the opinion of the Commission, it is in the interest of the public to do so. 
+ 
+
+
+--- page 5 ---
+(2) The permission to provide P2P Services shall automatically stand cancelled with immediate 
+effect, if the NBFC becomes non-compliant with any of the following conditions, - 
+ 
+a) equity of Lending NBFC falls below the minimum equity requirement as specified under 
+Schedule I of these Regulations; or 
+b) license of Lending NBFC is suspended or cancelled under applicable regulatory 
+framework.  
+The decision for revocation of permission shall be taken after providing the NBFC an  opportunity 
+of being heard. 
+ 
+(3) In case the permission granted is revoked or suspended, the P2P Service Provider shall 
+immediately suspend disbursement of loans on the platform while it shall continue to 
+recover the outstanding loans and pay off to the lende rs accordingly as and when those 
+become due. In this regard, the Commission may issue necessary directions, if considered 
+appropriate, including but not limited to the following, - 
+ 
+a. Transferring of the existing loan portfolio of P2P Lending Platform to another P2P Service 
+Provider; and 
+b. Any other directions for protection of Participants and Users. 
+ 
+35G. Operational Requirements for P2P Services. - (1) P2P Service Provider shall have a Board’s 
+approved policy in place for, -  
+ 
+(a) setting out the eligibility criteria and limits for Participants; 
+(b) setting out the rules for matching Lenders with borrowers in an equitable and non -
+discriminatory manner;  
+(c) determining the pricing of services provided by it; 
+(d) managing defaults and ensuring recovery of outstanding amounts to pay off the Lenders; 
+(e) comprehensive risk management including credit, operational and market risks and 
+determining risk tolerance limits; 
+(f) policy on privacy and confidentiality of information pertaining to the Participant; and 
+(g) outsourcing policy. 
+ 
+(2) P2P Service Provider shall ensure that promotional materials do not contain untrue statements or 
+omit to state facts that are necessary in order to prevent the statements from being misleading, 
+false or deceptive. 
+ 
+35H. Submission to and usage of data of Credit Information Bureau. - (1) A P2P Service Provider shall 
+comply with all requirements specified in these regulations relating to coordination, facilitation, usage 
+of Credit Information Bureau (CIB) reports, submission and updating of data. 
+ 
+(2) P2P Service Provider shall, -  
+a) take all such steps which may be necessary to ensure that the credit information furnished by 
+P2P Lending Platform is up to date, accurate and complete; and 
+b) include necessary consents in the agreement(s) with the participants for providing the required 
+credit information. 
+ 
+35I. Transparency and Disclosure Requirements. - (1) A P2P Service Provider shall disclose at its 
+Platform, at minimum, the following, - 
+a) to the lender:  
+
+
+--- page 6 ---
+(i) details about the borrower(s) including income, locality, required amount, profit / 
+interest rate sought and credit score as calculated by the P2P Service Provider but 
+excluding personal identity and contact details; and  
+(ii) details about all the terms and conditions of the loan, including likely return, fees 
+and taxes;   
+b) to the borrower: details about the lender(s) including proposed amount, profit / 
+interest rate offered but excluding personal identity and contact details.  
+ 
+(2) A P2P Service Provider shall publicly disclose and monthly update on its Platform the following, - 
+  
+i. overview of credit assessment/score methodology and factors considered;  
+ii. disclosures on usage/protection of data;  
+iii. grievance redressal mechanism along with contact details including names, phone 
+numbers, emails etc. of person(s) appointed for handling complaints; 
+iv. investor education materials and appropriate risk disclosure;  
+v. information on rights and obligations of Participants relating to participation in P2P 
+Lending; 
+vi. fees, charges, penalty and any other expenses that it may cha rge to/ impose on 
+Participants; 
+vii. portfolio performance including share of non -performing assets on a monthly basis 
+and segregation by age and gender;  
+viii. recovery process, actual default rates, profit sharing ratio with P2P Service Provider 
+and Lenders and actions to be taken in case of default; 
+ix. its broad business models; and  
+x. Board’s approved policies that are likely to affect Participants. 
+ 
+35J. Managing conflict of interest. - (1) A P2P Service Provider shall establish a framework which sets 
+out policies and  procedures to effectively and efficiently manage conflicts of interest including 
+potential conflicts of interest, which may arise in the course of providing P2P Services. 
+(2) The P2P Service Provider shall be prohibited from providing any funding to issuers o f securities or 
+investing in any avenue, on or through its platform, except to the extent of its specified minimum 
+loan contribution. 
+(3) Notwithstanding the clause 1 and 2 above, employees of the P2P operator are permitted to invest 
+through P2P Lending Platfo rm subject to compliance with processes and procedures to manage 
+conflict of interest that are put in place by the P2P Service Provider with approval of the Board. 
+(4) Save as otherwise provided in regulation 35D, a P2P Service Provider shall not provide P2P Services 
+to any party against which it has any credit exposure or commitment as a Lending NBFC. 
+ 
+35K. Mechanism for Management and Transfer of Funds. - (1) Fund transfer between the participants 
+on the P2P Lending Platform shall be through escrow accounts mechanisms as per specified terms and 
+conditions and the accounts shall be operated by a trustee that is at least an “A” rated bank. At least 
+two escrow accounts, one for funds received from lenders and disbursal, and the other for collections 
+from borrowe rs, shall be maintained. All fund transfers shall be through bank accounts and cash 
+transactions shall be prohibited. 
+(2) Funds cannot  be withdrawn through cheque or any other means/instrument from the escrow 
+accounts, other than in relation to and for the purpose of business of P2P Lending.  
+(3) P2P Service Provider shall have appropriate system in place to ensure that funds of each Participant 
+are clearly identifiable and are only used for the intended purpose. 
+ 
+
+
+--- page 7 ---
+35L. Other Mechanisms and Systems to be Deployed .- (1) P2P Service Provider shall devise and 
+implement comprehensive framework(s) and mechanism(s) comprising effective systems, procedures 
+and controls, duly approved by its Board for, - 
+ 
+(i) recovery of loans through adequately trained staff or third parties while avoiding harassment, 
+use of coercion etc.;  
+(ii) grievance redressal of the Participants within the timeline set for the purpose; 
+(iii) ensuring adequacy of information systems, technology platform, protection of Use’s data and 
+lawful Data Processing in line with permissions obtained from Users; and 
+(iv) business continuity and back up/recovery for safekeeping of information and documents and 
+servicing of loans for full tenure in case of closure of platform or its dysfunctionality due to 
+malicious attacks or any other reasons. 
+ 
+(2) P2P Service Provider shall ensure that its P2P Platform, systems, controls and procedures are 
+audited and tested independently once in every two years, by an audit firm having expertise in the 
+area. The audit report shall be provided as and when required by the Commission. 
+ 
+35M. Reporting Requirements. - P2P Service Provider  shall submit such information including 
+periodical statements, reports, statistics and data in such forms, time and manner as may be required 
+by the Commission from time to time.” 
+ 
+4. After Schedule XV, the following Schedules shall be added, namely; 
+ 
+“Schedule XVI 
+Application for Permission to provide P2P Services  
+(Clause 35B of these Regulations) 
+1. Name of Applicant: ________________________________________________________ 
+2. Registration Number:_______________________________________________________ 
+3. Date of Incorporation (in case of legal person)___________________________________ 
+4. Lending NBFC License Number:______________________________________________ 
+5. Last License Renewal Date:__________________________________________________ 
+6. Details of Business:  
+a Head Office Address______________________________________________________ 
+b Registered Office Address _________________________________________________ 
+7. Person authorized to make the application: 
+a Name: __________________________________ 
+b Address: ________________________________ 
+c CNIC: __________________________________ 
+d Phone: __________________________________ 
+e Email: __________________________________ 
+8. Names, addresses etc. of Directors: [add list] 
+ 
+9. Bank Details: 
+a Bank Name  
+b Branch  
+c Bank Account No.  
+d Type of Bank Account  
+
+
+--- page 8 ---
+10. Any other information
+ _____________________________________________________________ 
+11. Covering letter attached? Yes or No (circle correct answer) 
+12. We have attached all information/documents as required under clause 35A and 35B of these 
+regulations. 
+ 
+__________________ 
+For & on behalf of 
+[Name], [designation], [contact number] and [official seal] 
+Certificate: 
+ 
+ 
+I [add name] and [designation] the applicant certify that the contents of the above application are 
+true and to the best of my knowledge and belief.” 
+ 
+********************************************************************************** 
+ 
+ 
+“Annexure to Schedule XVI 
+ 
+Information to be provided by P2P Service Provider with the Application 
+ 
+1. The applicant shall submit the following information and documents along with its application: 
+a. latest audited annual financial statements of the Lending NBFC; 
+b. certified copy of the corporate authorizations allowing the submission of the application; 
+c. names, CNICs, experiences and details of the personnel responsible for management and 
+operations of P2P Lending Platform;   
+d. a statement including the procedures with respect to identification of Users; 
+e. a statement for the purpose and scope of services, technology, management, or 
+operations to be outsourced; 
+f. original challan of non-refundable processing fee of Rs.250,000/-; and 
+2. The applicant shall prepare a detailed statement in a manner acceptable to the Commission which 
+shall contain at least details of the following; 
+ 
+i. detail of infrastructure for the provision of services; 
+ii. transaction structure including spreads;  
+iii. details about the services; 
+iv. hardware and software used for the purposes of providing the services; 
+v. Mechanism for Customer Due Diligence and compliance with KYC Policy; 
+vi. terms of use for Users; 
+vii. policy for recovery; 
+viii. details about data protection, storage etc. 
+ix. details about the security policy, security protocols and testing results; and 
+x. financial projections for 3 years with requisite assumptions; 
+(Signature of the concerned official)  
+(Name, Designation and Contact Details)” 
+ 
+
+
+--- page 9 ---
+“Schedule XVII 
+PERMISSION TO WORK AS P2P SERVICE PROVIDER 
+(Clause 35C of the Regulations) 
+SECURITIES AND EXCHANGE COMMISSION OF PAKISTAN 
+ 
+Islamabad, Dated, __________  
+Registration No. ___________  
+ 
+PERMISSION TO CARRY OUT OR UNDERTAKE PEER TO PEER SERVICES AS LENDING NON -
+BANKING FINANCE COMPANY  
+ 
+The Securities and Exchange Commission of Pakistan having considered the application for 
+grant of Permission under Regulations 35B of the Non -Banking Financ e Companies and 
+Notified Entities  Regulations, 2008, by* _______________________________ and being 
+satisfied that it is eligible for the permission, hereby grants, in exercise of the powers conferred 
+by 35C of the Non -Banking Finance Companies and Notifie d Entities  Regulations, 2008, 
+permission to work as P2P Service Provider to *__________________________subject to the 
+conditions stated herein below or as may be prescribed or imposed hereafter.  
+ 
+Signature of the Officer  
+(Official Seal and Stamp) 
+ 
+*Name of the Company,” 
+__________________________________________________________________________________ 
+[File No. SCD/NBFC/NBFCR/2022]

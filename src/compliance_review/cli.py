@@ -1,8 +1,10 @@
 import json
+import os
 from pathlib import Path
 from typing import Annotated, Optional
 
 import typer
+from dotenv import load_dotenv
 from pydantic import TypeAdapter, ValidationError
 
 from compliance_review import __version__
@@ -31,6 +33,14 @@ from compliance_review.review.models import ReviewManifest
 from compliance_review.review.redaction import redact_sensitive_text
 from compliance_review.setup.models import WorkspaceMaterial, WorkspaceRepository
 from compliance_review.setup.service import ReviewSetupError, ReviewSetupService
+
+load_dotenv()
+
+DEFAULT_MODEL = os.environ.get("COMPLIANCE_REVIEW_MODEL", "gpt-4o-mini")
+DEFAULT_BASE_URL = os.environ.get(
+    "COMPLIANCE_REVIEW_BASE_URL",
+    "https://api.openai.com/v1/chat/completions",
+)
 
 app = typer.Typer(
     name="compliance-review",
@@ -288,11 +298,11 @@ def compile_rules(
             help="Source family mapping as path=country_regulator/google_play/other",
         ),
     ] = None,
-    model: Annotated[str, typer.Option(help="OpenAI-compatible model name")] = "gpt-4o-mini",
+    model: Annotated[str, typer.Option(help="OpenAI-compatible model name")] = DEFAULT_MODEL,
     base_url: Annotated[
         str,
         typer.Option(help="OpenAI-compatible chat completions endpoint"),
-    ] = "https://api.openai.com/v1/chat/completions",
+    ] = DEFAULT_BASE_URL,
 ) -> None:
     """Compile source materials into obligations and validated controls."""
     from compliance_review.compilation.service import (
@@ -470,10 +480,10 @@ def build_manifest(
 def run_review(
     manifest: Annotated[Path, typer.Option(help="Review Manifest JSON")],
     output_root: Annotated[Path, typer.Option(help="Per-work-item output directory")],
-    model: Annotated[str, typer.Option(help="OpenAI-compatible model name")],
+    model: Annotated[str, typer.Option(help="OpenAI-compatible model name")] = DEFAULT_MODEL,
     base_url: Annotated[
         str, typer.Option(help="OpenAI-compatible chat completions URL")
-    ] = "https://api.openai.com/v1/chat/completions",
+    ] = DEFAULT_BASE_URL,
     max_concurrency: Annotated[int, typer.Option(help="Maximum parallel workers")] = 3,
     checkpoint_db: Annotated[
         Optional[Path], typer.Option(help="Optional SQLite checkpoint database")
@@ -530,10 +540,10 @@ def run_review(
 @app.command("full-review")
 def full_review(
     workspace: Annotated[Path, typer.Argument(help="Workspace root")],
-    model: Annotated[str, typer.Option(help="OpenAI-compatible model name")],
+    model: Annotated[str, typer.Option(help="OpenAI-compatible model name")] = DEFAULT_MODEL,
     base_url: Annotated[
         str, typer.Option(help="OpenAI-compatible chat completions URL")
-    ] = "https://api.openai.com/v1/chat/completions",
+    ] = DEFAULT_BASE_URL,
     run_id: Annotated[Optional[str], typer.Option(help="Stable run identifier")] = None,
     max_concurrency: Annotated[int, typer.Option(help="Maximum parallel Reviewer work items")] = 3,
 ) -> None:
@@ -587,10 +597,10 @@ def full_review(
 def diff_review(
     workspace: Annotated[Path, typer.Argument(help="Workspace root")],
     baseline_run_id: Annotated[str, typer.Option(help="Completed baseline run ID")],
-    model: Annotated[str, typer.Option(help="OpenAI-compatible model name")],
+    model: Annotated[str, typer.Option(help="OpenAI-compatible model name")] = DEFAULT_MODEL,
     base_url: Annotated[
         str, typer.Option(help="OpenAI-compatible chat completions URL")
-    ] = "https://api.openai.com/v1/chat/completions",
+    ] = DEFAULT_BASE_URL,
     run_id: Annotated[Optional[str], typer.Option(help="Stable run identifier")] = None,
     max_concurrency: Annotated[int, typer.Option(help="Maximum parallel Reviewer work items")] = 3,
 ) -> None:

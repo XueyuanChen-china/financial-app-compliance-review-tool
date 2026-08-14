@@ -1,4 +1,5 @@
 .DS_Store
+**/.DS_Store
 .env
 .venv/
 __pycache__/
@@ -13,3 +14,4 @@ coverage.xml
 .coverage
 htmlcov/
 runs/
+test_outputs/

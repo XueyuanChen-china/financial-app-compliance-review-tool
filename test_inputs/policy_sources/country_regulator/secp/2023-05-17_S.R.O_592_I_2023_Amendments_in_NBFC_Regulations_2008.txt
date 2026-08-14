@@ -1,0 +1,2219 @@
+--- page 1 ---
+GOVERNMENT OF PAKISTAN 
+Securities and Exchange Commission of Pakistan 
+-.-.- 
+                                     Islamabad, 17th May, 2023 
+ 
+NOTIFICATION 
+ 
+S.R.O. 592(I)/2023.- In exercise of the powers conferred by sub-section (2) of section 282B of the 
+Companies Ordinance, 1984 (XLVII of 1984), the Securities and Exchange Commission of Pakistan hereby 
+makes the following amendments in the Non -Banking Finance Companies and Notified Entities 
+Regulations, 2008, the same having been previously published in the off icial Gazette vide S.R.O. 423 
+(I)/2023 dated March 31, 2023, namely:-  
+ 
+AMENDMENTS 
+In the aforesaid Regulations, - 
+ 
+(1) in the preamble, after the words “housing finance services” the words “discounting services, 
+micro financing” shall be inserted and thereaft er, after the expression “NBFCs” occurring at 
+the end, the expressions “and Pension Fund Managers and pension fund scheme business 
+managed by them” shall be added; 
+(2) in regulation 2, in sub-regulation (1),- 
+(i) for clause (vi), the following shall be substituted, namely: - 
+“(vi) “Closed End Fund” means a Closed End Scheme which is a CIS having a specified 
+period of maturity which does not continuously offer its certificates for sale to investors 
+and entitles the holder of certificates, to receive, proportionate s hare of the net assets of 
+the closed end scheme;”;  
+(ii) clause (vii) shall be omitted; 
+(iii) after clause (xiaa), the following new clauses shall be added, namely:- 
+“(xiaaa) “Digital Fund Management NBFC” means services provided by fund 
+management NBFC through digital technology based or internet-based channels, apps or 
+tools, with limited or no human interaction; 
+(xiaaab) “Digital Lending” means providing finance through digital, technology-based or 
+internet-based channels, apps or tools, with limited or no human in teraction for loan 
+application, approval, disbursement and repayment of loan; 
+(xiaaac) “Digital Trustee” means a trustee that is providing services through digital 
+
+
+--- page 2 ---
+technology based or internet-based channels, apps or tools with limited or no human 
+interaction”; 
+(iv) clauses (xiii) and (xiv) shall be omitted; 
+(v) clause (xvi) shall be omitted; 
+(vi) clause (xxiii) shall be omitted; 
+(vii) in clause (xxvii), for the expression “ means Margin Financing as defined in sub -rule (k) 
+of rule 2 of” the expression “shall have the same meaning as assigned to it under the” shall 
+be substituted;  
+(viii) in clause (xxxiva), for the expression “600,000/ -”, the expression “1,200,000/-” shall be 
+substituted; and 
+(ix) in clause (xxxv), for the expression “ with ‘perfected lien’” the expressions “directly, or 
+held through another NBFC or a Scheduled Bank on behalf of the NBFC, with ‘perfected 
+lien/charge’” shall be substituted; 
+(3) in regulation 3,- 
+(i) in clause (v), the word “and” at the end shall be omitted; 
+(ii) in clause (vi), at the end, the word “and” shall be inserted; and 
+(iii) after clause (vi), amended as aforesaid, the following new clause shall be added, namely:- 
+“(vii) Investment Finance Services restricted to Micro financing.”; 
+(4) in regulation 4, after the expression “4.” occurring at the beginning, the expression “Minimum 
+Equity Requirement.-” shall be inserted and thereafter, after the word “undertake” the word 
+“any” shall be inserted;  
+ 
+(5) regulation 8 shall be omitted; 
+ 
+(6) in regulation 10,- 
+ 
+(i) for clause (aa) the following shall be substituted, namely: - 
+ 
+“(aa)  within thirty days from the date of election of directors in a general meeting, or the 
+office of the chief executive falling vacant, as the case may be, the NBFC shall submit an 
+application complete in all respects, for obtaining approval for appointment or 
+reappointment of chief executive; 
+(ii) after clause (aa), amended as aforesaid, the following new clause shall be added, namely: 
+- 
+“(ab)  in case the Board of Directors of an NBFC decides to remove its chief executive 
+before the expiration of his term of office or the c hief executive decides to tender his 
+
+
+--- page 3 ---
+resignation before the completion of his term of office or replacement of chief executive 
+on completion of his term, the NBFC shall immediately inform the Commission along 
+with reasons for the same;”; 
+ 
+(iii) in clause (b), th e words “ or a chief executive” shall be omitted and thereafter, for the 
+words “ten days” the words “ninety days” shall be substituted; 
+(iv) clause (ba) shall be omitted; and 
+(v) in clause (d), after the expression “14 days of the” the words “ issue of the letter” shall be 
+replaced with the words “communication of such deficiencies or short comings” ; 
+(7) in regulation 14, in sub regulation (4), under clause (e), the second proviso shall be omitted; 
+(8) in regulation 15A, in sub-regulation (3), the provisos shall be omitted; 
+(9) in regulation 17,- 
+(i)  in sub -regulation (4), in clause (c), after the words “scheduled banks” the words “or 
+NBFCs engaged exclusively in the business of issuance of guarantees,” shall be added; 
+and  
+(ii) for sub-regulation (5), the following shall be substituted, namely:- 
+“(5)  This regulation shall not apply to an NBFC not accessing Public Funds in Pakistan 
+provided that such NBFC shall determine its internal prudential limits, restrictions and 
+requirements for exposure as per the credit and risk management poli cies duly approved 
+by its Board.   
+Explanation:- Public Funds include public deposits, inter-corporate deposits, certificate of 
+deposits and all funds received whether directly or indirectly from outside sources such 
+as funds raised by issue of shares, deb entures, commercial papers, etc. that are listed or 
+publicly traded. Further, indirect receipts of public funds mean funds received not directly 
+but through associates and group entities which have access to public funds; 
+(10) in regulation 18A,- 
+(i)  for the words “The aggregate unsecured Finance shall not exceed equity of the NBFC” 
+the words “ In case of deposit taking NBFC, the aggregate unsecured Finance shall not 
+exceed fifty percent of its equity” shall be substituted, and thereafter the first proviso shall 
+be omitted; and 
+(ii) for the 2nd proviso, the following shall be substituted, namely: -  
+“Provided that this Regulation shall not be applicable in case of Non-Bank Micro Finance 
+Company: 
+Provided further that all NBFCs shall determine their internal prudential lim its, 
+
+
+--- page 4 ---
+restrictions and requirements for unsecured exposure as per the credit and risk 
+management policies duly approved by their Board, and shall submit reports to the 
+Commission regarding such policies and unsecured finance provided thereunder, on such 
+format as the Commission may notify through circular.”; 
+(11) in regulation 19,- 
+(i) for clause (b), the following shall be substituted, namely: - 
+“(b) provide Finance against Unlisted Debt Security, excluding those guaranteed by an 
+NBFC engaged exclusively in the business of issuance of guarantees and Unlisted Equity 
+Security;” ; and 
+(ii) in clause (c), the words “or group companies of that company” shall be omitted; 
+(12) in regulation 20, the words “provided that such NBFC carries out Consumer Finance business” 
+shall be omitted; 
+(13) in regulation 21,- 
+(i) in sub-regulation (2), for clause (b), the following shall be substituted, namely: - 
+“(b) comply with the requirements of State Bank of Pakistan regarding membership of 
+Private Credit Bureaus under Credit Bureaus Act, 2015 (XI of 2015)  within the time 
+period stipulated by SBP and shall ensure regular/continuous reporting to all the credit 
+bureaus operating in Pakistan: 
+ Provided that NBFCs undertaking digital lending shall initiate data sharing with 
+respective Credit Bureaus on real time basis.”;  
+(ii) for sub-regulation (3), the following shall be substituted, namely:- 
+“(3) If the credit report of Credit Information Bureau indicates overdue, the NBFC may 
+take exposure on such Borrower keeping in view its risk management policies and credit 
+approval criteria; and shall properly record reasons and justifications in the credit approval 
+form for all such exception.”;  
+(iii) in sub-regulation (5),- 
+(i) in clause (c), in sub-clause (ii), after the words “public company” at the end, the words 
+“or has paid up capital of less than Rs. 3 million” shall be inserted; and 
+(ii) in clause (d), in sub-clause (ii), after the words “public company” at the end, the words 
+“or has paid up capital of less than Rs. 3 million” shall be inserted; 
+(14) in regulation 22, for sub-regulation (1) and (2), the following shall be substituted, namely: - 
+“(1) Save as otherwise provided in Regulation 22(2), an NBFC shall apply such margin 
+requirements against Finance provided as approved by their board of directors considering the 
+risk profile of the borrower(s) in order to adequately secure their interests. 
+
+
+--- page 5 ---
+ 
+(2)  A deposit taking NBFC shall comply with the following margin requirements, while Non-
+deposit taking NBFCs shall determine their own margin requirements on facilities provided by 
+them to their borrower taking into account the risk profile of the borrower(s) in order to 
+adequately secure their interests.”; 
+(15) regulation 23 shall be omitted; 
+(16) for regulation 24, the following shall be substituted, namely: - 
+“24. Financial indicators of the Bor rowers.- At the time of allowing fresh exposure/ 
+enhancement/renewal, the NBFC shall ensure that the current assets to current liabilities ratio 
+of the borrower and linkage between borrower’s equity and its total financing from all financial 
+institutions is not lower than such benchmarks as may be set under the credit policy of the 
+NBFC approved by its Board. NBFCs shall prescribe the minimum current ratio under the 
+credit policy keeping in view the quality of the current assets, nature of the current liabi lities, 
+nature of industry to which borrower belongs to, average size of current ratio of that industry, 
+appropriateness of risk mitigates available to the NBFCs etc. It is expected that NBFCs credit 
+policy duly approved by the Board of Directors, shall em phasize higher credit standards and 
+provide full guidance to the management about the current ratio requirements for various 
+categories of clients and corresponding risk mitigates etc. acceptable to the NBFCs.”; 
+ 
+(17) in regulation 25, for sub-regulation (1), the following shall be substituted, namely: - 
+“(1) A Lending NBFC shall observe the criteria for classification of its assets and provisioning 
+as provided in Schedule X: 
+ 
+ Provided that in case of loans of up to Rs. 100,000 that are not secured by any Tangi ble 
+Security and having a duration of up to six months, provided by lending NBFCs engaged in 
+Investment Finance Services, the classification criteria specified for Micro Finance portfolio in 
+Schedule X shall apply . Notwithstanding anything contained in thi s sub -regulation, after 
+adoption and implementation of IFRS 9, the requirements of IFRS 9 shall be applicable.”; 
+ 
+(18)  in regulation 28,- 
+(i) in clause (a) before the word “ Leasing Company ” the words “ Investment Finance 
+Company,” shall be inserted and thereafter, after the words “assets in” the word “finance” 
+and the expression “,” shall be inserted; 
+(ii) clause (b) shall be omitted; 
+
+
+--- page 6 ---
+(iii) after clause (c), the following new clause shall be added, namely: - 
+“(ca) Notwithstanding anything contained in clauses “a” and “c”, a ne wly licensed lending 
+NBFC shall ensure compliance with above applicable investment limits within one year from 
+the date of grant of license or within such extended time as may be allowed by Commission 
+at the time of grant of license;” 
+(iv) after clause (d), the following new clause shall be added, namely: - 
+“(da) Lending NBFCs shall comply with such requirements as may be specified by the 
+Commission through circular, for all or a specific class of Lending NBFCs, including but not 
+limited to the following, - 
+(i)  Digital Lending; 
+(ii) Fair treatment of consumers/borrowers including devising appropriate pricing 
+policies and its disclosures; 
+(iii) adequate and accurate disclosures including but not limited to the offered products, 
+services and applicable terms and c onditions, to borrowers, customers and other 
+stakeholders; 
+(iv) minimum disclosure requirements for digital applications, websites and any other 
+platform used by the NBFCs for the licensed activity;  
+(v) Information technology, systems and information security measures: 
+(vi) Personal data privacy and security; 
+(vii) Usage of cloud storage and cloud operating system; and 
+(viii) Limitations on collection of data.”;  
+ 
+(19) in regulation 31, after the  expression “Rs. 500 million or more,” the expression “as per the 
+latest annual audited financial statements,” shall be inserted; 
+(20) in regulation 34, for the words “A Non -Bank Micro Finance Company shall comply with the 
+requirements of the Code of Corporate Governance, as specified in Schedule XIIA.” the words 
+“All lending  NBFCs including Non -Bank Micro Finance Company shall comply with the 
+requirements of the Code of Corporate Governance, as specified in Schedule XIIA.” shall be 
+substituted; 
+(21) in regulation 36, for the full stop at the end , a colon shall be substituted and t hereafter, the 
+following proviso shall be added, namely: - 
+“Provided that Digital Fund Management NBFCs shall have certain exemptions and shall 
+comply with additional requirements as may be specified by the Commission through circular, 
+for newly formed Digital Asset Management Services/ Digital Investment Advisors or existing 
+
+
+--- page 7 ---
+fund management NBFC that intends to convert its status to a Digital Fund Management 
+NBFC.”; 
+(22) in regulation 37,- 
+(i) in sub-regulation (1), the proviso shall be omitted; 
+(ii) in sub-regulation (4),- 
+(i) in clause (a), after the word “hold” the word “any” shall be inserted and thereafter, after 
+the words “employee” the words “, director or otherwise” shall be inserted; and 
+(ii) clause (b) shall be omitted; 
+(iii) sub-regulation (5) shall be omitted; 
+(iv) in sub-regulation (7)- 
+(i) in clause (i), after the words “or” the words “futures exchanges or” shall be inserted;  
+(ii) in clause (j), for the expression “regulation 55” the expression with the words 
+“Schedule XIX” shall be substituted; 
+ 
+(ii)  after clause (n), the following new clause shall be inserted, namely: - 
+“(o) hold real estate, except for its own use or rental purposes where real estate was 
+obtained as a result of legal settlements or recourse subject to approval by the 
+Commission.”; 
+(23) in regulation 38,- 
+(i) in sub-regulation (2),- 
+(i)  the heading “Other obligations.-” shall be inserted in the beginning; and 
+(ii) after clause (ab), the following new clause shall be inserted, namely:- 
+“(ac) send a time-stamped acknowledgement for all transactions and activities in an investor’s 
+accounts with AMC to each unit or certificate holder on the registered postal address or 
+through any electronic means including registered email and SMS provided by the unit or 
+certificate holder within 48 hours of such transaction and activity. In case of acknowledgement 
+through electronic means including email or SMS, a real -time intimation be sent for each 
+transaction and activity: 
+ 
+Provided that an Asset Management Company may send electronic transaction/ activity 
+acknowledgement, in lieu of a physi cal statement, through electronic means including the 
+registered email address of the unit or certificate holder only after obtaining consent in writing 
+from the unit or certificate holder for sending electronic acknowledgement.”; 
+(iii) in clause (c),- 
+(A) for the words “be responsible for maintaining proper accounts and records 
+of the Open End Scheme or Closed End Scheme which will enable a 
+complete and accurate view to be formed of, -” the words “maintain proper 
+accounts and records of the CIS which will enabl e a complete and accurate 
+view to be formed of its, -” shall be substituted; and thereafter for sub-clause 
+
+
+--- page 8 ---
+(i) the following shall be substituted, namely:- 
+   “(i) the assets and liabilities;”; 
+(B) for sub-clause (ii), the following shall be substituted, namely: - 
+“(ii) all transactions, income and expenditure;” and 
+(C) sub-clause (iii) shall be omitted; 
+(iv) after clause (c), amended as aforesaid, the following new clause shall be added, namely: 
+- 
+ “(ca) maintain proper accounts and records to accurately record an d demonstrate its 
+business activities, financial affairs, client transactions and compliance with applicable 
+legislation for a period of ten years;”; 
+(v) for clause (e), the following shall be substituted, namely: - 
+“(e) within three months of closing of t he accounting period of the CIS transmit or 
+make available on its website to the unit or certificate holders, and submit to the trustee, 
+the Commission and stock exchanges, on which the units or certificates of the scheme 
+are listed, the annual report as p er the requirements set out in Schedule V. The Asset 
+Management Company shall make the printed copy of the said accounts available to 
+any certificate or unit holder, free of cost, as and when requested;”; 
+(vi) for clause (m) the following shall be substituted, namely:- 
+ “(m) establish and maintain comprehensive and independent risk management 
+functions, systems and controls to enable it to identify, assess, mitigate, control and 
+monitor risks in best interest of unit holders of the CIS under its management;” 
+(vii) for clause (o) the following shall be substituted, namely:- 
+ “(o) formulate a comprehensive risk management policy approved by its Board of 
+Directors for identifying, measuring and managing the risks of the investments, 
+including the sources, nature and degree of such risks.”; 
+(viii) clause (p) shall be omitted; 
+(ix)  in clause (q), for the words “contingency plan” the words “comprehensive contingency 
+plan/ policy approved by its Board of Directors” shall be substituted; 
+(x) for clause (r) and (s), the following shall be substituted, namely:- 
+“(r) maintain a website containing minimum information as provided in Schedule-XVIII; 
+ 
+(s) send an investment account statement to each unit or certificate holder on the 
+registered postal address or through any electronic means including registered email 
+provided by the unit or certificate holder on semi-annual basis within fifteen (15) days 
+of close of such semi-annual period: 
+
+
+--- page 9 ---
+Provided that an Asset Management Company may send electronic account 
+statement, in li eu of a physical statement, through any electronic means including 
+registered email to the unit or certificate holder, only after obtaining consent in writing 
+through physical or electronic means from the unit or certificate holder for sending 
+electronic account statement: 
+ 
+Provided further that an Asset Management Company shall be required to send a 
+semi-annual account statement to every unit or certificate holder, even if the respective 
+unit/certificate holder has chosen the hold mail option: 
+ 
+ Provided also that an Asset Management Company shall provide the account 
+statement to the investors within seven working days from the receipt of such request;”;  
+ 
+(xi) after clause (s), substituted as aforesaid, the following new clause shall be inserted, 
+namely: - 
+ 
+“(t) within seven working days upon receipt of written request from the customer 
+unitholder/certificate holder, and completion of all necessary formalities, shall close his 
+account. After account closure, the customer unitholder/certificate holder shall be 
+immediately informed of account closure in writing or through email, whichever is 
+applicable:  
+ 
+Provided that after account closure, details of such unitholder/certificate holder shall be 
+removed from the Unit Holder Register.”; 
+ 
+ 
+(24) for regulation 38A the following shall be substituted, namely: - 
+“38A. Responsibilities towards Corporate Governance and Proxy Voting. - An Asset 
+Management Company shall formulate a Corporate Governance and Proxy Voting policy 
+approved by its Board of Directors which covers the  minimum aspects and areas as provided 
+under Schedule XXI.”; 
+ 
+(25) in regulation 38B,- 
+(i) existing regulation shall be renumbered as sub-regulation (1); 
+(ii) for the sub-regulation (1) renumber as aforesaid, the following shall be substituted, namely:- 
+“(1) An Asset Management Company shall put in place, appropriate policies and procedures, 
+approved by its board of directors, which govern trading or investment in securities, 
+investment through investment advisory portfolios under management of the AMC by: 
+(i) AMC employees, their spouse and dependent children, 
+(ii) directors and their spouse(s) and dependent children if such directors are privy to 
+investment committee consultations or decision, and such policies and procedures 
+shall, at the minimum, cover requirements/principles as specified in Schedule 
+
+
+--- page 10 ---
+XXIII and the AMC may take enforcement action in accordance with the relevant 
+policy duly approved by its board.”; and 
+(iii) after sub-regulation (1), substituted as aforesaid, the following new sub -regulation shall be 
+inserted, namely: - 
+“(2) To the extent that a violation pertaining to trading restriction as required under sub -
+regulation (1) occurs, all such cases and enforcement actions taken, by the AMC shall be 
+reported to the Commission within 30 days of AMC becoming aware of such v iolation and 
+to the Board of Directors of AMC in forthcoming board meeting.”; 
+(26) for the heading “ Collective Investment Schemes Open End Scheme and Closed End 
+Schemes” the heading “Trustee of Collective Investment Schemes” shall be substituted;  
+(27) in regulation 39, for the expression “ Trust Act 1882(II of 1882)” the expression “ federal or 
+provincial Trust Act” shall be substituted; 
+(28) in regulation 40, after clause (f), the following explanation shall be added, namely: - 
+“Explanation:- for the purposes of these regulations a trustee may include a “Digital Trustee”.”; 
+(29) in regulation 41, in clause (h), for the semi colon a colon shall be substituted and thereafter the 
+following proviso shall be inserted, namely:-  
+“Provided that the trustee's report in the annual accou nts shall include the trustee's opinion 
+regarding the calculation of the management fee, CIS Monthly Fee Payable to the Commission 
+and other expenses in accordance with the applicable regulatory framework.” 
+(30) in regulation 40B.- 
+(i) in sub-regulation (1),- 
+(i) clause (c) shall be omitted; 
+(ii)  for clause (d) the following shall be substituted, namely: - 
+“(d) conviction or adverse finding by relevant authorities against director(s) or key 
+executives of the applicant in criminal or regulatory offences;”; 
+(iii)  clause (e) shall be omitted; and 
+(ii) sub-regulation (3) shall be omitted; 
+(31) in regulation 40C,- 
+(i) in sub -regulation ( 2), for the expression “Form IV” the expression “Form III” shall be 
+substituted; 
+(ii) sub-regulation (3) shall be omitted; 
+(32) in regulation 41, in clause ( s), for the full stop at the end a colon shall be substituted and 
+thereafter, the following new clauses shall be inserted, namely:- 
+“(t) ensure that its Board of Directors approve and oversee all key policies including those 
+relating to risk management, internal  controls, internal audits and compliance and conflict of 
+
+
+--- page 11 ---
+interest; 
+(u) ensure that its external auditor is from category A of the panel of auditors circulated and 
+maintained by the Commission; 
+(v) ensure confidentiality of client’s information and neither  profit or seek to profit from 
+confidential information, nor provide such information to anyone with the objective of making 
+profit for itself or for its clients; 
+(w) where the trustee company is engaged in carrying out any activity beside that of acting a s 
+trustee, it shall ensure that the activities relating to the trustee business are separate and 
+segregated from all other activities; and 
+(x) ensure compliance with information protection, cybersecurity related provisions as may be 
+specified by the Commission.”  
+(33) in regulation 44,- 
+(i) in the heading, for the words “Open End Scheme or Closed End Scheme” the words “CIS” 
+shall be substituted; 
+(ii) sub-regulation (2) shall be omitted; 
+(iii) in sub -regulation (3), after the expression “Commission.” the words “ Provided that th e 
+Commission may specify a standard format of Trust Deed.” shall be inserted; 
+(iv) for sub-regulation (4), the following shall be substituted, namely:- 
+“(4) After the principle approval of the Commission, if required, the Asset Management 
+Company shall execute and submit the Trust Deed for registration in accordance with the 
+provisions of respective federal or provincial Trust Act and thereafter an application for 
+registration of a CIS containing the information as set out in Schedule VI shall be submitted 
+to the Commission along with evidence of fee as specified by the Commission in Schedule 
+II  in the designated bank branch in favor of the Commission.”; and 
+(v) in sub-regulation (7), after the words “back end load” the words “or any other material change 
+affecting existing unitholders,” shall be inserted; 
+(vi) in sub-regulation (8), for the full stop at the end, a colon shall be substituted and thereafter 
+following proviso shall be inserted:-  
+“Provided that an Asset Management Company may provide plans under a Collectiv e 
+Investment Scheme (CIS) on such terms and conditions as specified through a circular.”; 
+(34) in regulation 45, in sub -regulation (1), after clause ( c), the following new clause shall be 
+inserted, namely:- 
+“(d) the Asset Management Company does not wish to maintain management rights of a CIS, 
+subject to issuance of three (3) months’ notice to unit holders about such intention, with prior 
+approval of the trustee and the Commission.”; 
+
+
+--- page 12 ---
+(35) in regulation 45A, in sub -regulation (2), for the full stop a colon shall be su bstituted and 
+thereafter the following new proviso shall be added, namely:- 
+“Provided that the trustee shall also send such notice at the registered postal address and/ or 
+email such notice at the registered email ID of all unit holders including the Non -Resident 
+investors.”; 
+(36) regulations 46, 47, 48, 49, 50, 51, 52, and 53 along with chapter headings shall be omitted; 
+(37) before regulation 54, the heading “Collective Investment Schemes” shall be omitted; 
+(38) in regulation 54,- 
+(i) sub-regulation (2) shall be omitted; 
+(ii) for sub-regulation (3a) the following shall be substituted, namely:- 
+“(3a) The minimum net assets of an Open End Scheme shall be one hundred million rupees 
+at all times during the life of the scheme.”; 
+(39) in  regulation 55,- 
+(i) before regulation 55, the heading “I nvestment Policy of Collective Investment Schemes” 
+shall be inserted; 
+(ii) for sub-regulation (1) the following shall be substituted, namely:- 
+“(1) An Asset Management Company shall clearly state the objectives and the investment 
+policy of a CIS.”; 
+(iii) in sub-regulation (2), for the words “Collective Investment Schemes” the expression “CIS” 
+shall be substituted; 
+(iv) for sub-regulation (3), the following shall be substituted, namely:- 
+“(3) A CIS shall comply with the investment policy as provided in Schedule-XIX.” 
+(v) Sub-regulations (4) to (16) shall be omitted; 
+(40) Before regulation 56, the heading “Pricing, Subscriptions and Redemptions” shall be added; 
+(41) in regulation 57,- 
+(i) for sub-regulation (4), the following shall be substituted, namely:- 
+“(4) The maximum interval between the receipt of a properly documented request complete in 
+all respects, for redemption of units and the issue of payment instrument for the redemption 
+money to the holder shall not exceed six working days or such other period as specified by the 
+Commission for any specific category of fund, unless redemption has been suspended.”;  
+(ii) in sub-regulation (9), after the word “published” occurring at the end, the words “and also 
+emailed at the registered email ID of all unit holders” shall be inserted; 
+(iii) in sub-regulation (16), after the word “Pakistan” occurring at the end, the words “and also 
+emailed at the registered email ID of all unit holders” shall be inserted; 
+
+
+--- page 13 ---
+(42) in regulation 58,- 
+(i) in sub-regulation (1),- 
+(i) for the words “(1) Subject to Regulation 58(2), an Asset Manag ement Company on 
+behalf of a Collective Investment Scheme managed by it shall not” the words “An Asset 
+Management Company on behalf of a CIS managed by it shall not” shall be substituted; 
+(ii) clauses (a) to (e) and (h) and (i) shall be omitted; 
+(iii) for clause (j) the following shall be substituted, namely:- 
+“(j) finance, assume, guarantee, endorse or otherwise become directly or 
+contingently liable for or in connection with any obligation or indebtedness of any 
+person: 
+ Explanation I: - Reverse repo transaction s involving Government 
+Securities or other debt securities stated as authorized investments in the Offering 
+Document under an agreement and spread transaction or MTS or replacement 
+thereof which are protected by the clearing company shall not be attracted by 
+clause (j) provided risk management parameters are disclosed in the offering 
+document of the scheme. 
+ Explanation II: - For the purpose of sub -clause the expression “spread 
+transactions” mean such transactions where shares/contracts of one company are 
+purchased on one settlement date and simultaneously sold on another settlement 
+date and/or on same settlement dates across markets, that will be considered as one 
+transaction and includes; ready buy and future sale and its unwinding or future buy 
+and future sale and its unwinding.”; 
+(iv) clauses (k) and (l) shall be omitted; 
+(v) in clause (n) for the words “shares” the words “units” shall be substituted; 
+(vi) clause (p) shall be omitted; 
+(ii) sub-regulation (2) shall be omitted; 
+(43) in regulation 60,- 
+(i) for sub-regulation (3), the following shall be substituted, namely:- 
+“(3) Notwithstanding the generality of Regulations 60(1) and (2), the fees and charges as 
+provided under Schedule-XX may be payable from the CIS, however, an AMC may charge 
+any of such fees and charges to the management company.”; 
+(ii) for sub-regulation (6), the following shall be substituted, namely:- 
+“(6) An AMC shall ensure adequate disclosure of the following expenses and sales load to 
+investor before soliciting investment and prominently disclose on a daily basis, the following 
+
+
+--- page 14 ---
+information regarding all CIS on its website and on the website of Mutual Funds Association 
+of Pakistan (MUFAP),- 
+(i)  Total Expense Ratio; 
+ 
+(ii) Management Fee as percentage of net assets; 
+ 
+(iii)  Selling and Marketing expenses as percentage of net assets;  
+ 
+(iv)    Front-end, back-end and contingent load as a percentage of net assets; and 
+ 
+(v)    Trustee Fee as percentage of net assets.”; 
+ 
+(iii) sub-regulation (7) shall be omitted; 
+(44) after regulation 60 amended as aforesaid, the following new regulatio n shall be inserted, 
+namely:- 
+“60A. Alignment of interest.-  In order to align the interest of the Key Employees of the AMCs 
+with the unitholders of the CIS an AMC shall allocate such part of compensation of the Chief 
+Executive Officer, Chief Investment Officer and Head of Investment Committee of the AMCs 
+in units of CIS(s) being managed by the AMC as specified in Schedule XXII.”; 
+(45) for regulation 61, the following shall be substituted, namely:- 
+“61.  Remuneration payable to Asset Management Company. - An Asse t Management 
+Company shall be entitled to an accrued remuneration that has been verified by the trustee and 
+is paid in arrears on monthly basis: 
+ Provided that Asset Management Company may charge variable fee or fixed fee or the 
+combination of both which shall not exceed the limit disclosed in the Offering Document. AMC 
+shall disclose actual rate of management fee charged as percentage of net asset of CIS in the 
+monthly fund manager report.”; 
+(46) for regulation 62, the following shall be substituted, namely:- 
+“62. Fee Payable to the Commission. -  (1) An Asset Management Company managing a 
+Collective Investment Scheme, within fifteen days of the close of every calendar month of the 
+Collective Investment Scheme, shall pay the Commission non -refundable fee which is  such 
+percentage of average net assets of the Collective Investment Scheme as provided in Schedule 
+II along with trustee certificate for the accuracy: 
+ Provided that the fee payable to the Commission shall be chargeable by the Asset 
+Management Company to the Collective Investment Scheme. 
+ 
+ Explanation. - For the purposes of Regulation 62(1) “average net assets” means the average 
+of net assets calculated on daily basis during the month. Provided further that an Asset 
+Management Company managing a Collective I nvestment Scheme, within three months of 
+
+
+--- page 15 ---
+close of accounting year/financial year 2022-2023 of the Collective Investment Scheme, shall 
+pay the Commission, non-refundable annual fee which is 0.02% of average annual net assets 
+of the Collective Investment Scheme.  
+ 
+ 
+ 
+Explanation. - For the purposes of above proviso, the “average annual net assets” means 
+the average of net assets calculated on daily, weekly or monthly basis during the year. 
+ 
+ 
+(2) An Investment Advisor managing discretionary portfolio shall pay the Commission non-
+refundable fee, which is such percentage of discretionary and non-discretionary portfolio under 
+management as provided in Schedule II within fifteen days of the close of each quarter of its 
+accounting year.”; 
+(47) in regulation 63, after sub -regulation (2) the following new sub -regulation shall be inserted, 
+namely: - 
+“(3) An AMC shall ensure that dividend is paid to the unit holder within 10 working days from 
+the date of announcement of dividend.”; 
+(48) regulation 65 shall be omitted; 
+(49) in regulation 66A,- 
+(i) in clause (a) for the words “Collective Investment Scheme” the words “CIS” shall be 
+substituted; 
+(ii) in the proviso for the full stop at the end, a colon shall be substituted and thereafter the 
+following new proviso shall be inserted, namely:- 
+“Provided further that a Scheduled Bank, Microfinance Bank , Development Financial 
+Institution and Electronic Money Institution licensed by the State Bank of Pakistan, and a 
+non-banking microfinance company licensed by the Commission, shall be eligible to 
+undertake activities only to the extent of distributor of CIS/ VPF units of AMCs/Pension 
+Fund Managers (PFMs) without obtaining requisite license and subject to compliance with 
+the Securities and Futures Advisors (Licensing and Operations) Regulations, 2017.”; 
+(iii) in clause (g), the words “measured and” shall be omitted; 
+(50) in regulation 66B,- 
+(i) before regulation 66B, the heading “Investment Advisory Services” shall be inserted’; 
+(ii) in sub-regulation (2), after clause (f) the following new clauses shall be added, namely:- 
+“(g) send a portfolio account statement to discretionary clients on the registered postal 
+address or through any electronic means including registered email address provided by the 
+
+
+--- page 16 ---
+client at least on semi -annual basis, with complete disclosure of portfolio alloc ation, gross 
+return on portfolio, expenses including advisory fee, performance fee etc., net return of the 
+portfolio, value of investments at statement date and performance since inception. 
+(h) comply with such other requirement as may be specified by the Commission from time 
+to time.”; 
+(iii) after sub-regulation (2), amended as aforesaid, the following new sub -regulation shall be 
+inserted, namely:- 
+“(3) An Investment Advisor managing listed and traded Collective Investment Schemes shall 
+comply with relevant regulatory framework as may be specified by the Commission.”; 
+(51) in regulation 67, in sub-regulation (1),- 
+(i) for the words “An Investment Advisor shall inform the Commission before commencement 
+of business of managing Discretionary Portfolio and Non -Discretionary P ortfolio and in 
+managing Discretionary Portfolio and Non -Discretionary Portfolio of client it shall” the 
+words “An Investment Advisor shall inform the Commission before commencement of 
+business of investment advisory services and in provision of such servi ces it shall” shall be 
+substituted; 
+(ii) for clause (a), the following shall be substituted, namely:-  
+“(a) Obtain an undertaking from the Client that he understands the risks involved in the 
+management of portfolio on discretionary or non-discretionary basis:  
+Provided that in the case of an entity such an undertaking shall be made by the board of 
+directors or trustees as the case may be;”; 
+(iii) for clause (b), the following shall be substituted, namely:- 
+“(b) exercise due diligence, care and prudence to achieve the  investment objective of 
+clients;”; 
+(iv) in clause (c), for sub-clause (i) the following shall be substituted, namely:- 
+  “(i) Portfolio of clients are managed separately;”; and 
+(v) for clause (g), the following shall be substituted, namely:- 
+“(g) comply with any circulars or directions issued by the Commission.”; 
+(vi) after clause (g), substituted as aforesaid, the following new clause shall be inserted, namely:- 
+“(h) The custodian shall be independent of the Investment Advisor or the Asset Management 
+Company in such a manner that there shall be no cross -shareholding nor common 
+directorship: 
+ 
+ Provided that a director or employee of the custodian shall not be involved in the affairs 
+of Asset Management Company or the Investment Advisor.”; 
+(52) in regulation 67AA, for the full stop at the end, a colon shall be substituted, and thereafter the 
+following proviso shall be inserted, namely:- 
+“Provided that Digital Fund Management NBFCs/ Pension Fund Managers shall comply with 
+
+
+--- page 17 ---
+such requirements as may be specified by the Commission through circular, for Digital Pension 
+Fund Scheme Business.”;  
+(53) in regulation 67D.-  
+(i) for clause (i), the following shall be substituted, namely:- 
+A trustee shall meet the obligations, as applicable, laid down in regulation 41 whereby any 
+reference to “Asset Management Company” shall be construed as “Pension Fund Manager”, 
+“Open End Scheme” as “Pension Fund” and “unit holder” as “participant”. In addition, a trustee 
+shall be liable for the act and omission of the lender and its agent in relation to assets forming 
+part of the property of the pension fund and, where borrowing is undertaken for the account of 
+the pension fund, such assets may be registered in the lender's name or in that of a nominee 
+appointed by the lender.”; 
+(ii) clauses (ii) to (x) shall be omitted; 
+(54) for regulation 67J, for sub-regulation (5) the following shall be substituted, namely: - 
+“(5) Any approval granted by the Commission under Regulation 67J,– 
+(i) may be varied or withdrawn by the Commission after giving an opportunity of 
+being heard to the Asset Management Company, except for advertisements which may be 
+varied or withdrawn immediately; and 
+(ii) shall be valid for a period of hundred and twenty days from the date of approval 
+provided that there is no change in the approved documents or the approval has not been 
+extended.”; 
+(55) Form I and II shall be omitted; 
+(56) For Form III, the following shall be substituted, namely:- 
+ 
+“FORM III 
+[see Regulation 40A/40B (2)/40C(2)] 
+Securities and Exchange Commission of Pakistan 
+Specialized Companies Division 
+________________________________________ 
+ 
+Registration No. SCD/      /Trustee Name/   /Year               Islamabad, Dated: …………… 
+ 
+CERTIFICATE OF REGISTRATION 
+TO ACT AS TRUSTEE 
+The Securities and Exchange Commission of Pakistan, having considered the application f or 
+
+
+--- page 18 ---
+the grant of registration / renewal to act as Trustee of an Open -End or Closed -End Schemes 
+submitted by ……………………………. (Name of Trustee) under sub -regulation (1) of 
+Regulation 40A/40C of the Non -Banking Finance Companies and Notified Entities 
+Regulations, 2008 (the Regulations) as amended from time to time and being satisfied that it 
+would be in the public interest so to do, in exercise of powers conferred by sub -regulation (2) 
+of Regulation 40B /40C hereby grants/renews the certificate of registration in th e name of 
+……………………………. (Name of Trustee) to act as Trustee of an Open -End or Closed -
+End Schemes subject to the conditions stated herein below or as may be prescribed or imposed 
+hereafter: 
+ 
+(i) ………………………… (Name of Trustee) shall comply with the Regulations (as 
+amended or replaced) and any directives, circulars, codes or notifications issued by the 
+Commission to regulate the Trustees;  
+(ii) ………………………… (Name of Trustee) shall submit annual, half yearly, quarterly or 
+such other reports as specified in the applicable laws;  
+(iii) ………………………… (Name of Trustee) shall submit system audit report as specified 
+in the Regulations; and 
+(iv) This Registration is valid for a period of three years w.e.f. ………….(date of registration/ 
+renewal) and shall be renewable every three years as specified in the Regulations. 
+ 
+Approving Authority”; 
+(57) Form IV shall be omitted; 
+(58) For Schedule I, the following shall be substituted, namely:- 
+“Minimum Equity Requirement 
+see Regulation 4 
+Form of Business Minimum equity Requirement 
+New deposit taking NBFCs for obtaining license 
+of Investment Finance Services or Leasing or 
+Discounting or Housing Finance Services  
+Rs. 1,000 million 
+Existing NBFCs with valid deposit taking 
+permission having Investment Finance Services 
+license  
+Rs. 750 million 
+Existing NBFCs with valid deposit taking 
+permission having Leasing license  
+Rs. 500 million 
+Non-deposit taking NBFCs for Investment 
+Finance Services license 
+Rs. 100 million 
+Rs. 40 million for Digital Lending 
+
+
+--- page 19 ---
+Non-Bank Microfinance Company for 
+Investment Finance Services License * 
+Rs. 50 million 
+Rs. 20 million for Digital Lending 
+Non-deposit taking NBFCs for Leasing or 
+Discounting or Housing Finance Services license 
+Rs. 50 million for each form of 
+business 
+Rs. 20 million for Digital Lending 
+Asset Management Services Rs.200 million 
+Rs. 50 million for Digital Asset 
+Management Services 
+Investment Advisory Services Rs. 30 million  
+Rs. 1 0 million for Digital Asset 
+Management Services 
+Note: 
+*The Non -Bank Micro Finance Companies which do not have share capital shall 
+maintain minimum “Fund and Reserves” (being the excess of assets over liabilities 
+excluding surplus on revaluation of assets and investments) equal to the amount of 
+minimum equity requirement as prescribed in the above table.”; 
+ 
+(59) in schedule II, for table C, the following shall be substituted, namely: - 
+“ C.  Other Fees: 
+Sr. No. Head of Fee Amount 
+1. Annual Monitoring Fee to 
+be paid by Deposit taking 
+NBFCs 
+Rs. 250,000/- 
+2. *Monthly Fee for 
+Collective Investment 
+Schemes with effect from 
+July 01, 2023 
+Type of  Collective 
+Investment Scheme 
+Rate of Fee  
+(% of Average 
+Net Assets) 
+Equity, Index, Asset 
+Allocation, Exchange 
+Traded Funds 
+0.095% 
+Balanced 0.085% 
+Income, Money Market, 
+Capital Protected, 
+Commodity Scheme, Fixed 
+Rate/Return Scheme 
+0.075% 
+ 
+3. Quarterly Fee on 
+discretionary portfolio 
+managed by Investment 
+Advisor with effect from 
+July 01, 2023 
+0.025% of the average net assets of discretionary 
+and non -discretionary portfolio under 
+management calculated on daily basis by an 
+Investment Advisor  
+4. Fee for authorization of 
+Pension Fund 
+Rs. 100,000/- 
+* The trustee of the Collective Investment Scheme (CIS) shall verify and validate the fee that 
+is required to be paid to the Commission on a monthly basis. In the event of any discrepancy, 
+
+
+--- page 20 ---
+the trustee shall promptly notify the Commission. 
+(60) Schedule V shall be substituted, namely;-  
+“Schedule V 
+See Regulation 38 
+Disclosure Requirements by Collective Investment Schemes 
+ 
+1. General 
+Annual report must contain statement of asset and liabilities, income statement, cash flo w statement, 
+distribution statement, statement of movement in unit or certificate holder fund, auditor’s report, report 
+of the trustee, report of the fund manager and all the information required in this schedule, Companies 
+Ordinance, the Rules, Code of Corporate Governance and as per the applicable IAS or IFRS. 
+ 
+2. Statement of assets and liabilities. 
+The following must be separately disclosed, namely:- 
+(a) total value of investments; 
+(b) bank balances; 
+(c) preliminary and floatation costs; 
+(d) dividends and other receivable; 
+(e) bank loan and overdrafts or other forms of borrowings; 
+(f) payable to Asset Management Company; 
+(g) dividend payable; 
+(h) total value of all assets; 
+(i) total value of all liabilities; 
+(j) net asset value per unit or certificate; 
+(k) number of units issued or certificates issued; and 
+(l) contingences and commitments. 
+ 
+3. Income Statement. 
+(a) Total investment income net of withholding tax, broken down by category. 
+(b) Total other income, broken down by category. 
+(c) An itemized list of various costs which have been debited to the Collective Invest ment Scheme, 
+including,- 
+i. fees paid to the Asset Management Company; 
+ii. remuneration of the custodian; 
+iii. remuneration of trustee; 
+iv. amortization of formation costs; 
+v. safe custody and bank charges, auditor's remuneration; 
+
+
+--- page 21 ---
+vi. borrowing expenses, legal and other professional fees; and 
+vii. any other expense borne by the Collective Investment Scheme. 
+(d) Taxes. 
+(e) Net income. 
+(f) Allocation of Net income for the year: 
+i. Income already paid on units redeemed; and 
+ii. Accounting income available for distribution: 
+• Relating to Capital Gains; and 
+• Excluding Capital Gains. 
+4. Statement of movements in Unit holders’ fund. 
+(a) Net asset value per unit as at the beginning of the period. 
+(b) Net asset value per unit as at the end of the period. 
+(c) Number of units issued and the amount received upon such issue, (i.e. capital value and element of 
+income on issue of units). 
+(d) Number of units redeemed and the amount paid on redemption (i.e. capital value of units redeemed 
+and amount paid out for element of income); 
+(e) Any item resulting in an increase or decrease in net asset value of the unit including, - 
+i. exchange gain or loss; and 
+ii. Accounting income for the period less distribution. 
+(f) Any refund on units as element of income. 
+(g) Distribution for the period including: 
+i. Amount brought forward at the beginning of the period bifurcated into realized and unrealized 
+gains. 
+ii. Accounting income available for distribution for the period bifurcated between: 
+• Relating to Capital Gains; and 
+• Excluding Capital Gains. 
+iii. Interim dividend, date of distribution, and dividend per unit for units entitled to ful l period 
+dividend. 
+iv. Final dividend, date of distribution, and dividend per unit for units entitled to full year/ period 
+dividend. 
+v. Undistributed income carried forward bifurcated into realized and unrealized gains.; and  
+vi. Amounts transferred to and from reserves. 
+5. Notes to the accounts. 
+
+
+--- page 22 ---
+The following matters shall be set out in the notes to the accounts. 
+(a) Statement in the Notes that the financial statements are prepared in accordance with applicable 
+Approved Accounting Standards and applicable statutory requirements or the deed or any regulatory 
+requirements. 
+(b) Where unaudited financial statements are used, a declaration by the director(s) of the Asset 
+Management Company that the financial statements give a true and fair view of the Collective 
+Investment Scheme. 
+(A) Principal accounting policies: 
+(a) the basis of valuation of the assets of the Collective Investment Scheme including the basis of 
+valuation of unquoted and unlisted securities; 
+(b) the revenue recognition policy regarding dividend income and other income; 
+(c) foreign currency translation, if any; 
+(d) the basis of amortization of formation costs; 
+(e) taxation; 
+(f) risk management polices and hedging activities entity shall describe its financial risk management 
+objectives and polices, including its policy for hedging; and 
+(g) any other accounting policy adopted to deal with items which are judged material or critical in 
+determining the transactions and in stating the disposition of the Collective Investment Scheme. 
+Note.- Any changes to the above accounting policies and their financial e ffects upon the accounts should 
+also be disclosed. 
+ 
+(B) Transactions with connected persons: 
+Statement as to whether dealings with related parties have been transacted at arm’s length basis. The 
+following transactions should be disclosed, namely:- 
+(a) details of all transactions entered into during the period between the Collective Investment Scheme 
+and the Asset Management Company, or any entity in which these parties or their connected persons 
+have a material interest; 
+(b) name of any director of the Asset Management Company or any connected person if such a person 
+becomes entitled to profits from transactions in shares or from management of the Collective 
+Investment Scheme and the amount of profits to which such person becomes entitled; and 
+(c) the total number and value of units held by the Asset Management Company and its related parties. 
+ 
+(C) Borrowings: 
+(a) State whether the borrowings are secured or unsecured and the duration of the borrowings.  
+(b) Disclosure shall be made of all contingent liabilities showing separately with specifying details. 
+(c) If the free negotiability of any asset is restricted by statutory or contractual requirements, this must 
+be stated. 
+ 
+(D) Unit holding or certificate holding pattern of Collective Investment Scheme 
+
+
+--- page 23 ---
+Category No of Investor  Investment amount % of Total 
+Individuals    
+Associated companies and directors    
+Insurance Companies    
+Banks and DFIs    
+NBFCs    
+Retirement Funds    
+Public Ltd Companies    
+Others    
+ 
+(E) Basis of Fee 
+(a) Basis on which management fee has been paid to the Asset Managemen t Company and the 
+computation thereof; and  
+(b) Basis for the fees and charges paid to the trustee. 
+(F) List of top 10 brokers or dealers by percentage of commission paid by Collective Investment Scheme 
+in one accounting year. 
+(G) Details of member of investment committee with their qualification and experience. 
+(H) Name and qualification of fund manager and details of other Collective Investment Scheme managed 
+by the same manager. 
+(I) The date, names of persons attending each meeting of the board of directors of Asset Managem ent 
+Company. 
+(J) Latest Rating of the Collective Investment Scheme and Asset Management Company. 
+6. Contents of the auditors' report. 
+The report of the auditor shall state,- 
+(a) Whether in the auditor's opinion the financial statement prepared for that period have been properly 
+prepared in accordance with the relevant provisions of the Regulations; 
+(b) The auditor has conducted audit of the collective investment scheme in accordance with the 
+international standards on auditing as applicable in Pakistan. 
+(c) if the auditor is of the opinion that proper books and records have not been kept by the Collective 
+Investment Scheme or the accounts prepared are not in agreement with the books and records of 
+Collective Investment Scheme, that fact; and 
+(d) if the auditor has failed to obtain  all the information and explanations which, to the best of his 
+knowledge and belief, are necessary for the purpose of the audit, that fact. 
+7. Fund Manager Report 
+(a) Description of the Collective Investment Scheme category and type. 
+(b) Statement of Collective Investment Scheme’s investment objective(s). 
+(c) Explanation as to whether the Collective Investment Scheme has achieved its stated objective(s). 
+(d) Statement of benchmark(s) relevant to the Collective Investment Scheme. 
+
+
+--- page 24 ---
+(e) Comparison of the Collective Investment Scheme’s performance during the period compared with 
+the said benchmarks. 
+(f) Description of the strategies and policies employed during the period under review in relation to 
+the Collective Investment Scheme’s performance. 
+(g) Disclosure of the Collective Investment Sc heme’s asset allocation as at the date of the report and 
+particulars of significant changes in asset allocation since the last report (if applicable). 
+(h) Analysis of the Collective Investment Scheme’s performance. 
+(i) Based on changes in total NAV and NAV per uni t since the last review period or since 
+commencement (in the case of newly established Collective Investment Scheme). 
+(j) Disclosure of the markets that the Collective Investment Scheme has invested in, including:- 
+i. review of the market(s) invested in during the period; and 
+ii. statement of the returns on the investments by market(s) and by instruments. 
+(k) Disclosure on distribution (if any), comprising:- 
+i. particulars of income distribution or other forms of distribution made and proposed during the 
+period; and 
+ii. statement on effects on the NAV before and after distribution is made. 
+(l) Description and explanation of any significant changes in the state of affairs of the Collective 
+Investment Scheme during the period and up till the date of the manager’s report, not otherwise 
+disclosed in the financial statements. 
+(m) Breakdown of unit holdings by size. 
+(n) Disclosure on unit split (if any), comprising:- 
+i. details of unit split exercise carried out during the period; and 
+ii. statement on effects on the NAV per unit before and after the unit split exercise. 
+(o) Disclosure of circumstances that materially affect any interests of the unit holders. 
+(p) Disclosure if the Asset Management Company or its delegate, if any, receives any soft commission 
+(i.e. goods and services) from its broker(s) or dealer(s)  by virtue of transactions conducted by the 
+Collective Investment Scheme, disclosure of the following:- 
+i. identification of the goods and services received; and 
+ii. manner in which the goods and services received were utilized. 
+For Index Funds only 
+• Statement on the characteristics and general composition of the index and, where applicable, 
+concentration in any economic sectors and issuers. 
+• Comparison and explanation of the Collective Investment Scheme’s performance compared with 
+the actual index performance over the relevant period. 
+8. Trustee Report 
+
+
+--- page 25 ---
+(a) Statement of opinion whether the Asset Management Company has managed the Collective 
+Investment Scheme in accordance with the following:- 
+i. Investment limitations imposed on the Asset Management Company and the trustee und er the 
+trust deed and other applicable laws; 
+ii. valuation or pricing is carried out in accordance with the deed and any regulatory requirement; 
+and 
+iii. creation and cancellation of units are carried out in accordance with the deed 
+iv. and any regulatory requirement. 
+(b) Statement on the shortcoming(s) that may have impact on the decision of the existing or the potential 
+unit holders remaining or investing in the Collective Investment Scheme; and 
+(c) Disclosure of the steps taken to address the shortcoming(s) or to prevent the  recurrence of the 
+shortcoming(s). 
+9. Investment portfolio. 
+(a) number or quantity of each holding together with the description and market value; 
+(b) the total investment stated at cost; 
+(c) the value of each holding as a percentage of the total investments; 
+(d) statement of movements in portfolio holdings since the end of the preceding accounting period; and 
+(e) the carrying amount of investments (where applicable) categorized as follows:- 
+i. fixed income and other debt securities; 
+ii. quoted and unquoted equity securities; 
+iii. derivatives (e.g. futures, options); 
+iv. other Collective Investment Schemes; 
+v. foreign investments with details of type of instruments 
+vi. any other investments; and 
+vii. significant items included in other assets. 
+(f) in case of Government Securities i.e. PIB, GoP Ijara Sukuks, TBil ls or any other securities, the 
+detail shall include the date of issue and tenure. 
+10. Performance Table. 
+A comparative table covering the last three financial years depicting the following:- 
+(a) total net asset value; 
+(b) net asset value per unit or certificate; 
+(c) at the end of each financial year; 
+(d) selling price for units; 
+(e) repurchase price for units; 
+
+
+--- page 26 ---
+(f) highest and lowest selling and repurchase prices; 
+Note: Figures should be shown as ex -distribution (The portfolio composition of the Collective 
+Investment Scheme, (e.g. dis tribution among industry sectors, markets and category of 
+investments). 
+(g) total return of the Collective Investment Scheme, and the breakdown into capital growth and 
+income distributions; 
+(h) disclosure on distribution (if any), comprising the following:- 
+i. Distribution per unit (gross and net) for interim and final distribution, shown separately; and 
+ii. Highlighting the distribution dates; 
+(i) average annual return of the Collective Investment Scheme measured over specific periods to the 
+date of the report, for one year, two years and three years, or from end of offer period (must disclose 
+launch date); 
+(j) statement that past performance is not necessarily indicative of future performance and that unit 
+prices and investment returns may go down, as well as up; and 
+(k) weighted average portfolio duration in case of income and money market fund. 
+ 
+(61) In schedule IX,- 
+(i) for the definition of “Key Executive”, the following shall be substituted, namely:- 
+“Form of Business”, for the purpose of this Schedule, shall include form of business as 
+mentioned in Regulation 3 and Pension Fund Scheme Business, 
+“Key Executive” means key executives of an entity licensed to undertake any form of 
+business and includes, inter alia, the persons discharging the following functional 
+responsibilities,”; 
+(ii) in the “APPLICATION AND SCOPE” section,- 
+(i). for sub-paragraph (1), the following shall be substituted namely:-  
+“The Fit and Proper Criteria in relation to a form of business is applicable to the following 
+persons:  
+i. promoters and major shareholders; 
+ii. Director; 
+iii. Chief Executive; and  
+iv. Key Executives. 
+(ii). for sub-paragraphs (2), (3) and (4), the following shall be substituted, namely:- 
+“(2)  A proposed director or chief executive shall not assume the charge of 
+office until their appointment has been approved by the Commission. 
+(3) The application for seeking approval of the Commission under clause (2) 
+
+
+--- page 27 ---
+shall be submitted along with the requisite information required under Annexure “A” 
+and an Affidavit as specified in Annexure “B”. 
+(4) The appointment of Key Executives does not r equire the approval of the 
+Commission; however, the person subject to Fit and Proper Criteria shall ensure at 
+the time of appointing a Key Executive that such person qualifies the Fit and Proper 
+Criteria.”; 
+(ii) for sub-paragraph (5)(d), the following shall be substituted, namely:- 
+“(d) Conflict of interest of such person with the business.”; and for the proviso the 
+following shall be substituted, namely:- 
+“Provided that 5(c) and (d) may not be considered while assessing the fitness 
+& propriety of promoters and major shareholder. 
+Provided further that in case the sponsor and major shareholder is a body 
+corporate, in addition to the relevant/applicable clauses, corporate behavior of the 
+said body corporate and integrity & track record of the sponsor and ultim ate 
+beneficial owners of such corporate body shall be duly considered. 
+ 
+Explanation: For the purpose of this clause, the term “ultimate beneficial owner” 
+shall have the similar meaning as defined under 123A of the Companies Act, 
+2017.”; 
+     (iii) for sub-paragraph (6), the following shall be substituted, namely:- 
+“(6) The Fit and Proper Criteria is perpetual in nature and the person subject to Fit 
+and Proper Criteria shall ensure compliance with the provisions of Fit and Proper 
+Criteria.”; 
+    (iv) for sub-paragraph (8), the following shall be substituted, namely:- 
+“(8) All persons subject to Fit and Proper Criteria shall report any change with 
+reference to their fitness and propriety to the Company Secretary within  three 
+business days of such change taking effect and the Company Secretary subject to 
+Fit and Proper Criteria shall within a period of seven business days from the date 
+of receipt, report the same to the Commission.”; 
+  (v) for sub-paragraph (9), the following shall be substituted, namely:- 
+  “(9) The companies engaged in respective form of business shall monitor 
+whether any change in the status of its chief executive, directors and key executives 
+is contrary to the requirements of the Fit and Proper Criteria. In case of any change 
+in status, results in non-compliance with the Fit and Proper Criteria, the Board of 
+companies engaged in respective form of business shall immediately stop the 
+person from performing his assigned functions, shall inform the Commission and 
+initiate the process for replace ment of the individual with a fit and proper 
+
+
+--- page 28 ---
+individual.”; 
+(iii) in the section “ASSESSMENT OF FITNESS AND PROPRIETY”,- 
+(i) in paragraph (a) “Integrity and Track Record”,- 
+(I)  for sub-paragraphs (ii) and (iii) the following shall be substituted, namely:- 
+“(ii) has been  convicted of  mismanagement of investments, financial or 
+business misconduct, fraud etc. 
+(iii) has been convicted, after conducting an inquiry, by the Commission or any 
+other regulatory or professional body or government agency;”; 
+(II) In sub-paragraph (vi) the proviso shall be omitted; 
+(III) for sub-paragraph (vii) the following shall be substituted, namely:- 
+“(vii) in case of promoters or major shareholder, does not have the requisite 
+disclosed and verifiable financial resources.”; 
+(IV) after sub -paragraph (vii), the fol lowing new sub -paragraph shall be inserted, 
+namely:- 
+“(viii) has been convicted in criminal breach of trust, fraud, offences of terrorism 
+financing or money laundering including predicate offences as provided in the 
+Anti-Money Laundering (AML) Act, 2010, laws make thereunder, or any other 
+AML/ CFT (Countering Financing of Terrorism) requirements notified by the 
+Commission, and is a proscribed persons, either convicted or not, “as mentioned 
+in the notifications issued by the Ministry of Foreign Affairs on United Nations 
+Security Councils Resolutions or intimation from National Counter Terrorism 
+Authority/ Law Enforcement Agencies/ Home Departments of Provinces/ 
+Ministry of Interior”; 
+(ii)  in paragraph (c) “ Competence and Capability ”, for sub -paragraph (ii), the 
+following shall be substituted, namely: - 
+ “(ii) the directors shall have experience and knowledge in any related 
+profession such as banking, accounting, law, internal audit or information 
+technology etc.”; 
+(iii) in paragraph (d) “Conflict of interest”,- 
+(I) for the words “The directors or chief executive of NBFC and Investment 
+Company shall not:” the words “ The directors or chief executive shall 
+not:” shall be substituted; 
+(II) for sub-paragraph (i), the following shall be substituted, namely: - 
+“(i) be a director in any entity licensed to undertake any other similar 
+
+
+--- page 29 ---
+form of business engaged in a similar activity in Pakistan.”; 
+(III) in sub-paragraph (iii) for the proviso the following shall be substituted, 
+namely:- 
+“Provided that the condition given in point (ii) and  (iii) above, shall not 
+apply to the Non-deposit taking lending NBFCs.  
+In case of Key Executives, the person subject to Fit and Proper Criteria 
+must ensure that no Key Executive shall head more than one functional 
+area that give rise to conflict of intere st within the organization. For 
+example, the departments of audit and accounts shall not be headed by the 
+same person. Further, a key executive shall not hold directorship in his or 
+her personal capacity:”; 
+(a) in a business concern which is also a client of the person subject to Fit 
+and Proper Criteria; and 
+(b) in any other financial institution.”; 
+(iv) in Annexure A,- 
+I. clause (a) shall be substituted, namely:-   
+ “(a) Information to be provided by promoters, major shareholders (other than a body 
+corporate), proposed directors and proposed chief executive 
+1.  Personal and Professional Details:  
+ a. Name: (former name if any):  
+ b. C.N.I.C # / Passport # (In case of foreign nationals) –(attach copy)  
+ c. Contact details:  
+  i) Address:  
+  ii) Mobile: 
+  iii) E-mail: 
+ d. Present occupation:  
+   e. Details of Academic and Professional Qualifications : Board of Directors of NBFC engaged in 
+respective form of business shall ensure verification of credentials and degrees of  the Chief 
+Executive 
+ f. Trainings 
+ g. Experience and Other Directorships:  
+Position and other Directorships held during the last ten years (along with name and address of 
+company/institution/body where appointment /directorship held, nature of the 
+company/institution/body and dates of appointment/directorship. 
+2.  Status of directorship        Shareholder                    Nominee                   
+Name of the shareholders/ Group of shareholders he is representing 
+Nature of directorship     Executive                          Non-executive         
+Independent                                         Non-independent                            
+
+
+--- page 30 ---
+3.  In the case of appointment of directors the date of board of directors’ meeting in which the 
+appointment of proposed director was approved. (Attach copy o f the minutes of the meeting of 
+the board of directors. If the director is elected, then attach a copy of the minutes of the general 
+meeting of the company.) 
+4.  Names of persons on the board of the NBFC subject to Fit and Proper criteria who are related to 
+the applicant. 
+ 
+Signature_________________________________________________________ 
+*use additional sheets if required 
+ 
+II. clause (b) shall be substituted, namely:- 
+“Information to be provided by a body corporate as promoters and major shareholders: 
+1. Financial statements for the last three years; 
+2. Physical Address of business places; 
+3. Shareholding details including details of ultimate beneficial owners: 
+Explanation. – For the purpose of this clause, the term “ultimate beneficial  
+owner” shall have the similar meaning as defined under 123A (Explanation) of the 
+Companies Act, 2017. 
+4. Any substantial adverse verdicts against the Company from any Court of Law 
+during the last ten years 
+5. Details of associated companies and subsidiaries; 
+6. Details of any inquiry, investiga tion conducted by any other regulatory or 
+professional body or government agency during the last five years; and 
+7. Any other information as may be required by the Commission. 
+(v) Annexure B shall be substituted, namely:- 
+“Annexure B 
+Affidavit 
+Before the Securities and Exchange Commission of Pakistan 
+ 
+(On Stamp Paper of Appropriate Value) 
+ 
+I, ________________ son/daughter/wife of _______________________ adult, resident of 
+_______________________________________________________________________ and holding 
+CNIC/ Passport No. ______________________________ do hereby state on solemn affirmation as under:- 
+ 
+1. That I am eligible for the position of ___________according to the Fit and Proper Criteria for the 
+position of _________, annexed to the Non -Banking Finance Companie s and Notified Entities 
+Regulations, 2008; 
+
+
+--- page 31 ---
+2. That I hereby confirm that the statements made, undertakings provided and the information given 
+by me including that required under Schedule IX is correct and that there are no facts which have 
+been concealed; 
+3. That I have no objection if the Securities and Exchange Commission of Pakistan requests or obtains 
+information about me from any third party; 
+4. That I undertake to bring to the attention of the Securities Exchange Commission of Pakistan any 
+matter which may potentially affect my status for the position of ____________ as per the Fit and 
+Proper Criteria annexed to the Non-Banking Finance Companies and Notified Entities Regulations, 
+2008; 
+5. That all the documents provided to Securities Exchange Commission of Pakistan are true copies of 
+the originals and I have compared the copies with their respective originals and certify them to be 
+true copies thereof; 
+6. That I have not availed any write off from any financial institution during the last five years;  
+7. That I have not defaulted against any Finance obtained from any financial institution during the 
+last five years;  
+8. That I have not been placed on Exit Control List (ECL) during the last five years;  
+9. That I have not been convicted from any Court of Law or any plea bargain with National 
+Accountability Bureau (NAB) during the last ten years;  
+10. I hereby confirm that the companies, firms, sole proprietorship etc. where I am a chief executive, 
+director (other than nominee director), major shareholder, owner or partner etc. has no overdue loan 
+payment and instalment outstanding towards banks or other financial institutions;  
+11. I have not been associated with any illegal banking business, deposit taking or financial dealings;  
+12. Neither I nor companies in which I am a director or major shareholder has defaulted in paying taxes 
+as on the date of application;  
+13. I have not been a sponsor, director or chief executive of a defaulting cooperative finance society or 
+finance company;  
+14. I have never been convicted of fraud or breach of trust or of an offence involving moral turpitude 
+or removed from service for misconduct;  
+15. I have neither been adjudged an insolvent nor has defaulted in making payments, to my creditors;  
+16. My net-worth is not less than twice the amount to be subscribed by me personally  (not applicable 
+to a nominee director);  
+17. I do solemnly declare that no investigations have been initiated against me by any Law Enforcement 
+Agencies.  
+ 
+__________ 
+DEPONENT 
+The Deponent is identified by me 
+ 
+Signature _______________________ 
+ADVOCATE 
+(Name and Seal) 
+ 
+Solemnly affirmed before me on this ______ day of _____________ at ______________ by the Deponent 
+above named who is identified to me by ________________, Advocate, who is known to me personally. 
+ 
+ 
+Signature______________________________ 
+OATH COMMISSIONER FOR TAKING AFFIDAVIT 
+(Name and Seal) 
+(vi) Annexure C shall be omitted; 
+
+
+--- page 32 ---
+(vii) For schedule X the following shall be substituted, namely:- 
+“(a) For Housing Finance and Financing to Small Enterprises 
+Classification Determinant Treatment of income Provisions to 
+ be made 
+(1) (2) (3) (4) 
+OAEM Where installment, 
+mark-up, interest, 
+profit or principal is 
+overdue by 90 days 
+or more from the due 
+date. 
+Unrealized mark -up, 
+interest or profit to be put 
+in Suspense Account and 
+not to be credited to 
+Income Account excep t 
+when realized in cash. 
+ 
+Substandard. Where installment, 
+mark-up, interest, 
+profit or principal is 
+overdue by 180 days 
+or more from the due 
+date. 
+ 
+As above Provision of 25% of the 
+difference resulting from the 
+outstanding balance of principal 
+against the  facility less the 
+amount of Liquid Assets 
+realizable without recourse to a 
+Court of Law and adjusted FSV 
+of mortgaged, pledged, leased 
+or collaterally held assets as 
+valued by valuers fulfilling 
+prescribed eligibility criteria, in 
+accordance with the 
+requirements provided in 
+Regulation 25. 
+Doubtful. Where installment, 
+mark-up, interest, 
+profit or principal is 
+overdue by one year 
+or more from the due 
+date. 
+ 
+As above. 
+ 
+ 
+Provision of 50% of the 
+difference resulting from the 
+outstanding balance of principal 
+against the facility less the 
+amount of Liquid Assets 
+realizable without recourse to a 
+Court of Law and adjusted FSV 
+of mortgaged, pledged, leased 
+or collaterally held assets as 
+valued by valuers fulfilling 
+prescribed eligibility criteria, in 
+accordance wit h the 
+requirements provided in 
+Regulation 25. 
+Loss. Where installment, 
+mark-up, interest, 
+profit or principal is 
+overdue by one and 
+half year in case of 
+small enterprise 
+finance and two 
+years in case of 
+Housing Finance or 
+more from the due 
+date.  
+As above. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Provision of 100% of the 
+difference resulting from the 
+outstanding balance of principal 
+against the facility less the 
+amount of Liq uid Assets 
+realizable without recourse to a 
+Court of Law and adjusted FSV 
+of mortgaged, pledged, leased 
+or collaterally held assets as 
+valued by valuers fulfilling 
+prescribed eligibility criteria, in 
+
+
+--- page 33 ---
+Classification Determinant Treatment of income Provisions to 
+ be made 
+ 
+(b) Whe re financial 
+instruments 
+discounted are not 
+paid or adjusted 
+within 180 days of 
+the due date. 
+ 
+As above. 
+accordance with the 
+requirements provided in 
+Regulation 25. 
+ 
+(b) For Micro Finance Portfolio 
+Classification Determinant Treatment of 
+income 
+Provisions to be made 
+(1) (2) (3) (4) 
+OAEM (Other Assets 
+Especially 
+Mentioned) 
+Where 
+installment, 
+mark-up, 
+interest, profit 
+or principal is 
+overdue by 30 
+days or more 
+from the due 
+date. 
+Unrealized mark -
+up, interest or profit 
+to be put in 
+Suspense Account 
+and not to be 
+credited to Income 
+Account except 
+when realized in 
+cash. 
+No provision is required 
+Sub-standard Where 
+installment, 
+mark-up, 
+interest, profit 
+or principal is  
+overdue by60 
+days or more 
+from the due 
+date. 
+Unrealized mark -
+up, interest or profit 
+to be put in 
+Suspense Account 
+and not to be 
+credited to Income 
+Account except 
+when realized in 
+cash. 
+Provision of 25% of the difference 
+resulting from the outstanding 
+balance of principal against the 
+Finance less the amount of Liquid 
+Assets realizable without recourse 
+to a Court of Law and adjusted 
+FSV of mortgaged, pledged, 
+leased or collaterally held assets as 
+valued by valuers fulfilling 
+prescribed eligibility criteria, in 
+accordance with the requirements 
+provided in Regulation 25. 
+Doubtful Where 
+installment, 
+mark-up, 
+interest, profit 
+or principal is 
+overdue by 90 
+days or more 
+from the due 
+date. 
+Unrealized mark -
+up, interest or profit 
+to be put in 
+Suspense Account 
+and not  to be 
+credited to Income 
+Account except 
+when realized in 
+cash. 
+Provision of 50% of the difference 
+resulting from the outstanding 
+balance of principal against the 
+Finance less the amount of Liquid 
+Assets realizable without recourse 
+to a Court of Law and ad justed 
+FSV of mortgaged, pledged, 
+leased or collaterally held assets as 
+valued by valuers fulfilling 
+prescribed eligibility criteria, in 
+accordance with the requirements 
+provided in Regulation 25. 
+Loss Where 
+installment, 
+mark-up, 
+Unrealized mark -
+up, interest or profit 
+to be put in 
+Provision of 100% of the 
+difference resulting from the 
+outstanding balance of principal 
+
+
+--- page 34 ---
+Classification Determinant Treatment of 
+income 
+Provisions to be made 
+interest, profit 
+or princ ipal is 
+overdue by 180 
+days or more 
+from the due 
+date. 
+Suspense Account 
+and not to be 
+credited to Income 
+Account except 
+when realized in 
+cash. 
+against the Finance less the 
+amount of Liquid Assets realizable 
+without recourse to a Court of Law 
+and adjusted FSV of mortgaged, 
+pledged, leased or collaterally held 
+assets as valued by valuers 
+fulfilling prescribed eligibility 
+criteria, in accordance with the 
+requirements provided in 
+Regulation 25. 
+ 
+Note: Classified finance facilities, loans or advances that have been guaranteed by the Government 
+would not require provisioning; however, markup, interest or profit on such accounts shall be 
+taken to suspense account instead of income account. 
+ 
+(c). For all Financing Facilities Other than Micro Finance, Housing Finance and Financing to 
+“small enterprises” 
+ 
+Classification Determinant Treatment of 
+income 
+Provisions to be made 
+(1) (2) (3) (4) 
+Substandard Where installment, 
+mark-up, interest, 
+profit or principal is 
+overdue by 90 days 
+or more from the 
+due date. 
+Unrealized mark -
+up, interest or 
+profit to be put in 
+Suspense Account 
+and not to be 
+credited to Income 
+Account except 
+when realized in 
+cash. 
+Provision of 25% of the difference 
+resulting from the outstanding balance 
+of principal against the facility less the 
+amount of Liquid Assets realizable 
+without recourse to a Court of law and 
+adjusted FSV of mortgaged, pledged, 
+leased or collateral ly held assets as 
+valued by valuers fulfilling prescribed 
+eligibility criteria, in accordance with 
+the requirements provided in 
+Regulation 25.  
+Doubtful. Where installment, 
+mark-up, interest, 
+profit or principal is 
+overdue by 180 days 
+or more from the due 
+date. 
+ 
+As above. 
+ 
+ 
+Provision of 50% of the difference 
+resulting from the outstanding balance 
+of principal against the facility less the 
+amount of Liquid Assets realizable 
+without recourse to a Court of Law and 
+adjusted FSV of mortgaged, pledged, 
+leased or  collaterally held assets as 
+valued by valuers fulfilling prescribed 
+eligibility criteria, in accordance with 
+the requirements provided in 
+Regulation 25. 
+Loss. Where installment, 
+mark-up, interest, 
+profit or principal is 
+overdue by one year 
+or more from the due 
+As above. 
+ 
+ 
+ 
+ 
+Provision of 100% of the difference 
+resulting from the outstanding balance 
+of principal against the facility less the 
+amount of Liquid Assets realizable 
+without recourse to a Court of Law and 
+
+
+--- page 35 ---
+Classification Determinant Treatment of 
+income 
+Provisions to be made 
+date.  
+(b) Where financial 
+instruments 
+discounted are not 
+paid or adjusted 
+within 180 days of 
+the due date. 
+ 
+ 
+ 
+ 
+ 
+As above. 
+adjusted FSV of mortgaged, pledged, 
+leased or collaterally held assets as 
+valued by valuers fulfilling prescribed 
+eligibility criteria, in accordance with 
+the requirements prov ided in 
+Regulation 25. 
+ 
+Note: Moreover, in case the exposure is covered against guarantee issued by an NBFC 
+engaged exclusively in the business of issuance of guarantees and the NBFC continues to 
+make regular payments as per agreed repayment schedule on behalf of the borrower post 
+guarantee call, no classification or provisioning shall be required. 
+ 
+(viii) For schedule XI the following shall be substituted, namely:- 
+“[SCHEDULE – XI 
+[see Regulation 25] 
+Uniform criteria for determining the value of assets held as collateral 
+ 
+(a) Only Liquid Assets, leased assets, pledged stocks, plant & machinery with exclusive/first pari passu 
+charge and property having registered or equitable mortgage (where NOC for creating further 
+charge has not been issued by NBFC) shall be considered for taking benefit for provisioning. The 
+aforesaid assets having pari -passu charge shall be considered on proportionate basis of the 
+outstanding amount; 
+ 
+(b) Hypothecated assets and assets with second charge or floating charge shall not be considered; 
+ 
+(c) Valuations of leased assets, pledged stocks , plant & machinery with exclusive/first pari passu 
+charge and mortgaged properties shall be carried out by an independent professional evaluator 
+listed on the panel of evaluators maintained by the Pakistan Banks’ Association; 
+ 
+(d) The evaluators while assigning any values to the leased assets, pledged stocks and mortgaged 
+properties held as collateral, shall take into account all relevant factors affecting the salability of 
+such assets including any difficulty in obtaining their possession, their location, their condition and 
+the prevailing economic conditions in the relevant sector, business or industry. The realizable value 
+of mortgaged, pledged and leased assets determined by the evaluators must take in to account the 
+amount that can be realized from the asset if sold in a forced or distressed sale condition. The 
+evaluators shall in their report explain the assumptions, calculations, formula and method adopted 
+in determination of the realizable values; 
+ 
+(e) The realizable values of leased assets, pledged stocks and mortgaged properties determined by the 
+evaluators shall be subject to verification by the external auditors, who may reject cases of 
+valuation, which in their opinion - 
+ 
+(i) do not appear to have be en professionally carried out and values determined are 
+unreasonable, or 
+(ii) are not backed by valid documentation of mortgage, pledge or leased assets and are not 
+supported by legal opinion wherever required. 
+ 
+
+
+--- page 36 ---
+(f) The categories of liquid assets, pledged stoc k, leased assets and mortgaged property to be 
+considered for valuation along with discounting factors to be applied would be as under (Apart 
+from the following, no other assets shall be taken into consideration): 
+ 
+(i) Liquid Assets: 
+Valuation of Liquid Assets shall be determined by the NBFC itself and verified by the 
+external auditors. However, in the case of pledged shares of listed companies, value should 
+be taken at market value as per active list of Stock Exchange(s) on the balance sheet date. 
+Moreover, valuation of shares pledged against Financing shall be considered only if these 
+have been placed Central Depository Company of Pakistan (CDC), otherwise these will 
+not be admissible for deduction as liquid assets while determining required provisions. 
+ 
+(ii) Leased assets, plant & machinery with exclusive/first pari passu charge  and mortgaged 
+properties: 
+ 
+The value of the leased assets, plant & machinery with exclusive/first pari passu charge 
+and mortgaged properties to be considered for provisioning purpose shall be the FSV and 
+the FSV once determined, shall remain valid for three years from the date of the valuation 
+during which period the leased plant & machinery with exclusive/first pari passu charge 
+and mortgaged assets will not be revalued for provisioning purp ose. Also, the adjustment 
+factors of 80%, 70% and 50%in case of leased and mortgaged assets and 30%, 20% and 
+10% for plant & machinery with exclusive/first pari passu charge shall be applied on the 
+value so determined for the purpose of determining provisi oning requirement in 1st, 2nd 
+and 3rd year of valuation, respectively.  Thereafter, the assets shall be revalued and the 
+adjustment factor of 50% in case of leased and mortgaged assets and 10% in case of plant 
+& machinery with exclusive/first pari passu ch arge shall be applied for all subsequent 
+years. 
+ 
+The FSV of leased and mortgaged assets shall be restricted to fresh revaluation or previous 
+value, whichever is less. In case of NBFCs, licensed by the Commission to undertake 
+housing finance services, FSV once determined, shall remain valid for a period of ten years 
+from the date of valuation and an adjustment factor of 70% shall be applied on the value 
+so determined for the purpose of determining provisioning requirement in respect of 
+housing finance for the said period. 
+ 
+Except for a Housing Finance Company, if a valuation is older than three years, a fresh re-
+valuation shall be carried out failing which the valuation shall be taken as nil. 
+ 
+(iii)  Pledged stocks 
+ 
+The value of the pledged stocks of perishable and  non-perishable goods to be considered 
+for provisioning purpose shall be the FSV. In case of pledged stocks, FSV provided by 
+evaluators should not be more than six months old at each balance sheet date. The goods 
+should be perfectly pledged, the operation of the godown(s) or warehouse(s) should be in 
+the control of the NBFC and regular valid insurance for the benefit of the NBFC, premium 
+payment receipts and other documents should be available. In case of perishable goods, the 
+evaluator should also give the approximate date when these are expected to be of no value. 
+The NBFC shall receive monthly stock statements and conduct quarterly inspections of the 
+pledged goods. 
+ 
+(g). Non-performing Finance against which security or in case of lease, additional security is not 
+
+
+--- page 37 ---
+available, or where mortgaged, pledged or leased assets have not been valued and verified by 
+external auditors, such Finance shall continue to be classified and provided for according to the 
+time-based criteria prescribed in Schedule X. 
+ 
+(ix) For schedule XII A the following shall be substituted, namely:- 
+ 
+Schedule- XIIA 
+Code of Corporate Governance for Lending NBFCs including Non-Bank Micro Finance Companies 
+see Regulation 34 
+ 
+[These requirements are in addition to any other applicable requirements regarding directors, CEO, 
+composition of board etc.] 
+ 
+Independent and Non-Executive Directors 
+1. The independent directors of a Lending NBFC including Non -bank Microfinance Company 
+(NBMFC) shall not be less than two members or one third of the total members of the bo ard, 
+whichever is higher. [To be complied with by Lending NBFCs other than NBMFCs latest by the date 
+of next election of directors becoming due after date of notification of the amendments to the 
+Regulations] 
+ 
+Conflict of Interest 
+ 
+2. A director and chief exe cutive of a Lending NBFC including an NBMFC shall not be a director, 
+consultant, advisor or an employee of any other Lending NBFC including NBMFC or institution 
+engaged in a similar business in Pakistan. 
+ 
+3. The chief executive and board of a Lending NBFC inc luding an NBMFC shall disclose to 
+stakeholders, how many family members are sitting on the board, key positions held and any other 
+such potential conflicting interests in the organization. 
+ 
+4. The board of a Lending NBFC including an NBMFC shall develop polic y to prevent conflict of 
+interest in their capacity as members of the board as well as for senior management and other 
+employees as approved by the board. The conflict -of-interest policy should be reviewed at least 
+annually. A Lending NBFC including an NBM FC shall put in place a formal code of conduct that 
+promotes ethical culture in the company. 
+ 
+Women Director  
+ 
+5. While Lending NBFC including NBMFCs are encouraged to have more female representation on 
+their board, the board shall have at least one female director. 
+ 
+Orientation and Training 
+ 
+6. All Directors should receive orientation on the operations of the Lending NBFC including NBMFC 
+and training on their fiduciary roles, responsibilities and liabilities as board members. 
+ 
+7. Board development sessions should be conducted at least once a year with a certificate awarded to 
+the participants. 
+ 
+Board Meetings 
+ 
+
+
+--- page 38 ---
+8. Board shall hold regular meetings; at least once in every quarter of a year and more frequently, where 
+required. 
+ 
+9. In order to strengthen and formalize decision-making process, significant issues shall be placed for 
+the information, consideration and decision of the board of directors and/or its committees. List of 
+significant issues is attached as Appendix-A. 
+ 
+Board Level Committees 
+ 
+10. Lending NBFCs including NBMFCs shall establish Audit Committee, comprising at least three non-
+executive directors. The chairperson of the committee shall be an independent director, who shall 
+not be the chairperson of the board. Preferably at least two members having relevant 
+financial/banking expertise and experience must be part of the audit committee. The audit committee 
+of the Lending NBFCs including NBMFC shall meet at least once every quarter of the financial year. 
+A meeting of the audit committee shall also be held, if request ed by the external auditors, head of 
+internal audit or by chairman of the audit committee. The board of every company shall determine 
+the terms of reference of the audit committee. 
+11. There shall be a Human Resource and Remuneration (HR&R) Committee of at least three members 
+comprising a majority of non -executive directors. The CEO may be included as a member of the 
+committee but not as the chairperson of committee. The CEO, if member of HR&R Committee, shall 
+not participate in the proceedings of the committee  on matters that directly relate to his/her 
+performance and compensation. The committee shall meet at least once in a financial year and may 
+meet more often if requested by a member of the board, or committee itself or the chief executive 
+officer and the h ead of human resource or any other person appointed by the board may act as the 
+secretary of the committee. The terms of reference of committee shall be determined by the board. 
+12. There shall also be Risk Management Committee of the board constituted to supe rvise overall risk 
+management functions of the institution. It will decide the policy and strategy for integrated risk 
+management containing various risk exposures of the institutions. The Committee would review 
+policies and guidelines for identification, measurement, monitoring and control for all major risk 
+categories. The Board shall determine terms of reference of the Risk Management Committee. 
+ 
+Internal Audit 
+13. There shall be an internal audit function in every Lending NBFC including NBMFC. The Lending 
+NBFC including NBMFC shall ensure that head of internal audit is suitably qualified, experienced 
+and conversant with the company's policies and procedures. The head of internal audit shall 
+functionally report to the audit committee and administratively to the chief executive officer and his 
+performance appraisal shall be done jointly by the chairman of the audit committee and the chief 
+executive officer. 
+14. No director on the Board, shall be appointed, in any capacity, in the internal audit function of the 
+company. The Board shall ensure that the internal audit team comprises experts of relevant 
+disciplines in order to cover all major heads of accounts maintained by the Lending NBFC including 
+NBMFC. 
+15. The internal audit function, wholly or partially, may be outsourced by the Lending NBFC including 
+NBMFC to a professional services firm or be performed by the internal audit staff of holding 
+company and in lieu of outsourcing, the Lending NBFC including NBMFC shall appoint or designate 
+a fulltime employee other than c hief financial officer, as head of internal audit holding suitable 
+qualification, to act as coordinator between firm providing internal audit services and the board. 
+16. While outsourcing the function, the Lending NBFC including NBMFC shall not appoint its existing 
+external auditors or any of its associated company or associated undertaking, as internal auditors. 
+17. Lending NBFCs including NBMFCs shall ensure that internal audit reports are provided for the 
+review of external auditors. The auditors shall discuss a ny major findings in relation to the reports 
+
+
+--- page 39 ---
+with the audit committee, which shall report matters of significance to the board. 
+ 
+External Auditor 
+18. A Lending NBFC including an NBMFC shall appoint as external auditors, a firm of auditors, which 
+has been given  a satisfactory rating under the Quality Control Review program of the Institute of 
+Chartered Accountants of Pakistan and registered with Audit Oversight Board of Pakistan under 
+section 36I of the Securities and Exchange Commission of Pakistan Act, 1997 (XLII of 1997). 
+19. A Lending NBFC including an NBMFC shall not appoint as external auditors, a firm of auditors, 
+which or a partner of which is non -compliant with the International Federation of Accountants' 
+Guidelines on Code of Ethics, as adopted by the Institute of Chartered Accountants of Pakistan. 
+20. No Lending NBFC including NBMFC shall appoint its external auditors to provide services in 
+addition to audit except in accordance with the applicable laws or any other regulatory requirement 
+and shall require the auditors to observe and confirm compliance with the applicable International 
+Federation of Accountants guidelines in this regard. 
+21. A Lending NBFC including an NBMFC shall ensure that the auditors do not perform management 
+functions or make management decisi ons, responsibility for which remains with the Board and 
+management of the company. 
+22. No Lending NBFC including NBMFC shall appoint a person as an external auditor who is a close 
+relative (spouse, parents, dependents and non-dependent children) of the chief executive officer, the 
+chief financial officer, the head of internal audit, the company secretary or a director of the Lending 
+NBFC including NBMFC. It shall also be ensured that no person involved in the audit of the Lending 
+NBFC including NBMFC is a close relative of these office holders of the Lending NBFC including 
+NBMFC. 
+23. A Lending NBFC including NBMFC shall require the external auditors to furnish a management 
+letter to its board and any matter deemed significant by the external auditor shall be commun icated 
+in writing to the board prior to the approval of the audited accounts / financial statements by the 
+board. 
+24. A Lending NBFC including an NBMFC shall change its external auditors every five years. 
+ 
+Related Party Transaction  
+25. The details of all related party transactions shall be placed periodically before the Audit Committee 
+of the company and upon recommendations of the audit committee the same shall be placed before 
+the board for review and approval. 
+ 
+Appendix-A to Schedule XIIA 
+i. Annual business plan, cash flow projections, forecasts and strategic plan; 
+ii. Budgets including capital, manpower and overhead budgets, along with variance analyses;  
+iii. Matters recommended and/or reported by the committees of the board; 
+iv. Update on the conflict of interest policy and issues arisen in relation thereof;  
+v. Quarterly operating results of the organization as a whole and in terms of its operating divisions or 
+business segments;  
+vi. Internal audit reports, including cases of fraud, bribery, corruption, or irregularities of a ma terial 
+nature, management letter issued by the external auditors;  
+vii. Policies or amendment to policies such as Credit Policy, Risk Management, Human Resource 
+Management, Procurement of goods and services, Environment and Social Management etc., rule or 
+regulation, enforcement of an accounting standard having material effect and such other matters as 
+may have a material effect on the Lending NBFC including NBMFC;  
+viii. Status and implications of any law suit or proceedings of material nature, filed by or against th e 
+Lending NBFC including NBMFC;  
+ix. Any show cause, demand or prosecution notice received from revenue or regulatory authorities 
+x. Failure to recover material amounts of loans, advances, and deposits made by Lending NBFC 
+
+
+--- page 40 ---
+including NBMFC, if such a failure to recover for a single transaction or in aggregate has a material 
+impact on the Lending NBFC including NBMFC;  
+xi. Any significant accidents, dangerous occurrences and instances of pollution and environmental 
+problems involving the Lending NBFC including NBMFC;  
+xii. Significant public or product liability claims made or likely to be made against the Lending NBFC 
+including NBMFC, including any adverse judgment or order made on the conduct of the Lending 
+NBFC including NBMFC or of another organization that may have a mat erial negative bearing on 
+Lending NBFC including NBMFC. 
+xiii. Report on governance, risk management and compliance issues. Risks considered shall include 
+reputational risk and shall address risk analysis, risk management and risk communication; 
+xiv. Review of specific Social Performance impact to analyze fulfillment of social targets and to ensure 
+that social performance issues are identified as components of the NBMFC’s strategic and business 
+plans. 
+xv. The CEO shall immediately bring before the board, as soon as it is f oreseen that the organization 
+will not be in a position of meeting its obligations on any loans (including penalties on late payments 
+and other dues, to a creditor, bank or financial institution or default in payment of any liability) or 
+any other debt ins trument. Full details of the failure to meet obligations shall be provided in the 
+Lending NBFC’s including NBMFC’s quarterly and annual financial statements. 
+ 
+(x) after schedule XVII, the following new schedules shall be inserted, namely:- 
+“Schedule – XVIII 
+Maintenance of Website Requirements 
+See Regulation 37 (2) (r) 
+An AMCs shall maintain a website containing following minimum information; 
+(i)  latest financial statements of the CIS; 
+(ii)  constitutive documents of the CIS; 
+(iii) important notices; 
+(iv) information material for products offered by the AMC including NAV of the CIS, 
+latest Fund Manager Report etc.;  
+(v)  complaint handling mechanism and related details; 
+(vi) Expense ratio of CIS under management; 
+(vii)  Education material for investors; 
+(viii)  SECP investor complaints web address; and”; 
+ 
+Schedule XIX 
+Investment Restrictions and Prohibitions 
+See Regulation 55 
+1. A CIS shall not invest in Unlisted Equity Securities unless an application for listing of such 
+securities has been accepted by the stock exchange:  
+  Provided that a CIS may make total investments in a pre -initial public offering 
+
+
+--- page 41 ---
+(Pre-IPO) up to fifteen percent of its net asset value, subject to the investment limits 
+prescribed under these Regulations.   
+2. An Asset Management Company shall sta te in the trust deed and specify in the Offering 
+Document of the CIS the type of securities the CIS will invest in and the risks associated with 
+such securities. 
+3. Subject to clause (4) of this Schedule, exposure of a CIS to any single entity shall not excee d 
+an amount equal to ten per cent of total net assets of the CIS, subject to following conditions: 
+(a). Exposure to equity securities of a company shall not exceed ten percent of the issued 
+capital of that company;  
+(b). Exposure to any debt issue of a company shall not exceed ten percent of that issue. 
+  Provided that subject to the conditions prescribed in clauses (a) and (b) above the 
+exposure of an equity scheme to any single entity shall not exceed an amount equal to ten 
+per cent of the net assets of the Scheme or the index weight of the security subject to the limit 
+of fifteen percent, whichever is higher. 
+4. Exposure limits for following types of schemes shall be lower of net assets of a scheme or 
+issued securities of a company: 
+Type of Scheme 
+(Fund)  
+Maximum limit 
+(Equity Securities) 
+Maximum limit 
+(Debt/ Money Market Securities 
+or Instruments) 
+Shariah Compliant/Islamic 
+Fund 
+15% 15% of single issue 
+Index Funds (tracking 
+recognised or approved 
+index or its subset) 
+weight of security 
+in the index or its 
+subset 
+weight of security in index or its 
+subset 
+Sector specific fund 20% 20% of a single issue 
+Capital Protected Fund or 
+Guaranteed Fund  
+Per company limit as specified in clause (3) of the schedule 
+shall not apply to such percentage of assets of the scheme 
+that is placed with a bank or invested in such a manner that 
+it will become 100% at maturity of the scheme/fund or a 
+guarantee has been obtained from the bank for guaranteed 
+fund 
+Fund of funds No limit; Provided that the Asset Management Company 
+shall not charge management fee if the fund invests in the 
+
+
+--- page 42 ---
+schemes managed by the same Asset Management 
+Company. 
+ 
+5.        An Asset Management Company shall not hold twenty five percent or more of the 
+voting rights or control of a company on behalf of its CIS; 
+6.        An Asset Management Company authorized by the Commission to invest overseas on 
+behalf of CIS shall disclose the same in the Constitutive Document and comply with such 
+conditions as specified by the Commission; 
+7.        An Asset Management Company shall not invest more than twenty five per cent of 
+total net assets of the CIS in securities of any one sector as per classification of the stock 
+exchange, provided that the following types of schemes shall follow the limits specified 
+below:  
+Type of Scheme (Fund) Maximum Per Sector limit 
+Equity Funds 30% or index weight whichever is higher, 
+subject to maximum of 35% 
+Shariah Compliant/Islamic Fund 35% or index weight, whichever is higher, 
+subject to maximum of 40% 
+Index Funds (tracking recognized or 
+approved index or its subset) 
+Weight of sector in the index or its subset 
+Sector specific fund No limit 
+Fund of funds No limit; Provided that the Asset Management 
+Company shall not charge management fee if 
+the fund invests in the schemes managed by the 
+same Asset Management Company. 
+Capital Protected Fund or Guaranteed Fund No limit; Provided that such percentage of 
+assets of the scheme is placed with a bank or 
+invested in such a manner which will become 
+100% at maturity of the scheme or a guarantee 
+has been obtained from the bank for guaranteed 
+funds.  
+Provided that the Commission may specify a higher maximum limit for a specific sector. 
+8. An Asset Management Company, on behalf of CIS, shall not take Exposure of more than,- 
+(a) thirty-five per cent of net assets of CIS in any single group; and 
+  Explanation: For the purpose of sub -clause (a) of clause (8) of this schedule, the 
+term “group” means persons having at least 30% or more shareholding in any other company, 
+as per publicly disclosed information; 
+(b) ten per cent of net assets of CIS in listed group companies of the asset management 
+company and such Exposure shall only be made through the secondary market: 
+
+
+--- page 43 ---
+  Provided that an Asset Management Company, on behalf of sector specific fund 
+shall not take exposure more than 20% of net asset of CIS in listed group companies of the 
+asset management company. 
+9. A Closed End Fund may invest in its own certificates or shares up to twenty per cent of its issued 
+capital from the secondary market in accordance with the requireme nts specified by the 
+Commission. 
+10. The Commission may specify different Exposure limits and parameters for CIS depending on its 
+Investment objective and policy. 
+11. Where the Exposure of a CIS exceeds the limits specified in clause (3), (4) or (7) of this schedule 
+because of corporate actions including taking up rights or bonus issue or due to market price 
+increase or decrease in net assets due to redemption the excess Exposure shall be regularized within 
+four months of the breach of limits. 
+12. The exposure limits prescribed in clause (8) of this schedule will not be applicable for Index Funds, 
+Capital Protected Fund and Fund of Funds or any other category as specified by the Commission. 
+13. A CIS may invest only in securities, commercial papers, deposit with Financial Institutions, place 
+funds with financial institutions, or invest in any other avenues as approved by the Commission 
+from time to time. 
+14. The exposure limits prescribed under clause (3), (4) , (7) and (8) of this schedule will not be 
+applicable in case of exposure in securities issued or guaranteed by the Federal Government. 
+15. The exposure limits prescribed under clause (3), (4), (7) and (8) of this schedule for an NBFC 
+exclusively engaged in the business of issuance of guarantees shall be applicable to such limit and 
+conditions as may be notified by the Commission. 
+16. Subject to clause 17 of this schedule, an Asset Management Company on behalf of a CIS managed 
+by it shall not,- 
+(a) affect a short sale in a security whether listed or unlisted; 
+(b) purchase any security in a forward contract; 
+(c) purchase any security on margin; 
+(d) apply any part of its assets to commodities or commodity contracts;  
+(e) invest in securities of the Asset Management Company;  
+(f) invest in any security of a company, if, - 
+(i) any director or officer of the Asset Management Company owns more than 
+five per cent of the total amount of securities issued by that company; or 
+(ii) the directors and officers of the Asset Management Company collectively 
+own more than ten per cent of those securities: 
+
+
+--- page 44 ---
+   Provided that Clause (15)(f) shall not apply to CIS tracking an index or a 
+sub-set of an index; 
+(g)    borrow in any form, except with the approval of trustee, for meeting redemption request 
+and such borrowing shall not exceed fifteen per cent or such other limit as specified by the 
+Commission of the total net asset value of an Open End Scheme at the time of borrowing. 
+The maximum period of borrowing shall be 90 days and any net cash flows during interim 
+period shall be utilized for repaying of borrowing:  
+   Provided that an Asset Management Company during the interim period 
+may invest net cash flows for   right issues or may invest during the interim period if there is 
+no option in borrowing agreement for early repayment of borrowing; 
+(h) sell units or issue shares or certificates for consideration other than cash unless permitted 
+by the Commission on the basis of structure and investment policy of the CIS; 
+(i) take Exposure in any other CIS, except for fund of funds or overseas investment: 
+ Explanation.- For the purpose of this Regulation “fund of funds” means a CIS set up 
+with the objective to predominantly invest in the securities of other CIS. 
+  Provided that Clause 15(d) shall not apply to shariah compliant CIS entering into 
+commodity based contracts as a  vehicle; (a) to place funds or; (b) to borrow funds to meet 
+redemptions, as referenced in clause 15 (g) of this schedule. 
+17. Clause 15 (a) ,(b), (c) and (d) of this schedule shall not apply to CIS which has an investment 
+objective and policy to short -sell, p urchase securities on margin and invest in commodities or 
+commodity contracts on terms and conditions specified by the Commission. 
+ 
+“Schedule XX 
+Expenses chargeable to the CIS 
+See Regulation 60 
+Notwithstanding the generality of Regulations 60(1) and (2), only the following fees and charges may be 
+payable from the CIS, - 
+(a) remuneration of the Asset Management Company; 
+(b) remuneration of trustee or custodian; 
+(c) listing fee payable to the stock exchange, including renewals; 
+(d) charges and levies of stock exchange, national clearing and settlement company  
+and central depositary company; 
+(e) rating fee of CIS payable to approved rating agency; 
+(f) auditors’ fees and out of pocket expenses as billed by them; 
+(g) fees payable to the Commission; 
+
+
+--- page 45 ---
+(h) formation cost of the CIS not exceeding 1.5 per cent of the net assets at the close  
+of initial public offering (IPO)in case of an Open End Scheme and one percent of  
+the paid-up capital in case of a Closed End Fund or ten million rupees whichever is lower; 
+(i) brokerage and transaction costs related to investing and disinvesting of the assets of the CIS; 
+(j) expenses incurred by trustee in affecting registration of all registerable assets in the name of the 
+trustee; 
+(k) legal and related costs incurred in protecting the interests of the unit, certificate or share holders of 
+the CIS; 
+(l) bank charges, borrowing and financial costs; 
+(m) hedging costs including forward cover, forward purchase or option purchase costs; 
+(n) printing costs and related expenses for issuing the quarterly, half-yearly and annual reports, etcetera 
+of the CIS;  
+(o) taxes, fees, duties and other charges applicable to the CIS on its income or its properties, including 
+taxes, fees, duties and other charges levied by a foreign jurisdiction on investments made oversees; 
+(p) any other expense or charge as may be allowed by the Commission.  
+(q) fees and expenses related to registrar services, accounting, operation and valuation services related 
+to CIS; 
+(r) shariah advisory fee;  
+(s) custody and insuran ces costs relating to the safekeeping of the physical gold in the vault(s) for 
+Commodity Funds; and 
+(t) selling and marketing expenses for the purpose of opening and maintenance of branches; payment 
+of salaries/commission to sales team and distributors;  
+(u) advertising and publicity expense; development of alternate delivery/distribution channels for CIS: 
+ Provided that selling and marketing expense may be charged for all categories of funds except 
+fund of funds. 
+Schedule XXI 
+Responsibilities towards Corporate Governance and Proxy Voting: 
+[See Regulation 38A] 
+An Asset Management Company shall: 
+(a)   formulate a Corporate Governance policy approved by its Board of Directors:  
+(b)  formulate proxy voting policy approved by their Board of Directors which cover s the 
+following minimum aspects: 
+(i). Authority and responsibility for voting proxies; 
+(ii). Voting procedures; 
+
+
+--- page 46 ---
+(iii). Internal participants to be consulted in evaluation of a proxy proposal; 
+(iv). Procedure and controls for avoidance or minimization of conflicts of interest; 
+(v). Disclosure of conflict of interest; 
+(vii) Record keeping of proxy voting; 
+(viii) System to monitor proxy-voting responsibilities; 
+(ix) Circumstances under which proxies shall not be voted; and 
+(x)  Disclosure of proxy voting. 
+(c)  ensure that the proxy voting policy at minimum covers the following areas:-  
+(i) Election of Directors; 
+(ii) Corporate Governance; 
+(iii) Appointment of Auditors; 
+(iv) Changes in Legal and Capital Structure; proposals affecting shareholder rights; 
+(v) Corporate restructuring; and 
+(vi) Mergers and acquisitions. 
+(d) while participating in the election of the Board of Directors of the investee company, ensure 
+that by exercising the right to vote proxy on behalf of the unitholders of the CIS, does not result 
+in attaining the management control of the investee company, in contravention of t he 
+Regulations: 
+(e)  at the minimum maintain following records in relation to proxy voting: 
+(i) the name of the issuer of the securities on which the vote has been cast; 
+(ii) name of major beneficial owner(s) of the securities; 
+(iii) number of shares held by CIS on record; 
+(iv) the date on which the proxy was voted; and 
+(v) the results of the vote. 
+(f)  disclose the proxy voting policy approved by its Board of Directors on its websites and 
+shall also submit it to the Commission: 
+(g)  include in the annual report of the CIS summary  of actual proxy voted during the year as 
+per table given below:  
+ 
+Summary of Actual Proxy voted by CIS:  
+ Resolutions For Against Abstain* 
+Number     
+(%ages)     
+*Reasons for abstaining shall be disclosed. 
+
+
+--- page 47 ---
+(h)  disclose in the annual report of CIS the cases where AMC on behalf of CIS did not 
+participate in shareholders’ meetings.  
+(i) formulate a comprehensive stewardship policy duly approved by its Board of Directors 
+covering the following aspects at the minimum: 
+(1) policy on stewardship responsibilities; 
+(2) policy on voting; 
+(3) policy on monitoring the investee company; 
+(4) policy for engagement with the investee companies; 
+(5) policy on identifying and managing conflicts of interest; and 
+(6) policy on how it incorporates sustainability consideration, including 
+Environmental, Social and Governance (ESG) into its investment analysis and 
+activities. 
+Further, the AMC shall include in the annual report of the CIS a statement that the proxy voting 
+policy of the CIS is available on the website of the AMC and detailed information regarding 
+actual proxies voted by the AMC in respect of the CIS is also available without charge, upon 
+request, to all unit holders. 
+    
+Schedule XXII 
+Alignment of Interest of Chief Executive Officer, Chief Investment Officer and Head of Investment 
+Committee of AMCs with Unitholders of CIS 
+[See Regulation 60A] 
+Minimum requirements with the objective of alignment of interest of key employee (CEO, CIO & Head of 
+Investment Committee) of AMCs with the unitholders of CIS are specified below: 
+ 
+ 
+1. In-line with the requirement of Regulation 60A of the NBFC & NE Regulations, 2008, the AMCs 
+are required to put in place a policy approved by the Board of Directors to align the interests of its 
+key employees (CEO, CIO & Head of Investment Committee) with those of the unit holders of the 
+Collective Investment Schemes managed by the AMC. 
+2. The policy will, at the minimum, address the following areas and aspects: 
+(i) Bonus payable to the aforementioned Key Employees in the form of units of Mutual Fund 
+schemes concerned. The proportion of compensation to be paid in the form of units shall 
+be determined by the Board of AMC. 
+(ii) The manner of payment of bonus in the form of units of CIS will be in accordance with the 
+mechanism as per board’s approved policy. 
+(iii) Minimum lock- in period.  
+(iv) The mechanism for forfeiture/claw back of bonuses of Key Employees, in case of fraud, 
+gross negligence, mis-selling or deceptive conduct on part of the key executives comprising 
+
+
+--- page 48 ---
+of portion of compensation to be forfeited, process for determining the fraud, gross  
+negligence, mis -selling and/ or deceptive conduct by a certain key executive, and 
+prevention of moral hazard in implementation of clawback provision. 
+(v) Disclosure of such bonus paid to the Key Employees in the form of units of each scheme 
+in aggregate along with the scheme return in respective annual accounts. 
+(vi) Policy for retention of adequate audit trail and record to verify compliance with applicable 
+requirements 
+3. The AMC will disclose the formulated policy along with summary of any exemption to the policy 
+on its website and annual report. 
+Schedule XXIII 
+Trading by Employees 
+[See Regulation 38B] 
+An Asset Management Company shall put in place, appropriate policies and procedures which shall at the 
+minimum cover following requirements/principles: 
+(i) disclosure by an AMC employee, within 10 days of his appointment, of any securities held by 
+him or her, his or her spouse and / or dependent children along with details of their broker 
+accounts. Such reporting of information shall be done to the Compliance Function of the AMC; 
+(ii) Criteria for approving or rejecting an application seeking trading or investment in securities by 
+AMC employees; 
+(iii) Periodic disclosure of securities held by the AMC employees, their spouses and dependent 
+children, at least on a quarterly basis. Howev er, reporting of actual transactions, including 
+volume, date and price, on a same day basis; 
+(iv) Restriction on AMC employees from deriving any benefit or personal advantage from 
+information which is generally not available and which is obtained by reason of or in the course 
+of their employment with AMC; 
+(v) Prescribing minimum holding period and discourage trading for speculative purposes; 
+(vi) Retention, for a period of at least three years, of complete record of all applications including 
+the date of the request, the  name of the applicant, details of the proposed transaction and 
+whether the request was approved or denied and waivers given, if any, and its reasons; 
+(vii) Restricting personnel involved in the investment decision making process from initiating trades 
+in a security within twenty four hours of a pending buy or sell order in the same security by the 
+AMC and until such order is executed or cancelled; 
+(viii) Prescribe trading windows and blackout periods to restrict the misuse of confidential 
+information; and 
+(ix) establish stringent requirements for those personals, whether AMC employee or director, who: 
+(a). in his or her regular function or duty makes or participates in investment decisions, or obtains 
+information, prior to buying or selling investments on behalf of a Collective I nvestment 
+
+
+--- page 49 ---
+Scheme;  
+(b). engages in making of any recommendations with respect to such buying or selling; 
+(c). or any person over whom such persons exercise control and influence in terms of the investment 
+decision making; and 
+(d). Use of restricted lists and watch lists securities to detect unauthorized trades.”. 
+[File No. SY/SECP/8/13]

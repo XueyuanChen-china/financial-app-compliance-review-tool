@@ -4,10 +4,17 @@ import json
 import os
 import urllib.error
 import urllib.request
+from copy import deepcopy
 from typing import Any, Protocol
+
+from dotenv import load_dotenv
 
 from compliance_review.domain.models import ReviewResult
 from compliance_review.review.models import ModelRequest, ModelResponse, ToolCall
+
+load_dotenv()
+
+_REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
 
 
 class ModelProvider(Protocol):
@@ -50,6 +57,15 @@ class OpenAICompatibleProvider:
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
         self.base_url = base_url
         self.timeout_seconds = timeout_seconds
+        self.actor_authorization = os.environ.get(
+            "COMPLIANCE_REVIEW_ACTOR_AUTHORIZATION"
+        )
+        self.reasoning_effort = os.environ.get("COMPLIANCE_REVIEW_REASONING_EFFORT")
+        if self.reasoning_effort and self.reasoning_effort not in _REASONING_EFFORTS:
+            allowed = ", ".join(sorted(_REASONING_EFFORTS))
+            raise ValueError(
+                "COMPLIANCE_REVIEW_REASONING_EFFORT must be one of: " + allowed
+            )
 
     def complete(self, request: ModelRequest) -> ModelResponse:
         if not self.api_key:
@@ -61,6 +77,8 @@ class OpenAICompatibleProvider:
             "tool_choice": "auto",
             "temperature": 0,
         }
+        if self.reasoning_effort:
+            body["reasoning_effort"] = self.reasoning_effort
         if request.request_kind in {
             "obligation_extraction",
             "control_compilation",
@@ -72,19 +90,22 @@ class OpenAICompatibleProvider:
                     "json_schema": {
                         "name": request.request_kind,
                         "strict": True,
-                        "schema": request.response_schema,
+                        "schema": _strict_json_schema(request.response_schema),
                     },
                 }
             else:
                 body["response_format"] = {"type": "json_object"}
         encoded = json.dumps(body).encode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        if self.actor_authorization:
+            headers["x-openai-actor-authorization"] = self.actor_authorization
         http_request = urllib.request.Request(
             self.base_url,
             data=encoded,
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             method="POST",
         )
         try:
@@ -98,6 +119,46 @@ class OpenAICompatibleProvider:
 def review_result_json(result: ReviewResult) -> str:
     """Serialize the validated result for providers that return JSON content."""
     return result.model_dump_json()
+
+
+def _strict_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Normalize Pydantic JSON Schema for strict structured-output providers.
+
+    Strict JSON Schema endpoints require every object property to be listed in
+    ``required``. Pydantic omits fields with defaults from that list, so the
+    provider must normalize the transport schema without changing the domain
+    model's validation rules.
+    """
+    normalized = deepcopy(schema)
+
+    def visit(node: Any) -> None:
+        if isinstance(node, dict):
+            properties = node.get("properties")
+            if isinstance(properties, dict):
+                node["required"] = list(properties)
+                node["additionalProperties"] = False
+                for child in properties.values():
+                    visit(child)
+            for key in ("$defs", "definitions"):
+                definitions = node.get(key)
+                if isinstance(definitions, dict):
+                    for child in definitions.values():
+                        visit(child)
+            for key in ("items", "additionalProperties", "not"):
+                child = node.get(key)
+                if isinstance(child, dict):
+                    visit(child)
+            for key in ("anyOf", "allOf", "oneOf", "prefixItems"):
+                children = node.get(key)
+                if isinstance(children, list):
+                    for child in children:
+                        visit(child)
+        elif isinstance(node, list):
+            for child in node:
+                visit(child)
+
+    visit(normalized)
+    return normalized
 
 
 def _parse_chat_completion(payload: Any) -> ModelResponse:
