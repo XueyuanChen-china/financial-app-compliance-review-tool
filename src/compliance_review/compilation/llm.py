@@ -6,7 +6,9 @@ from typing import Any, Type, TypeVar
 from pydantic import BaseModel
 
 from compliance_review.compilation.models import (
+    ControlDraft,
     ControlDraftSet,
+    ControlDraftSetTransport,
     ObligationExtractionBatchResult,
     SourceSectionBatch,
 )
@@ -118,21 +120,54 @@ def obligation_extraction_call(
 
 
 def control_compilation_call(provider: ModelProvider, payload: Any) -> ControlDraftSet:
-    return structured_call(
+    transport = structured_call(
         provider,
         work_item_id="phase2.control_compilation",
         request_kind="control_compilation",
         system_prompt=(
             "Compile executable compliance controls only from the supplied obligations. "
             "Do not read or infer directly from source text. Return JSON matching "
-            "control_draft_set.v1 with status draft. Preserve obligation_ids and source_refs. "
+            "control_draft_set.v1 with status draft. Each control must include exactly "
+            "control_id, module_id, title, severity, obligation_ids, source_refs, "
+            "applicability_expression, required_surfaces, evidence_requirements, "
+            "missing_evidence_policy, and reuse_invalidation_keys. Preserve "
+            "obligation_ids and source_refs. "
+            "evidence_requirements must be an array of objects with surface, "
+            "minimum_strength, and rationale; do not return it as a keyed object. "
             "Use the finite applicability DSL: field == value, field includes value, "
             "value in field, joined only by and/&&. Every required surface must have an "
             "evidence requirement. Do not claim that a document proves source code or runtime."
         ),
         user_payload=payload,
-        output_model=ControlDraftSet,
-        response_schema=ControlDraftSet.model_json_schema(),
+        output_model=ControlDraftSetTransport,
+        response_schema=ControlDraftSetTransport.model_json_schema(),
+    )
+    controls: list[ControlDraft] = []
+    for draft in transport.controls:
+        evidence_requirements: dict[str, Any] = {}
+        for item in draft.evidence_requirements:
+            if item.surface in evidence_requirements:
+                raise ValueError(
+                    f"control {draft.control_id} has duplicate evidence surface: "
+                    f"{item.surface}"
+                )
+            evidence_requirements[item.surface] = {
+                "minimum_strength": item.minimum_strength,
+                "rationale": item.rationale,
+            }
+        controls.append(
+            ControlDraft.model_validate(
+                {
+                    **draft.model_dump(exclude={"evidence_requirements"}),
+                    "evidence_requirements": evidence_requirements,
+                }
+            )
+        )
+    return ControlDraftSet(
+        contract=transport.contract,
+        version=transport.version,
+        status=transport.status,
+        controls=controls,
     )
 
 
