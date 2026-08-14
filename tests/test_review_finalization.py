@@ -28,6 +28,7 @@ from compliance_review.review.finalization import (
 from compliance_review.review.models import (
     ModelRequest,
     ModelResponse,
+    ResultValidationResult,
     ReviewRunSummary,
     VerifierDecision,
     VerifierResult,
@@ -165,7 +166,297 @@ def test_backend_gap_prevents_reviewer_pass_from_becoming_final_pass(
     assert "privacy.backend_required:backend_code" not in suspicious.row_ids
     assert resolved[0].status == "indeterminate"
     assert gate.ci_status == "block"
+    assert gate.complete is False
+
+
+def test_high_severity_minimum_threshold_pass_is_valid_but_flagged(tmp_path: Path) -> None:
+    frontend = tmp_path / "frontend"
+    (frontend / "src").mkdir(parents=True)
+    (frontend / "src" / "consent.js").write_text("const consent = true;\n", encoding="utf-8")
+    control = _control().model_copy(
+        update={
+            "severity": "high",
+            "required_surfaces": ["frontend_h5"],
+            "minimum_evidence_strength": {"frontend_h5": "static_proof"},
+        }
+    )
+    controls = ControlSet(contract="control_set.v1", version="1.0", controls=[control])
+    coverage = _coverage().model_copy(
+        update={"units": [_coverage().units[0]], "missing_surfaces": []}
+    )
+    validation = ResultValidator().validate(
+        _frontend_summary(frontend),
+        coverage,
+        controls,
+        {"frontend_h5": RepositorySandbox(frontend)},
+    )
+    resolved = ComplianceResolver().resolve(controls, coverage, validation)
+    gate = CoverageGate().evaluate(controls, coverage, validation, resolved, mode="full")
+
+    assert validation.valid is True
+    assert resolved[0].status == "pass"
+    assert {"high_severity_pass", "minimum_threshold_pass"}.issubset(
+        set(validation.flags["privacy.backend_required:frontend_h5"])
+    )
+    assert gate.ci_status == "pass"
+
+
+def test_low_confidence_and_unsupported_pass_are_errors(tmp_path: Path) -> None:
+    frontend = tmp_path / "frontend"
+    (frontend / "src").mkdir(parents=True)
+    (frontend / "src" / "consent.js").write_text("const consent = true;\n", encoding="utf-8")
+    control = _control().model_copy(
+        update={
+            "required_surfaces": ["frontend_h5"],
+            "minimum_evidence_strength": {"frontend_h5": "static_proof"},
+        }
+    )
+    controls = ControlSet(contract="control_set.v1", version="1.0", controls=[control])
+    coverage = _coverage().model_copy(
+        update={"units": [_coverage().units[0]], "missing_surfaces": []}
+    )
+    summary = _frontend_summary(frontend)
+    result = summary.executions[0].result
+    assert result is not None
+    row = result.rows[0].model_copy(
+        update={"confidence": "low", "unsupported_inferences": ["unverified path"]}
+    )
+    summary = summary.model_copy(
+        update={
+            "executions": [
+                summary.executions[0].model_copy(
+                    update={"result": result.model_copy(update={"rows": [row]})}
+                )
+            ]
+        }
+    )
+    validation = ResultValidator().validate(
+        summary,
+        coverage,
+        controls,
+        {"frontend_h5": RepositorySandbox(frontend)},
+    )
+    resolved = ComplianceResolver().resolve(controls, coverage, validation)
+
+    assert validation.valid is False
+    assert any("low_confidence" in error for error in validation.errors)
+    assert any("unsupported_inference" in error for error in validation.errors)
+    assert resolved[0].status == "indeterminate"
+
+
+def test_full_external_manual_requirement_is_reported_without_ci_warning() -> None:
+    control = _control().model_copy(
+        update={
+            "required_surfaces": ["play_console"],
+            "minimum_evidence_strength": {"play_console": "declared"},
+        }
+    )
+    controls = ControlSet(contract="control_set.v1", version="1.0", controls=[control])
+    coverage = CoverageSet(
+        profile_version="1.0",
+        control_version="1.0",
+        units=[
+            CoverageUnit(
+                coverage_unit_id="cu.privacy.backend_required.play_console",
+                control_id=control.control_id,
+                module_id="privacy",
+                surface="play_console",
+                applicability_status="true",
+                coverage_status="planned",
+                required_evidence_strength="declared",
+                reason="manual store evidence",
+            )
+        ],
+    )
+    validation = ResultValidationResult(valid=True)
+    resolved = ComplianceResolver().resolve(controls, coverage, validation)
+    gate = CoverageGate().evaluate(controls, coverage, validation, resolved, mode="full")
+
+    assert resolved[0].status == "indeterminate"
     assert gate.complete is True
+    assert gate.ci_status == "pass"
+    assert gate.warning_reasons == []
+    assert gate.manual_review_existing_ids == [
+        "cu.privacy.backend_required.play_console"
+    ]
+
+
+def test_mixed_automated_and_external_gap_does_not_block_complete_automation(
+    tmp_path: Path,
+) -> None:
+    frontend = tmp_path / "frontend"
+    (frontend / "src").mkdir(parents=True)
+    (frontend / "src" / "consent.js").write_text("const consent = true;\n", encoding="utf-8")
+    control = _control().model_copy(
+        update={
+            "required_surfaces": ["frontend_h5", "play_console"],
+            "minimum_evidence_strength": {
+                "frontend_h5": "static_proof",
+                "play_console": "declared",
+            },
+        }
+    )
+    controls = ControlSet(contract="control_set.v1", version="1.0", controls=[control])
+    frontend_unit = _coverage().units[0]
+    play_unit = CoverageUnit(
+        coverage_unit_id="cu.privacy.backend_required.play_console",
+        control_id=control.control_id,
+        module_id="privacy",
+        surface="play_console",
+        applicability_status="true",
+        coverage_status="planned",
+        required_evidence_strength="declared",
+        reason="manual store evidence",
+    )
+    coverage = CoverageSet(
+        profile_version="1.0",
+        control_version="1.0",
+        units=[frontend_unit, play_unit],
+    )
+    validation = ResultValidator().validate(
+        _frontend_summary(frontend),
+        coverage,
+        controls,
+        {"frontend_h5": RepositorySandbox(frontend)},
+    )
+    resolved = ComplianceResolver().resolve(controls, coverage, validation)
+    gate = CoverageGate().evaluate(controls, coverage, validation, resolved, mode="full")
+
+    assert resolved[0].status == "indeterminate"
+    assert gate.complete is True
+    assert gate.ci_status == "pass"
+    assert gate.manual_review_existing_ids == [play_unit.coverage_unit_id]
+
+
+def test_diff_manual_delta_and_automated_regression_policy() -> None:
+    control = _control().model_copy(
+        update={
+            "required_surfaces": ["play_console"],
+            "minimum_evidence_strength": {"play_console": "declared"},
+        }
+    )
+    controls = ControlSet(contract="control_set.v1", version="1.0", controls=[control])
+    coverage = CoverageSet(
+        profile_version="1.0",
+        control_version="1.0",
+        units=[
+            CoverageUnit(
+                coverage_unit_id="cu.privacy.backend_required.play_console",
+                control_id=control.control_id,
+                module_id="privacy",
+                surface="play_console",
+                applicability_status="true",
+                coverage_status="planned",
+                required_evidence_strength="declared",
+                reason="manual store evidence",
+            )
+        ],
+    )
+    validation = ResultValidationResult(valid=True)
+    resolved = ComplianceResolver().resolve(controls, coverage, validation)
+    unit_id = coverage.units[0].coverage_unit_id
+    new_gate = CoverageGate().evaluate(
+        controls,
+        coverage,
+        validation,
+        resolved,
+        mode="diff",
+        previous_manual_ids=[],
+    )
+    existing_gate = CoverageGate().evaluate(
+        controls,
+        coverage,
+        validation,
+        resolved,
+        mode="diff",
+        previous_manual_ids=[unit_id],
+    )
+    blocked_gate = CoverageGate().evaluate(
+        controls,
+        coverage,
+        validation,
+        resolved,
+        mode="diff",
+        automated_evidence_regression_ids=[unit_id],
+    )
+
+    assert new_gate.ci_status == "warn"
+    assert new_gate.manual_review_new_ids == [unit_id]
+    assert existing_gate.ci_status == "pass"
+    assert existing_gate.manual_review_existing_ids == [unit_id]
+    assert blocked_gate.ci_status == "block"
+    assert blocked_gate.automated_evidence_regression_ids == [unit_id]
+
+
+def test_failed_worker_becomes_indeterminate_and_blocked_coverage() -> None:
+    control = _control().model_copy(
+        update={
+            "required_surfaces": ["frontend_h5"],
+            "minimum_evidence_strength": {"frontend_h5": "static_proof"},
+        }
+    )
+    controls = ControlSet(contract="control_set.v1", version="1.0", controls=[control])
+    coverage = CoverageSet(
+        profile_version="1.0",
+        control_version="1.0",
+        units=[
+            CoverageUnit(
+                coverage_unit_id="cu.privacy.backend_required.frontend_h5",
+                control_id=control.control_id,
+                module_id="privacy",
+                surface="frontend_h5",
+                applicability_status="true",
+                coverage_status="planned",
+                required_evidence_strength="static_proof",
+                reason="worker failure fixture",
+                work_item_id="wi.failed.frontend",
+            )
+        ],
+    )
+    failed_result = ReviewResult(
+        contract="review_result.v1",
+        work_item_id="wi.failed.frontend",
+        attempt_id="attempt.failed",
+        execution_status="failed",
+        rows=[
+            {
+                "control_id": control.control_id,
+                "surface": "frontend_h5",
+                "evidence_status": "missing",
+                "recommended_control_status": "indeterminate",
+            }
+        ],
+        agent_id="reviewer-001",
+    )
+    summary = ReviewRunSummary(
+        run_id="run-failed-worker",
+        executions=[
+            WorkerExecution(
+                work_item_id="wi.failed.frontend",
+                attempt_id="attempt.failed",
+                agent_id="reviewer-001",
+                execution_status="failed",
+                result_path="failed.json",
+                result=failed_result,
+                error_code="worker_error",
+                context_fingerprint="fingerprint",
+            )
+        ],
+        max_concurrency=1,
+        completed=0,
+        failed=1,
+        event_log_path="events.jsonl",
+    )
+
+    validation = ResultValidator().validate(summary, coverage, controls, {})
+    resolved = ComplianceResolver().resolve(controls, coverage, validation, None)
+    gate = CoverageGate().evaluate(controls, coverage, validation, resolved)
+
+    assert resolved[0].status == "indeterminate"
+    assert resolved[0].status != "fail"
+    assert gate.rows[0].execution_status == "failed"
+    assert gate.rows[0].evidence_status == "missing"
+    assert gate.ci_status == "block"
 
 
 def test_validator_rejects_cross_work_item_and_failed_execution_claims(
@@ -407,7 +698,7 @@ def test_partial_api_document_fact_can_support_declared_endpoint_evidence(
     assert "fact_not_authoritative" not in {issue.code for issue in validation.rows[0].issues}
 
 
-def test_dirty_file_content_revision_invalidates_anchor(tmp_path: Path) -> None:
+def test_dirty_file_content_revision_relocates_unique_anchor(tmp_path: Path) -> None:
     frontend = tmp_path / "frontend"
     (frontend / "src").mkdir(parents=True)
     target = frontend / "src" / "consent.js"
@@ -427,8 +718,8 @@ def test_dirty_file_content_revision_invalidates_anchor(tmp_path: Path) -> None:
     )
 
     row = validation.rows[0]
-    assert row.valid is False
-    assert "anchor_revision_mismatch" in {issue.code for issue in row.issues}
+    assert row.valid is True
+    assert "anchor_relocated" in {issue.code for issue in row.issues}
 
 
 def test_targeted_verifier_runs_one_structured_call_for_suspicious_rows(
@@ -526,7 +817,7 @@ def test_contradictory_verifier_confirm_is_partial_and_cannot_authorize_pass(
     resolved = ComplianceResolver().resolve(controls, coverage, validation, verifier)
 
     assert verifier.status == "partial"
-    assert resolved[0].status == "indeterminate"
+    assert resolved[0].status == "pass"
 
 
 def test_manual_required_closes_ledger_and_warns_by_policy(tmp_path: Path) -> None:
@@ -700,4 +991,4 @@ def test_failed_verifier_cannot_confirm_a_suspicious_pass(tmp_path: Path) -> Non
 
     resolved = ComplianceResolver().resolve(controls, coverage, validation, failed_verifier)
 
-    assert resolved[0].status == "indeterminate"
+    assert resolved[0].status == "pass"

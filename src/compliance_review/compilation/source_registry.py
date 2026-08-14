@@ -14,7 +14,9 @@ from compliance_review.compilation.models import (
 
 SUPPORTED_SUFFIXES = {".md", ".txt", ".pdf", ".docx"}
 _HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*$")
-_SENTENCE_RE = re.compile(r"(?<=[.!?。！？])\s+")
+# Split after sentence punctuation whether or not the source uses whitespace.
+# This matters for Chinese regulatory text, which commonly has no spaces.
+_SENTENCE_RE = re.compile(r"(?<=[.!?。！？])(?:\s+|(?=[^\s]))")
 
 
 class SourceExtractionError(ValueError):

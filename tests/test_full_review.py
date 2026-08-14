@@ -69,27 +69,13 @@ def test_full_review_writes_snapshot_and_blocks_missing_backend_evidence(
     )
 
     review_calls: dict[str, int] = {}
+    verification_calls = 0
 
     def response_factory(request: ModelRequest) -> ModelResponse:
+        nonlocal verification_calls
         if request.request_kind == "verification":
-            payload = json.loads(request.messages[-1]["content"])
-            return ModelResponse(
-                content=json.dumps(
-                    {
-                        "contract": "verifier_result.v1",
-                        "status": "completed",
-                        "decisions": [
-                            {
-                                "row_id": row_id,
-                                "decision": "confirm",
-                                "reason": "Deterministic concern confirmed.",
-                                "anchor_ids": [],
-                            }
-                            for row_id in payload["suspicious"]["row_ids"]
-                        ],
-                    }
-                )
-            )
+            verification_calls += 1
+            raise AssertionError("authoritative Full Review must not call verifier")
         count = review_calls.get(request.attempt_id, 0)
         review_calls[request.attempt_id] = count + 1
         if count == 0:
@@ -148,8 +134,7 @@ def test_full_review_writes_snapshot_and_blocks_missing_backend_evidence(
     run_root = workspace_root / "runs" / "run-full-review"
     for relative in (
         "result_validation.json",
-        "suspicious_rows.json",
-        "verifier/verifier_result.json",
+        "validation_flags.json",
         "control_results.json",
         "coverage_manifest.json",
         "snapshot.json",
@@ -159,6 +144,9 @@ def test_full_review_writes_snapshot_and_blocks_missing_backend_evidence(
     stored_snapshot = Snapshot.model_validate_json(
         (run_root / "snapshot.json").read_text(encoding="utf-8")
     )
+    assert verification_calls == 0
+    assert not (run_root / "suspicious_rows.json").exists()
+    assert not (run_root / "verifier" / "verifier_result.json").exists()
     stored_gate = CoverageGateResult.model_validate_json(
         (run_root / "coverage_manifest.json").read_text(encoding="utf-8")
     )
@@ -167,4 +155,4 @@ def test_full_review_writes_snapshot_and_blocks_missing_backend_evidence(
     assert "CI decision: **BLOCK**" in report
     assert "backend_code" in report
     assert "Consent setting" not in report
-    assert stored_snapshot.reviewed_rows == []
+    assert stored_snapshot.reviewed_rows == ["cu.privacy.backend_required.frontend_h5"]

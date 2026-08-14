@@ -12,19 +12,40 @@ from compliance_review.compilation.models import (
     SourceSectionBatch,
 )
 
+_DEFAULT_INPUT_OVERHEAD_TOKENS = 128
+_DEFAULT_SECTION_OVERHEAD_TOKENS = 32
+
 
 def estimate_tokens(text: str) -> int:
-    """Use a conservative, dependency-free approximation for input budgeting."""
-    return max(1, ceil(len(text) / 4))
+    """Estimate tokens conservatively without requiring a model tokenizer.
+
+    ASCII text is approximated at four characters per token. Non-ASCII text is
+    counted at one character per token because this is safer for CJK and other
+    multilingual policy materials than applying the ASCII ratio universally.
+    """
+    non_ascii = sum(1 for char in text if ord(char) > 127)
+    ascii_count = len(text) - non_ascii
+    return max(1, ceil(ascii_count / 4 + non_ascii))
 
 
 class BatchPlanner:
     """Pack complete sections greedily without mixing source files."""
 
-    def __init__(self, max_input_tokens: int = 8000) -> None:
-        if max_input_tokens < 100:
-            raise ValueError("max_input_tokens must be at least 100")
+    def __init__(
+        self,
+        max_input_tokens: int = 8000,
+        input_overhead_tokens: int = _DEFAULT_INPUT_OVERHEAD_TOKENS,
+        section_overhead_tokens: int = _DEFAULT_SECTION_OVERHEAD_TOKENS,
+    ) -> None:
+        if max_input_tokens < 256:
+            raise ValueError("max_input_tokens must be at least 256")
+        if input_overhead_tokens < 0 or section_overhead_tokens < 0:
+            raise ValueError("batch overhead tokens cannot be negative")
+        if input_overhead_tokens >= max_input_tokens:
+            raise ValueError("input_overhead_tokens must be smaller than max_input_tokens")
         self.max_input_tokens = max_input_tokens
+        self.input_overhead_tokens = input_overhead_tokens
+        self.section_overhead_tokens = section_overhead_tokens
 
     def plan(self, registry: SourceRegistry) -> list[SourceSectionBatch]:
         batches: list[SourceSectionBatch] = []
@@ -32,25 +53,29 @@ class BatchPlanner:
         for source in registry.sources:
             sections = sorted(source.sections, key=lambda item: item.ordinal)
             current: list[SourceSection] = []
-            current_tokens = 0
+            current_tokens = self.input_overhead_tokens
             for section in sections:
-                section_tokens = estimate_tokens(section.text)
+                section_tokens = (
+                    estimate_tokens(section.text)
+                    + estimate_tokens(section.title)
+                    + self.section_overhead_tokens
+                )
+                if self.input_overhead_tokens + section_tokens > self.max_input_tokens:
+                    raise ValueError(
+                        f"source section exceeds batch input budget: "
+                        f"{source.source_id}/{section.section_id} requires "
+                        f"{self.input_overhead_tokens + section_tokens} tokens, "
+                        f"budget is {self.max_input_tokens}"
+                    )
                 if current and current_tokens + section_tokens > self.max_input_tokens:
                     batches.append(
                         self._batch(source.source_id, batch_number, current, current_tokens)
                     )
                     batch_number += 1
                     current = []
-                    current_tokens = 0
+                    current_tokens = self.input_overhead_tokens
                 current.append(section)
                 current_tokens += section_tokens
-                if section_tokens > self.max_input_tokens:
-                    batches.append(
-                        self._batch(source.source_id, batch_number, current, current_tokens)
-                    )
-                    batch_number += 1
-                    current = []
-                    current_tokens = 0
             if current:
                 batches.append(self._batch(source.source_id, batch_number, current, current_tokens))
                 batch_number += 1

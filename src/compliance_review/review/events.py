@@ -5,7 +5,9 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+from compliance_review.review.redaction import redact_value
 
 
 class AppendOnlyEventLog:
@@ -31,14 +33,14 @@ class AppendOnlyEventLog:
     def append(self, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
             self._sequence += 1
-            event = {
+            event = redact_value({
                 "event_id": str(uuid.uuid4()),
                 "sequence": self._sequence,
                 "event_type": event_type,
                 "occurred_at": datetime.now(timezone.utc).isoformat(),
                 **payload,
-            }
+            })
             with self.path.open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
                 stream.flush()
-            return event
+            return cast(dict[str, Any], event)

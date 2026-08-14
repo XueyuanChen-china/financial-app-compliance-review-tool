@@ -28,6 +28,7 @@ from compliance_review.review.evidence import (
     EVIDENCE_STRENGTH_RANK,
     file_content_revision,
     normalize_snippet,
+    relocate_anchor,
     strongest_evidence_strength,
 )
 from compliance_review.review.models import (
@@ -42,17 +43,13 @@ from compliance_review.review.models import (
 )
 from compliance_review.review.provider import ModelProvider
 
-_QA_ERROR_CODES = {
-    "anchor_control_mismatch",
-    "anchor_surface_mismatch",
-    "anchor_path_invalid",
-    "anchor_hash_mismatch",
-    "anchor_snippet_not_found",
-    "anchor_line_mismatch",
-    "anchor_revision_mismatch",
-    "anchor_strength_mismatch",
-    "duplicate_reviewer_row",
-}
+AUTOMATABLE_SURFACES: frozenset[Surface] = frozenset(
+    {"frontend_h5", "android_native", "backend_code", "backend_api_doc"}
+)
+
+
+def is_automatable_surface(surface: Surface) -> bool:
+    return surface in AUTOMATABLE_SURFACES
 
 
 class ResultValidator:
@@ -217,25 +214,35 @@ class ResultValidator:
                             )
                         )
                 if selected_row.unsupported_inferences:
+                    issue_factory = (
+                        _error
+                        if selected_row.recommended_control_status == "pass"
+                        else _flag
+                    )
                     issues.append(
-                        _suspicious(
+                        issue_factory(
                             "unsupported_inference",
                             "Reviewer reported unsupported inference.",
                         )
                     )
                 if selected_row.confidence == "low":
-                    issues.append(_suspicious("low_confidence", "Reviewer confidence is low."))
+                    issue_factory = (
+                        _error
+                        if selected_row.recommended_control_status == "pass"
+                        else _flag
+                    )
+                    issues.append(issue_factory("low_confidence", "Reviewer confidence is low."))
                 if selected_row.recommended_control_status == "pass" and control is not None:
                     if control.severity in {"critical", "high"}:
                         issues.append(
-                            _suspicious(
+                            _flag(
                                 "high_severity_pass",
-                                "High-severity PASS requires targeted QA.",
+                                "High-severity PASS should receive human attention.",
                             )
                         )
                     if observed == unit.required_evidence_strength:
                         issues.append(
-                            _suspicious(
+                            _flag(
                                 "minimum_threshold_pass",
                                 "PASS rests exactly on the minimum evidence threshold.",
                             )
@@ -328,9 +335,7 @@ class ResultValidator:
                         )
 
             invalid = any(issue.severity == "error" for issue in issues)
-            suspicious = any(
-                issue.severity == "suspicious" or issue.code in _QA_ERROR_CODES for issue in issues
-            )
+            flags = [issue.code for issue in issues if _is_flag(issue)]
             validated.append(
                 ValidatedReviewRow(
                     row_id=row_id,
@@ -346,23 +351,41 @@ class ResultValidator:
                     ),
                     row=selected_row,
                     valid=not invalid,
-                    suspicious=suspicious,
+                    flags=flags,
+                    # Deprecated compatibility alias; authoritative code reads flags.
+                    suspicious=bool(flags),
                     issues=issues,
                 )
             )
             errors.extend(f"{row_id}:{issue.code}" for issue in issues if issue.severity == "error")
 
         _mark_cross_surface_conflicts(validated)
-        suspicious_ids = [item.row_id for item in validated if item.suspicious]
+        for validated_row in validated:
+            validated_row.flags = sorted(
+                {
+                    *validated_row.flags,
+                    *[
+                        issue.code
+                        for issue in validated_row.issues
+                        if _is_flag(issue)
+                    ],
+                }
+            )
+            validated_row.suspicious = bool(validated_row.flags)
+        flag_map = {item.row_id: item.flags for item in validated if item.flags}
+        suspicious_ids = sorted(flag_map)
         return ResultValidationResult(
             valid=not errors,
             rows=validated,
+            flags=flag_map,
             suspicious_row_ids=suspicious_ids,
             errors=errors,
         )
 
 
 class SuspiciousRouter:
+    """Deprecated compatibility adapter; flags are authoritative now."""
+
     def route(self, validation: ResultValidationResult) -> SuspiciousReviewSet:
         selected = [row for row in validation.rows if row.suspicious]
         return SuspiciousReviewSet(
@@ -372,7 +395,7 @@ class SuspiciousRouter:
 
 
 class TargetedVerifier:
-    """Run one structured, tool-free QA call for all suspicious rows."""
+    """Deprecated compatibility verifier; never used by authoritative runs."""
 
     def __init__(self, provider: ModelProvider) -> None:
         self.provider = provider
@@ -481,22 +504,17 @@ class ComplianceResolver:
         controls: ControlSet,
         coverage: CoverageSet,
         validation: ResultValidationResult,
-        verifier_result: VerifierResult | None,
+        verifier_result: VerifierResult | None = None,
     ) -> list[ResolvedControlResult]:
+        # verifier_result is retained for API compatibility only. It is never
+        # consulted by the authoritative resolver.
+        del verifier_result
         rows_by_control: dict[str, list[ValidatedReviewRow]] = defaultdict(list)
         units_by_control = defaultdict(list)
         for row in validation.rows:
             rows_by_control[row.control_id].append(row)
         for unit in coverage.units:
             units_by_control[unit.control_id].append(unit)
-        verifier = {
-            decision.row_id: decision
-            for decision in (
-                verifier_result.decisions
-                if verifier_result is not None and verifier_result.status == "completed"
-                else []
-            )
-        }
         resolved: list[ResolvedControlResult] = []
         for control in controls.controls:
             units = units_by_control[control.control_id]
@@ -527,13 +545,6 @@ class ComplianceResolver:
             ):
                 status = "indeterminate"
                 reasons.append("Validated evidence is incomplete or invalid.")
-            elif any(
-                row.suspicious
-                and (row.row_id not in verifier or verifier[row.row_id].decision != "confirm")
-                for row in rows
-            ):
-                status = "indeterminate"
-                reasons.append("Suspicious evidence was not confirmed by targeted QA.")
             elif all(
                 row.row is not None and row.row.recommended_control_status == "pass" for row in rows
             ):
@@ -551,7 +562,6 @@ class ComplianceResolver:
                     severity=control.severity,
                     coverage_unit_ids=[unit.coverage_unit_id for unit in units],
                     reasons=reasons,
-                    verifier_row_ids=[row.row_id for row in rows if row.row_id in verifier],
                 )
             )
         return resolved
@@ -564,6 +574,10 @@ class CoverageGate:
         coverage: CoverageSet,
         validation: ResultValidationResult,
         resolved: list[ResolvedControlResult],
+        *,
+        mode: Literal["standard", "full", "diff"] = "standard",
+        previous_manual_ids: Sequence[str] = (),
+        automated_evidence_regression_ids: Sequence[str] = (),
     ) -> CoverageGateResult:
         control_by_id = {item.control_id: item for item in controls.controls}
         result_by_id = {item.control_id: item for item in resolved}
@@ -599,12 +613,17 @@ class CoverageGate:
                 origin = "manual_required"
                 execution_status = "completed"
                 evidence_status = "manual_required"
+            elif not is_automatable_surface(unit.surface):
+                # External/manual surfaces are valid ledger entries even when
+                # no automated Reviewer row exists. They remain manual work.
+                origin = "manual_required"
+                execution_status = "completed"
+                evidence_status = "manual_required"
             elif (
                 validated is not None
                 and validated.valid
                 and reviewed_row is not None
                 and reviewed_row.evidence_status == "complete"
-                and resolution.status in {"pass", "fail"}
             ):
                 origin = "reused" if validated.result_origin == "reused" else "reviewed"
                 execution_status = "completed"
@@ -635,9 +654,23 @@ class CoverageGate:
             if result.status == "fail":
                 blocking.append(message)
             elif result.status == "indeterminate":
-                (blocking if control.missing_evidence_policy == "block" else warnings).append(
-                    message
+                units = [unit for unit in coverage.units if unit.control_id == result.control_id]
+                rows_by_unit = {row.coverage_unit_id: row for row in rows}
+                has_automated_gap = any(
+                    is_automatable_surface(unit.surface)
+                    and (
+                        rows_by_unit[unit.coverage_unit_id].result_origin == "blocked"
+                        or rows_by_unit[unit.coverage_unit_id].evidence_status != "complete"
+                    )
+                    for unit in units
+                    if unit.coverage_unit_id in rows_by_unit
                 )
+                if mode in {"full", "diff"} and has_automated_gap:
+                    blocking.append(message)
+                elif mode == "standard":
+                    (blocking if control.missing_evidence_policy == "block" else warnings).append(
+                        message
+                    )
         coverage_ids = [row.coverage_unit_id for row in rows]
         expected_ids = [unit.coverage_unit_id for unit in coverage.units]
         complete = (
@@ -645,10 +678,28 @@ class CoverageGate:
             and set(coverage_ids) == set(expected_ids)
             and all(
                 row.result_origin
-                in {"reviewed", "reused", "manual_required", "blocked", "not_applicable", "waived"}
+                in {"reviewed", "reused", "manual_required", "not_applicable", "waived"}
                 for row in rows
             )
         )
+        current_manual_ids = sorted(
+            row.coverage_unit_id for row in rows if row.result_origin == "manual_required"
+        )
+        previous_manual_set = set(previous_manual_ids)
+        current_manual_set = set(current_manual_ids)
+        if mode == "diff":
+            manual_new_ids = sorted(current_manual_set - previous_manual_set)
+            manual_existing_ids = sorted(current_manual_set & previous_manual_set)
+            manual_resolved_ids = sorted(previous_manual_set - current_manual_set)
+            warnings.extend(f"new_manual_required:{item}" for item in manual_new_ids)
+        else:
+            manual_new_ids = []
+            manual_existing_ids = current_manual_ids if mode == "full" else []
+            manual_resolved_ids = []
+        automated_ids = sorted(set(automated_evidence_regression_ids))
+        blocking.extend(f"automated_evidence_regression:{item}" for item in automated_ids)
+        if not complete:
+            blocking.append("coverage_incomplete")
         ci_status: Literal["pass", "warn", "block"] = (
             "block" if blocking else "warn" if warnings else "pass"
         )
@@ -658,6 +709,11 @@ class CoverageGate:
             rows=rows,
             blocking_reasons=blocking,
             warning_reasons=warnings,
+            validation_flags=validation.flags,
+            manual_review_new_ids=manual_new_ids,
+            manual_review_existing_ids=manual_existing_ids,
+            manual_review_resolved_ids=manual_resolved_ids,
+            automated_evidence_regression_ids=automated_ids,
         )
 
 
@@ -747,7 +803,7 @@ def _validate_anchor(
     if anchor.source_surface != surface:
         issues.append(_error("anchor_surface_mismatch", "Anchor belongs to another surface."))
     if anchor.path is None:
-        issues.append(_suspicious("anchor_without_path", "Anchor has no exact file path."))
+        issues.append(_error("anchor_without_path", "Anchor has no exact file path."))
         return issues
     sandbox = sandboxes.get(work_item_id) or sandboxes.get(surface)
     if sandbox is None:
@@ -769,26 +825,35 @@ def _validate_anchor(
     expected_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
     if anchor.normalized_snippet_hash != expected_hash:
         issues.append(_error("anchor_hash_mismatch", "Anchor snippet hash is invalid."))
-    if normalized not in normalize_snippet(text):
+    current_revision = file_content_revision(sandbox.read_bytes(anchor.path))
+    relocation = relocate_anchor(anchor, text, current_revision, anchor.file_revision)
+    if relocation.status == "missing":
         issues.append(
             _error(
                 "anchor_snippet_not_found",
                 "Anchor snippet is absent from current file.",
             )
         )
-    if anchor.start_line is not None:
-        lines = text.splitlines()
-        end_line = anchor.end_line or anchor.start_line
-        line_snippet = "\n".join(lines[anchor.start_line - 1 : end_line])
-        if normalize_snippet(line_snippet) != normalized:
-            issues.append(
-                _error(
-                    "anchor_line_mismatch",
-                    "Anchor snippet does not match its recorded line range.",
-                )
+    elif relocation.status == "ambiguous":
+        issues.append(
+            _error(
+                "anchor_ambiguous",
+                "Anchor snippet has multiple possible current locations.",
             )
-    current_revision = file_content_revision(sandbox.read_bytes(anchor.path))
-    if anchor.file_revision is not None and anchor.file_revision != current_revision:
+        )
+    elif relocation.status == "relocated":
+        issues.append(
+            _flag(
+                "anchor_relocated",
+                "Anchor uniquely relocated to lines "
+                f"{relocation.new_start_line}-{relocation.new_end_line}.",
+            )
+        )
+    if (
+        anchor.file_revision is not None
+        and anchor.file_revision != current_revision
+        and relocation.status in {"missing", "ambiguous"}
+    ):
         issues.append(
             _error(
                 "anchor_revision_mismatch",
@@ -811,8 +876,9 @@ def _mark_cross_surface_conflicts(rows: list[ValidatedReviewRow]) -> None:
         if "pass" in statuses and "fail" in statuses:
             for row in control_rows:
                 row.suspicious = True
+                row.flags = sorted({*row.flags, "cross_surface_conflict"})
                 row.issues.append(
-                    _suspicious(
+                    _flag(
                         "cross_surface_conflict",
                         "Surfaces recommend conflicting outcomes.",
                     )
@@ -823,5 +889,9 @@ def _error(code: str, message: str) -> ValidationIssue:
     return ValidationIssue(code=code, severity="error", message=message)
 
 
-def _suspicious(code: str, message: str) -> ValidationIssue:
-    return ValidationIssue(code=code, severity="suspicious", message=message)
+def _flag(code: str, message: str) -> ValidationIssue:
+    return ValidationIssue(code=code, severity="flag", message=message)
+
+
+def _is_flag(issue: ValidationIssue) -> bool:
+    return issue.severity in {"flag", "suspicious"}

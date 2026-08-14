@@ -58,10 +58,9 @@ class ControlValidator:
             if count > 1
         )
         warnings.extend(f"possible duplicate control group: {group}" for group in duplicate_groups)
-        if not drafts.controls:
-            errors.append("control draft set is empty")
+        if not drafts.controls and obligations.obligations:
+            errors.append("control draft set is empty despite extracted obligations")
 
-        covered_sections: set[tuple[str, str]] = set()
         for obligation in obligations.obligations:
             source = source_map.get(obligation.source_id)
             if source is None:
@@ -74,8 +73,6 @@ class ControlValidator:
                     f"obligation {obligation.obligation_id} references unknown source section: "
                     f"{obligation.source_id}/{obligation.source_section}"
                 )
-            else:
-                covered_sections.add((obligation.source_id, obligation.source_section))
             errors.extend(
                 f"obligation {obligation.obligation_id}: {message}"
                 for message in validate_applicability_expression(
@@ -97,17 +94,6 @@ class ControlValidator:
                         require_section=True,
                     )
                 )
-
-        for source in registry.sources:
-            for section in source.sections:
-                if (
-                    source.source_id,
-                    section.section_id,
-                ) not in covered_sections:
-                    errors.append(
-                        f"source section is not covered by an obligation: "
-                        f"{source.source_id}/{section.section_id}"
-                    )
 
         linked_obligation_ids = {
             obligation_id for draft in drafts.controls for obligation_id in draft.obligation_ids

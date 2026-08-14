@@ -28,6 +28,7 @@ from compliance_review.review.diff_review import DiffReviewService
 from compliance_review.review.full_review import FullReviewService
 from compliance_review.review.langgraph_runtime import LangGraphReviewRuntime
 from compliance_review.review.models import ReviewManifest
+from compliance_review.review.redaction import redact_sensitive_text
 from compliance_review.setup.models import WorkspaceMaterial, WorkspaceRepository
 from compliance_review.setup.service import ReviewSetupError, ReviewSetupService
 
@@ -36,6 +37,15 @@ app = typer.Typer(
     help="Evidence-aware compliance review for financial applications.",
     no_args_is_help=True,
 )
+
+
+def ci_exit_code(ci_status: str) -> int:
+    """Map the final CoverageGate status to the stable CI contract."""
+    if ci_status == "block":
+        return 1
+    if ci_status in {"pass", "warn"}:
+        return 0
+    raise ValueError(f"unknown CI status: {ci_status}")
 
 
 @app.command()
@@ -511,6 +521,9 @@ def run_review(
                 )
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         raise typer.BadParameter(str(exc)) from exc
+    except Exception as exc:
+        typer.echo(f"RUNTIME_ERROR={redact_sensitive_text(str(exc))}", err=True)
+        raise typer.Exit(code=2) from exc
     typer.echo(summary.model_dump_json(indent=2))
 
 
@@ -524,7 +537,7 @@ def full_review(
     run_id: Annotated[Optional[str], typer.Option(help="Stable run identifier")] = None,
     max_concurrency: Annotated[int, typer.Option(help="Maximum parallel Reviewer work items")] = 3,
 ) -> None:
-    """Run setup handoff, parallel review, verification, resolution, and report."""
+    """Run setup handoff, parallel review, deterministic resolution, and report."""
     try:
         workspace = workspace.expanduser().resolve()
         setup = ReviewSetupService(workspace).compile(
@@ -540,10 +553,16 @@ def full_review(
                 provider=provider,
                 max_concurrency=max_concurrency,
             ),
-            verifier_provider=provider,
         ).run(setup, controls)
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         raise typer.BadParameter(str(exc)) from exc
+    except Exception as exc:
+        typer.echo(f"RUNTIME_ERROR={redact_sensitive_text(str(exc))}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(
+        f"CI_STATUS={result.snapshot.ci_status.upper()} "
+        f"RUN_ID={result.snapshot.run_id} REPORT={result.report_path}"
+    )
     typer.echo(
         json.dumps(
             {
@@ -555,6 +574,13 @@ def full_review(
             indent=2,
         )
     )
+    if result.snapshot.ci_status == "block":
+        for reason in result.coverage_gate.blocking_reasons:
+            typer.echo(f"BLOCK_REASON={reason}")
+        raise typer.Exit(code=ci_exit_code(result.snapshot.ci_status))
+    for reason in result.coverage_gate.warning_reasons:
+        typer.echo(f"WARN_REASON={reason}")
+    raise typer.Exit(code=ci_exit_code(result.snapshot.ci_status))
 
 
 @app.command("diff-review")
@@ -588,10 +614,16 @@ def diff_review(
         result = DiffReviewService(
             workspace,
             LangGraphReviewRuntime(provider=provider, max_concurrency=max_concurrency),
-            verifier_provider=provider,
         ).run(setup, controls, snapshot)
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         raise typer.BadParameter(str(exc)) from exc
+    except Exception as exc:
+        typer.echo(f"RUNTIME_ERROR={redact_sensitive_text(str(exc))}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(
+        f"CI_STATUS={result.snapshot.ci_status.upper()} "
+        f"RUN_ID={result.snapshot.run_id} REPORT={result.report_path}"
+    )
     typer.echo(
         json.dumps(
             {
@@ -605,3 +637,10 @@ def diff_review(
             indent=2,
         )
     )
+    if result.snapshot.ci_status == "block":
+        for reason in result.coverage_gate.blocking_reasons:
+            typer.echo(f"BLOCK_REASON={reason}")
+        raise typer.Exit(code=ci_exit_code(result.snapshot.ci_status))
+    for reason in result.coverage_gate.warning_reasons:
+        typer.echo(f"WARN_REASON={reason}")
+    raise typer.Exit(code=ci_exit_code(result.snapshot.ci_status))

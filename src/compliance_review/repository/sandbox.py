@@ -50,6 +50,9 @@ class RepositorySandbox:
     def list_files(self, pattern: str = "*", limit: int = 500) -> list[str]:
         if limit < 1:
             raise ValueError("limit must be positive")
+        pattern_path = Path(pattern)
+        if pattern_path.is_absolute() or ".." in pattern_path.parts:
+            raise SandboxViolation(f"file pattern leaves repository root: {pattern}")
         matches = []
         for path in sorted(self.root.glob(pattern)):
             if path.is_file() and not is_sensitive_path(path.relative_to(self.root).as_posix()):

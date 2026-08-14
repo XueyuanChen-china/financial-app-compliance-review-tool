@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import operator
+import time
 import uuid
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Any, Callable, Literal, Mapping, TypedDict
+from typing import Annotated, Any, Callable, Literal, Mapping, Optional, TypedDict
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -41,10 +43,22 @@ from compliance_review.review.models import (
     ModelRequest,
     ModelResponse,
     ReviewRunSummary,
+    ScopedToolResult,
+    ToolCall,
+    WorkerAttempt,
     WorkerExecution,
     validate_review_result_assignment,
 )
 from compliance_review.review.provider import ModelProvider, tool_schemas
+from compliance_review.review.redaction import redact_sensitive_text
+from compliance_review.review.reliability import (
+    ClassifiedWorkerError,
+    ModelTimeoutError,
+    ToolTimeoutError,
+    WorkItemTimeoutError,
+    call_with_timeout,
+    classify_error,
+)
 from compliance_review.review.tools import ScopedToolExecutor, serialize_tool_result
 
 ProviderFactory = Callable[[WorkItem], ModelProvider]
@@ -60,6 +74,7 @@ class ParentState(TypedDict, total=False):
     max_concurrency: int
     token_budget: int
     executions: Annotated[list[dict[str, Any]], operator.add]
+    attempts: Annotated[list[dict[str, Any]], operator.add]
     summary: dict[str, Any]
     # These fields are populated only in an isolated Send payload.
     work_item: dict[str, Any]
@@ -84,6 +99,13 @@ class ReviewerState(TypedDict, total=False):
     read_paths: list[str]
     error: str
     execution: dict[str, Any]
+    output_root: str
+    attempt_number: int
+    predecessor_attempt_id: Optional[str]
+    started_at: str
+    deadline_monotonic: float
+    error_code: str
+    retryable: bool
 
 
 class LangGraphReviewRuntime:
@@ -104,11 +126,19 @@ class LangGraphReviewRuntime:
         code_map_providers: Mapping[Surface, CodeMapProvider] | None = None,
         collector_results: Mapping[str, CollectorResult] | None = None,
         context_config: ReviewerRuntimeConfig | None = None,
+        max_attempts: int = 2,
+        model_timeout_seconds: float = 30.0,
+        tool_timeout_seconds: float = 5.0,
+        attempt_timeout_seconds: float = 90.0,
     ) -> None:
         if (provider is None) == (provider_factory is None):
             raise ValueError("provide exactly one provider or provider_factory")
         if not 1 <= max_concurrency <= 32:
             raise ValueError("max_concurrency must be between 1 and 32")
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
+        if min(model_timeout_seconds, tool_timeout_seconds, attempt_timeout_seconds) <= 0:
+            raise ValueError("runtime timeouts must be positive")
         self.provider = provider
         self.provider_factory = provider_factory
         self.max_concurrency = max_concurrency
@@ -119,6 +149,10 @@ class LangGraphReviewRuntime:
         self.checkpointer = checkpointer or InMemorySaver()
         self.code_map_providers = dict(code_map_providers or {})
         self.collector_results = dict(collector_results or {})
+        self.max_attempts = max_attempts
+        self.model_timeout_seconds = model_timeout_seconds
+        self.tool_timeout_seconds = tool_timeout_seconds
+        self.attempt_timeout_seconds = attempt_timeout_seconds
 
     def run(
         self,
@@ -161,6 +195,7 @@ class LangGraphReviewRuntime:
                 "max_concurrency": self.max_concurrency,
                 "token_budget": self.token_budget,
                 "executions": [],
+                "attempts": [],
             },
             config=config,
         )
@@ -182,25 +217,144 @@ class LangGraphReviewRuntime:
             code_map_providers=self.code_map_providers,
             collector_results=collector_results,
             context_config=self.context_config,
+            model_timeout_seconds=self.model_timeout_seconds,
+            tool_timeout_seconds=self.tool_timeout_seconds,
+            attempt_timeout_seconds=self.attempt_timeout_seconds,
         )
 
         def reviewer_node(state: ParentState) -> dict[str, Any]:
             work_item = WorkItem.model_validate(state["work_item"])
             agent_index = state.get("agent_index", 1)
-            reviewer_state = reviewer_graph.invoke(
-                {
-                    "run_id": state["run_id"],
-                    "work_item": work_item.model_dump(),
-                    "agent_id": f"reviewer-{agent_index:03d}",
-                    "token_budget": state.get("token_budget", self.token_budget),
-                },
-                config={"max_concurrency": 1},
+            agent_id = f"reviewer-{agent_index:03d}"
+            fingerprint = _context_fingerprint(state["run_id"], work_item)
+            resumed, history = _load_resume_execution(
+                Path(state["output_root"]), work_item, fingerprint
             )
-            execution = reviewer_state["execution"]
-            # The subgraph owns messages/tool results for this Work Item only.
-            # Return the terminal execution and release the local context.
-            del reviewer_state
-            return {"executions": [execution]}
+            if resumed is not None:
+                event_log.append(
+                    "worker_resume_skipped",
+                    {
+                        "run_id": state["run_id"],
+                        "work_item_id": work_item.work_item_id,
+                        "attempt_id": resumed.attempt_id,
+                        "reason": "valid_completed_attempt_reused",
+                    },
+                )
+                return {
+                    "executions": [resumed.model_dump()],
+                    "attempts": [item.model_dump() for item in history],
+                }
+
+            previous = history[-1] if history else None
+            if previous is not None and previous.status == "running":
+                interrupted = previous.model_copy(
+                    update={
+                        "status": "interrupted",
+                        "finished_at": _now(),
+                        "error_code": "interrupted",
+                        "error_message": "Attempt had no terminal state when the run resumed.",
+                        "retryable": True,
+                    }
+                )
+                _write_attempt_metadata(Path(state["output_root"]), interrupted)
+                event_log.append(
+                    "worker_attempt_interrupted",
+                    {
+                        "run_id": state["run_id"],
+                        "work_item_id": work_item.work_item_id,
+                        "attempt_id": interrupted.attempt_id,
+                    },
+                )
+                history[-1] = interrupted
+                previous = interrupted
+
+            if previous is not None and previous.status in {"failed", "interrupted"}:
+                if not previous.retryable or previous.attempt_number >= self.max_attempts:
+                    exhausted = _execution_from_attempt(
+                        Path(state["output_root"]), work_item, previous, fingerprint
+                    )
+                    if exhausted is not None:
+                        return {
+                            "executions": [exhausted.model_dump()],
+                            "attempts": [item.model_dump() for item in history],
+                        }
+
+            attempt_number = (previous.attempt_number + 1) if previous else 1
+            predecessor = previous.attempt_id if previous else None
+            # A fingerprint mismatch means this is a new review context. Keep the
+            # old attempt history, but grant the new context its own bounded budget.
+            attempt_limit = self.max_attempts
+            fresh_context = previous is not None and previous.context_fingerprint != fingerprint
+            if previous is not None and (previous.status == "completed" or fresh_context):
+                attempt_limit = attempt_number + self.max_attempts - 1
+            terminal: WorkerExecution | None = None
+            for number in range(attempt_number, attempt_limit + 1):
+                attempt_id = _new_attempt_id(state["run_id"], work_item.work_item_id, number)
+                _write_attempt_metadata(
+                    Path(state["output_root"]),
+                    WorkerAttempt(
+                        work_item_id=work_item.work_item_id,
+                        attempt_id=attempt_id,
+                        attempt_number=number,
+                        status="running",
+                        started_at=_now(),
+                        retryable=False,
+                        context_fingerprint=fingerprint,
+                        predecessor_attempt_id=predecessor,
+                    ),
+                )
+                try:
+                    reviewer_state = reviewer_graph.invoke(
+                        {
+                            "run_id": state["run_id"],
+                            "work_item": work_item.model_dump(),
+                            "agent_id": agent_id,
+                            "attempt_id": attempt_id,
+                            "attempt_number": number,
+                            "predecessor_attempt_id": predecessor,
+                            "output_root": state["output_root"],
+                            "token_budget": state.get("token_budget", self.token_budget),
+                        },
+                        config={"max_concurrency": 1},
+                    )
+                    terminal = WorkerExecution.model_validate(reviewer_state["execution"])
+                except Exception as exc:
+                    classification = classify_error(exc)
+                    terminal = _runtime_failure_execution(
+                        state["run_id"],
+                        work_item,
+                        agent_id,
+                        attempt_id,
+                        number,
+                        fingerprint,
+                        classification.error_code,
+                        classification.retryable,
+                        str(exc),
+                        Path(state["output_root"]),
+                    )
+                history.extend(
+                    [terminal.attempt] if terminal.attempt is not None else []
+                )
+                if terminal.execution_status == "completed":
+                    break
+                if not terminal.retryable or number >= attempt_limit:
+                    break
+                event_log.append(
+                    "worker_retry_scheduled",
+                    {
+                        "run_id": state["run_id"],
+                        "work_item_id": work_item.work_item_id,
+                        "attempt_id": terminal.attempt_id,
+                        "attempt_number": number,
+                        "error_code": terminal.error_code,
+                    },
+                )
+                predecessor = terminal.attempt_id
+            assert terminal is not None
+            return {
+                "executions": [terminal.model_dump()],
+                "attempts": [item.model_dump() for item in history],
+            }
 
         def summarize(state: ParentState) -> dict[str, Any]:
             executions = [
@@ -214,6 +368,7 @@ class LangGraphReviewRuntime:
                 completed=sum(item.execution_status == "completed" for item in executions),
                 failed=sum(item.execution_status == "failed" for item in executions),
                 event_log_path=state["event_log_path"],
+                attempts=[WorkerAttempt.model_validate(item) for item in state.get("attempts", [])],
             )
             event_log.append(
                 "run_completed",
@@ -248,6 +403,7 @@ def _fan_out(state: ParentState) -> list[Send] | list[str]:
                 "work_item": deepcopy(work_item),
                 "agent_index": index,
                 "token_budget": state.get("token_budget", 4000),
+                "output_root": state["output_root"],
             },
         )
         for index, work_item in enumerate(work_items, start=1)
@@ -263,6 +419,9 @@ def _build_reviewer_graph(
     code_map_providers: Mapping[Surface, CodeMapProvider],
     collector_results: Mapping[str, CollectorResult],
     context_config: ReviewerRuntimeConfig,
+    model_timeout_seconds: float,
+    tool_timeout_seconds: float,
+    attempt_timeout_seconds: float,
 ) -> Any:
     context_manager = ReviewerContextManager(context_config)
 
@@ -274,8 +433,12 @@ def _build_reviewer_graph(
 
     def initialize(state: ReviewerState) -> dict[str, Any]:
         work_item = WorkItem.model_validate(state["work_item"])
-        attempt_id = f"{state['run_id']}.{work_item.work_item_id}.{uuid.uuid4().hex[:8]}"
+        attempt_id = state.get("attempt_id") or (
+            f"{state['run_id']}.{work_item.work_item_id}.{uuid.uuid4().hex[:8]}"
+        )
         fingerprint = _context_fingerprint(state["run_id"], work_item)
+        started_at = _now()
+        output_root = Path(state["output_root"])
         instructions = (
             "Review only the assigned Work Item. Use read-only tools, cite observed "
             "evidence, and return one JSON review_result.v1 object. Do not claim "
@@ -284,6 +447,17 @@ def _build_reviewer_graph(
         context = context_manager.create(work_item, instructions)
         messages = context_manager.render_messages(context)
         tokens = sum(_approx_tokens(str(message.get("content", ""))) for message in messages)
+        event_log.append(
+            "worker_attempt_started",
+            {
+                "run_id": state["run_id"],
+                "work_item_id": work_item.work_item_id,
+                "agent_id": state["agent_id"],
+                "attempt_id": attempt_id,
+                "attempt_number": state.get("attempt_number", 1),
+                "context_fingerprint": fingerprint,
+            },
+        )
         event_log.append(
             "worker_started",
             {
@@ -303,7 +477,27 @@ def _build_reviewer_graph(
             "tool_rounds": 0,
             "tokens_used": tokens,
             "tool_calls_used": 0,
-            "read_paths": [],
+                "read_paths": [],
+            "output_root": output_root.as_posix(),
+            "attempt_number": state.get("attempt_number", 1),
+            "predecessor_attempt_id": state.get("predecessor_attempt_id"),
+            "started_at": started_at,
+            "deadline_monotonic": time.monotonic() + attempt_timeout_seconds,
+        }
+
+    def _ensure_attempt_time(state: ReviewerState) -> float:
+        remaining = state.get("deadline_monotonic", time.monotonic()) - time.monotonic()
+        if remaining <= 0:
+            raise WorkItemTimeoutError("work item deadline exceeded")
+        return remaining
+
+    def _capture_error(exc: BaseException) -> dict[str, Any]:
+        classification = classify_error(exc)
+        return {
+            "error": redact_sensitive_text(str(exc)),
+            "error_code": classification.error_code,
+            "retryable": classification.retryable,
+            "response": {},
         }
 
     def call_model(state: ReviewerState) -> dict[str, Any]:
@@ -331,8 +525,10 @@ def _build_reviewer_graph(
                 )
                 if remaining_for_compression < 100:
                     raise ContextBudgetExceeded("context_budget_exhausted")
-                compression_response = resolve_provider(work_item).complete(
-                    ModelRequest(
+                _ensure_attempt_time(state)
+                compression_response = call_with_timeout(
+                    lambda: resolve_provider(work_item).complete(
+                        ModelRequest(
                         work_item=work_item,
                         attempt_id=state["attempt_id"],
                         agent_id=state["agent_id"],
@@ -350,8 +546,11 @@ def _build_reviewer_graph(
                             {"role": "user", "content": json.dumps(payload, sort_keys=True)},
                         ],
                         tools=[],
-                        token_budget=remaining_for_compression,
-                    )
+                            token_budget=remaining_for_compression,
+                        )
+                    ),
+                    min(model_timeout_seconds, _ensure_attempt_time(state)),
+                    ModelTimeoutError("compression model call timed out"),
                 )
                 compression_tokens += (
                     compression_response.input_tokens
@@ -373,15 +572,19 @@ def _build_reviewer_graph(
             )
             if remaining < 100:
                 raise RuntimeError("token budget exceeded before model call")
-            response = resolve_provider(work_item).complete(
-                ModelRequest(
+            response = call_with_timeout(
+                lambda: resolve_provider(work_item).complete(
+                    ModelRequest(
                     work_item=work_item,
                     attempt_id=state["attempt_id"],
                     agent_id=state["agent_id"],
                     messages=prepared_messages,
                     tools=tool_schemas(),
-                    token_budget=remaining,
-                )
+                        token_budget=remaining,
+                    )
+                ),
+                min(model_timeout_seconds, _ensure_attempt_time(state)),
+                ModelTimeoutError("model call timed out"),
             )
             used = (
                 state.get("tokens_used", 0)
@@ -413,11 +616,13 @@ def _build_reviewer_graph(
         except ContextBudgetExceeded:
             return {
                 "error": "context_budget_exhausted",
+                "error_code": "context_budget_exhausted",
+                "retryable": False,
                 "response": {},
                 "context": state.get("context", {}),
             }
         except Exception as exc:
-            return {"error": str(exc), "response": {}}
+            return _capture_error(exc)
 
     def execute_tools(state: ReviewerState) -> dict[str, Any]:
         try:
@@ -459,9 +664,24 @@ def _build_reviewer_graph(
                 }
             )
             used = state.get("tokens_used", 0)
-            tool_results = []
+            tool_results: list[ScopedToolResult] = []
             for call in response.tool_calls:
-                tool_result = executor.execute(call)
+                def execute_call(tool_call: ToolCall = call) -> ScopedToolResult:
+                    return executor.execute(tool_call)
+
+                tool_result = call_with_timeout(
+                    execute_call,
+                    min(tool_timeout_seconds, _ensure_attempt_time(state)),
+                    ToolTimeoutError(f"tool execution timed out: {call.name}"),
+                )
+                if not tool_result.ok and tool_result.error_code == "path_escape":
+                    raise ValueError("path escape security policy violation")
+                if not tool_result.ok and tool_result.retryable:
+                    raise ClassifiedWorkerError(
+                        tool_result.error_code or "tool_retryable_failure",
+                        tool_result.error or "retryable tool failure",
+                        retryable=True,
+                    )
                 tool_results.append(tool_result)
                 serialized = serialize_tool_result(tool_result)
                 messages.append(
@@ -496,9 +716,14 @@ def _build_reviewer_graph(
                 "read_paths": sorted(executor.read_paths),
             }
         except ContextBudgetExceeded:
-            return {"error": "context_budget_exhausted", "response": {}}
+            return {
+                "error": "context_budget_exhausted",
+                "error_code": "context_budget_exhausted",
+                "retryable": False,
+                "response": {},
+            }
         except Exception as exc:
-            return {"error": str(exc), "response": {}}
+            return _capture_error(exc)
 
     def route_after_model(state: ReviewerState) -> str:
         if state.get("error"):
@@ -510,6 +735,8 @@ def _build_reviewer_graph(
         work_item = WorkItem.model_validate(state["work_item"])
         attempt_id = state["attempt_id"]
         error = state.get("error")
+        error_code = state.get("error_code")
+        retryable = state.get("retryable", False)
         try:
             if error:
                 raise RuntimeError(error)
@@ -522,7 +749,10 @@ def _build_reviewer_graph(
             context = ReviewerContextState.model_validate(state["context"])
             result = _attach_evidence_ledger(result, context.evidence_ledger)
         except Exception as exc:
-            error = str(exc)
+            classification = classify_error(exc)
+            error = redact_sensitive_text(str(exc))
+            error_code = error_code or classification.error_code
+            retryable = classification.retryable
             result = _failure_result(work_item, attempt_id, state["agent_id"], error)
         work_item_path = Path(work_item.work_item_id)
         if (
@@ -531,13 +761,26 @@ def _build_reviewer_graph(
             or work_item_path.name != work_item.work_item_id
         ):
             raise ValueError("work_item_id contains unsafe path characters")
-        result_path = output_root / work_item.work_item_id / "review-result.json"
-        result_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = result_path.with_suffix(".json.tmp")
-        temporary.write_text(result.model_dump_json(indent=2), encoding="utf-8")
-        temporary.replace(result_path)
         status: Literal["completed", "failed"] = (
             "completed" if result.execution_status == "completed" else "failed"
+        )
+        attempt = WorkerAttempt(
+            work_item_id=work_item.work_item_id,
+            attempt_id=attempt_id,
+            attempt_number=state.get("attempt_number", 1),
+            status=status,
+            started_at=state.get("started_at", _now()),
+            finished_at=_now(),
+            error_code=error_code,
+            error_message=redact_sensitive_text(error) if error else None,
+            retryable=retryable,
+            context_fingerprint=state["context_fingerprint"],
+            predecessor_attempt_id=state.get("predecessor_attempt_id"),
+        )
+        result_path = _write_attempt_artifacts(
+            Path(state["output_root"]),
+            result,
+            attempt,
         )
         execution = WorkerExecution(
             work_item_id=work_item.work_item_id,
@@ -549,7 +792,25 @@ def _build_reviewer_graph(
             tool_rounds=state.get("tool_rounds", 0),
             tokens_used=state.get("tokens_used", 0),
             context_fingerprint=state["context_fingerprint"],
-            error=error,
+            error=redact_sensitive_text(error) if error else None,
+            error_code=error_code,
+            retryable=retryable,
+            attempt_number=state.get("attempt_number", 1),
+            predecessor_attempt_id=state.get("predecessor_attempt_id"),
+            attempt=attempt.model_copy(update={"result_ref": result_path.as_posix()}),
+        )
+        event_log.append(
+            "worker_attempt_completed" if status == "completed" else "worker_attempt_failed",
+            {
+                "run_id": state["run_id"],
+                "work_item_id": work_item.work_item_id,
+                "agent_id": state["agent_id"],
+                "attempt_id": attempt_id,
+                "attempt_number": state.get("attempt_number", 1),
+                "result_path": result_path.as_posix(),
+                "error_code": error_code,
+                "retryable": retryable,
+            },
         )
         event_log.append(
             "worker_completed" if status == "completed" else "worker_failed",
@@ -561,7 +822,7 @@ def _build_reviewer_graph(
                 "result_path": result_path.as_posix(),
                 "tool_rounds": state.get("tool_rounds", 0),
                 "tokens_used": state.get("tokens_used", 0),
-                **({"error": error} if error else {}),
+                **({"error": redact_sensitive_text(error)} if error else {}),
                 "runtime": "langgraph",
             },
         )
@@ -583,7 +844,7 @@ def _build_reviewer_graph(
 def _parse_review_result(
     content: str, work_item: WorkItem, attempt_id: str, agent_id: str
 ) -> ReviewResult:
-    text = content.strip()
+    text = redact_sensitive_text(content).strip()
     if text.startswith("```"):
         text = text.strip("`").strip()
         if text.startswith("json"):
@@ -760,6 +1021,7 @@ def _tool_evidence_strength(tool_name: str, surface: Surface) -> EvidenceStrengt
 def _failure_result(
     work_item: WorkItem, attempt_id: str, agent_id: str, error: str
 ) -> ReviewResult:
+    error = redact_sensitive_text(error)
     return ReviewResult(
         contract="review_result.v1",
         work_item_id=work_item.work_item_id,
@@ -777,6 +1039,237 @@ def _failure_result(
         ],
         agent_id=agent_id,
         errors=[error],
+    )
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _new_attempt_id(run_id: str, work_item_id: str, attempt_number: int) -> str:
+    return f"{run_id}.{work_item_id}.attempt-{attempt_number:03d}-{uuid.uuid4().hex[:8]}"
+
+
+def _work_item_dir(output_root: Path, work_item_id: str) -> Path:
+    relative = Path(work_item_id)
+    if len(relative.parts) != 1 or relative.name != work_item_id or work_item_id in {"", ".", ".."}:
+        raise ValueError("work_item_id contains unsafe path characters")
+    return output_root / work_item_id
+
+
+def _write_json_atomic(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    payload = json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    temporary.write_text(redact_sensitive_text(payload), encoding="utf-8")
+    temporary.replace(path)
+
+
+def _write_attempt_metadata(output_root: Path, attempt: WorkerAttempt) -> None:
+    item_dir = _work_item_dir(output_root, attempt.work_item_id)
+    attempt_dir = item_dir / "attempts" / f"attempt-{attempt.attempt_number:03d}"
+    _write_json_atomic(attempt_dir / "attempt.json", attempt.model_dump(mode="json"))
+    _write_json_atomic(
+        item_dir / "latest.json",
+        {
+            "work_item_id": attempt.work_item_id,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": attempt.attempt_number,
+            "status": attempt.status,
+            "result_ref": attempt.result_ref,
+            "context_fingerprint": attempt.context_fingerprint,
+        },
+    )
+
+
+def _write_attempt_artifacts(
+    output_root: Path, result: ReviewResult, attempt: WorkerAttempt
+) -> Path:
+    item_dir = _work_item_dir(output_root, attempt.work_item_id)
+    attempt_dir = item_dir / "attempts" / f"attempt-{attempt.attempt_number:03d}"
+    result_path = attempt_dir / "review-result.json"
+    updated_attempt = attempt.model_copy(update={"result_ref": result_path.as_posix()})
+    _write_json_atomic(result_path, result.model_dump(mode="json"))
+    _write_attempt_metadata(output_root, updated_attempt)
+    # Keep the old path as a compatibility pointer to the latest result. History
+    # remains durable under attempts/<n>/ and is never represented by this file.
+    _write_json_atomic(item_dir / "review-result.json", result.model_dump(mode="json"))
+    return result_path
+
+
+def _load_attempt_history(output_root: Path, work_item_id: str) -> list[WorkerAttempt]:
+    item_dir = _work_item_dir(output_root, work_item_id)
+    attempts_dir = item_dir / "attempts"
+    if not attempts_dir.is_dir():
+        return []
+    history: list[WorkerAttempt] = []
+    for path in sorted(attempts_dir.glob("attempt-*/attempt.json")):
+        try:
+            history.append(WorkerAttempt.model_validate(json.loads(path.read_text(encoding="utf-8"))))
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+    return sorted(history, key=lambda item: item.attempt_number)
+
+
+def _execution_from_attempt(
+    output_root: Path,
+    work_item: WorkItem,
+    attempt: WorkerAttempt,
+    fingerprint: str,
+) -> WorkerExecution | None:
+    if attempt.status not in {"failed", "interrupted"}:
+        return None
+    if attempt.context_fingerprint != fingerprint:
+        return None
+    try:
+        result_path = _resolve_attempt_ref(output_root, attempt.result_ref)
+        if result_path is None:
+            raise FileNotFoundError("failed attempt has no result reference")
+        result = ReviewResult.model_validate(json.loads(result_path.read_text(encoding="utf-8")))
+    except (OSError, ValueError, json.JSONDecodeError):
+        result = _failure_result(
+            work_item,
+            attempt.attempt_id,
+            "recovered-worker",
+            attempt.error_message or "persisted failed attempt has no valid result",
+        )
+        result_path = (
+            _work_item_dir(output_root, work_item.work_item_id)
+            / "attempts"
+            / f"attempt-{attempt.attempt_number:03d}"
+            / "recovered-failure.json"
+        )
+        _write_json_atomic(result_path, result.model_dump(mode="json"))
+    if (
+        result.work_item_id != work_item.work_item_id
+        or result.attempt_id != attempt.attempt_id
+        or result.execution_status != "failed"
+    ):
+        result = _failure_result(
+            work_item,
+            attempt.attempt_id,
+            result.agent_id,
+            "persisted failed attempt identity is invalid",
+        )
+        result_path = (
+            _work_item_dir(output_root, work_item.work_item_id)
+            / "attempts"
+            / f"attempt-{attempt.attempt_number:03d}"
+            / "recovered-failure.json"
+        )
+        _write_json_atomic(result_path, result.model_dump(mode="json"))
+    persisted_attempt = attempt.model_copy(update={"result_ref": result_path.as_posix()})
+    _write_attempt_metadata(output_root, persisted_attempt)
+    return WorkerExecution(
+        work_item_id=work_item.work_item_id,
+        attempt_id=attempt.attempt_id,
+        agent_id=result.agent_id,
+        execution_status="failed",
+        result_path=result_path.as_posix(),
+        result=result,
+        error=attempt.error_message,
+        error_code=attempt.error_code,
+        retryable=attempt.retryable,
+        attempt_number=attempt.attempt_number,
+        predecessor_attempt_id=attempt.predecessor_attempt_id,
+        context_fingerprint=attempt.context_fingerprint,
+        attempt=persisted_attempt,
+    )
+
+
+def _load_resume_execution(
+    output_root: Path, work_item: WorkItem, fingerprint: str
+) -> tuple[WorkerExecution | None, list[WorkerAttempt]]:
+    history = _load_attempt_history(output_root, work_item.work_item_id)
+    if not history:
+        return None, history
+    latest = history[-1]
+    if latest.status != "completed" or not latest.result_ref:
+        return None, history
+    try:
+        result_path = _resolve_attempt_ref(output_root, latest.result_ref)
+        if result_path is None:
+            return None, history
+        result = ReviewResult.model_validate(
+            json.loads(result_path.read_text(encoding="utf-8"))
+        )
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None, history
+    if (
+        result.execution_status != "completed"
+        or result.work_item_id != work_item.work_item_id
+        or result.attempt_id != latest.attempt_id
+        or latest.context_fingerprint != fingerprint
+    ):
+        return None, history
+    execution = WorkerExecution(
+        work_item_id=work_item.work_item_id,
+        attempt_id=latest.attempt_id,
+        agent_id=result.agent_id,
+        execution_status="completed",
+        result_path=latest.result_ref,
+        result=result,
+        attempt_number=latest.attempt_number,
+        context_fingerprint=latest.context_fingerprint,
+        attempt=latest,
+    )
+    return execution, history
+
+
+def _resolve_attempt_ref(output_root: Path, result_ref: str | None) -> Path | None:
+    if not result_ref:
+        return None
+    candidate = Path(result_ref)
+    if not candidate.is_absolute():
+        candidate = output_root / candidate
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(output_root.resolve())
+    except ValueError as exc:
+        raise ValueError("persisted attempt result leaves output root") from exc
+    return resolved
+
+
+def _runtime_failure_execution(
+    run_id: str,
+    work_item: WorkItem,
+    agent_id: str,
+    attempt_id: str,
+    attempt_number: int,
+    fingerprint: str,
+    error_code: str,
+    retryable: bool,
+    error: str,
+    output_root: Path,
+) -> WorkerExecution:
+    safe_error = redact_sensitive_text(error)
+    result = _failure_result(work_item, attempt_id, agent_id, safe_error)
+    attempt = WorkerAttempt(
+        work_item_id=work_item.work_item_id,
+        attempt_id=attempt_id,
+        attempt_number=attempt_number,
+        status="failed",
+        started_at=_now(),
+        finished_at=_now(),
+        error_code=error_code,
+        error_message=safe_error,
+        retryable=retryable,
+        context_fingerprint=fingerprint,
+    )
+    result_path = _write_attempt_artifacts(output_root, result, attempt)
+    return WorkerExecution(
+        work_item_id=work_item.work_item_id,
+        attempt_id=attempt_id,
+        agent_id=agent_id,
+        execution_status="failed",
+        result_path=result_path.as_posix(),
+        result=result,
+        error=safe_error,
+        error_code=error_code,
+        retryable=retryable,
+        attempt_number=attempt_number,
+        context_fingerprint=fingerprint,
+        attempt=attempt.model_copy(update={"result_ref": result_path.as_posix()}),
     )
 
 

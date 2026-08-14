@@ -9,6 +9,7 @@ from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from compliance_review.compilation.batching import (
     BatchPlanner,
+    estimate_tokens,
     merge_obligation_batches,
     validate_batch_coverage,
 )
@@ -21,6 +22,7 @@ from compliance_review.compilation.models import (
     SourceRegistry,
     SourceSection,
 )
+from compliance_review.compilation.service import Phase2CompilationError, Phase2CompilationService
 from compliance_review.compilation.source_registry import SourceRegistryBuilder
 from compliance_review.domain.models import SourceRef
 from compliance_review.review.models import ModelResponse
@@ -126,6 +128,16 @@ def test_oversized_paragraph_falls_back_to_sentences(tmp_path: Path) -> None:
     assert all(section.text.endswith(".") for section in sections)
 
 
+def test_chinese_sentences_without_spaces_keep_sentence_boundaries(tmp_path: Path) -> None:
+    path = tmp_path / "chinese.txt"
+    path.write_text("借款人必须收到完整披露。借款人有权提前还款。" * 30, encoding="utf-8")
+
+    sections = SourceRegistryBuilder(max_section_chars=500).build([path]).sources[0].sections
+
+    assert len(sections) > 1
+    assert all(section.text.endswith("。") for section in sections)
+
+
 def test_hard_split_is_last_resort(tmp_path: Path) -> None:
     path = tmp_path / "atomic.txt"
     path.write_text("x" * 1200, encoding="utf-8")
@@ -157,7 +169,7 @@ def test_batch_planner_packs_complete_sections_without_mixing_sources() -> None:
         SourceSection(section_id="three", title="Three", text="c" * 400, ordinal=3),
     )
 
-    batches = BatchPlanner(max_input_tokens=100).plan(registry)
+    batches = BatchPlanner(max_input_tokens=300).plan(registry)
 
     assert [batch.sections[0].section_id for batch in batches] == ["one", "two", "three"]
     assert all(batch.source_id == "policy" for batch in batches)
@@ -168,7 +180,7 @@ def test_large_registry_uses_multiple_obligation_model_calls() -> None:
         SourceSection(section_id="one", title="One", text="a" * 440, ordinal=1),
         SourceSection(section_id="two", title="Two", text="b" * 440, ordinal=2),
     )
-    batches = BatchPlanner(max_input_tokens=100).plan(registry)
+    batches = BatchPlanner(max_input_tokens=300).plan(registry)
 
     def response(request: object) -> ModelResponse:
         payload = json.loads(request.messages[1]["content"])  # type: ignore[attr-defined]
@@ -197,6 +209,31 @@ def test_large_registry_uses_multiple_obligation_model_calls() -> None:
 
     assert len(provider.requests) == len(batches)
     assert len(results) == 2
+
+
+def test_batch_planner_rejects_section_that_cannot_fit_budget() -> None:
+    registry = _registry_for_sections(
+        SourceSection(section_id="oversized", title="Large", text="x" * 2000, ordinal=1)
+    )
+
+    with pytest.raises(ValueError, match="exceeds batch input budget"):
+        BatchPlanner(max_input_tokens=300).plan(registry)
+
+
+def test_phase2_wraps_oversized_section_as_compilation_error(tmp_path: Path) -> None:
+    source = tmp_path / "oversized.txt"
+    source.write_text("x" * 2000, encoding="utf-8")
+
+    with pytest.raises(Phase2CompilationError, match="source batching failed"):
+        Phase2CompilationService(
+            tmp_path / "workspace",
+            StaticModelProvider(lambda _: ModelResponse(content="{}")),
+            batch_planner=BatchPlanner(max_input_tokens=300),
+        ).compile([source])
+
+
+def test_cjk_token_estimate_is_more_conservative_than_ascii() -> None:
+    assert estimate_tokens("中" * 100) > estimate_tokens("a" * 100)
 
 
 def test_batch_coverage_requires_one_terminal_decision() -> None:

@@ -57,7 +57,10 @@ class Phase2CompilationService:
         self.store.write_source_registry(registry)
         self._ensure_extractable(registry)
 
-        batches = self.batch_planner.plan(registry)
+        try:
+            batches = self.batch_planner.plan(registry)
+        except ValueError as exc:
+            raise Phase2CompilationError(f"source batching failed: {exc}") from exc
         extraction_results = []
         for batch in batches:
             extraction = self.obligation_extractor.extract(batch)

@@ -81,6 +81,21 @@ class ModelResponse(ReviewContractModel):
     provider_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class WorkerAttempt(ReviewContractModel):
+    work_item_id: str = Field(min_length=1)
+    attempt_id: str = Field(min_length=1)
+    attempt_number: int = Field(ge=1)
+    status: Literal["pending", "running", "completed", "failed", "interrupted"]
+    started_at: str = Field(min_length=1)
+    finished_at: Optional[str] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    retryable: bool = False
+    context_fingerprint: str = Field(min_length=1)
+    result_ref: Optional[str] = None
+    predecessor_attempt_id: Optional[str] = None
+
+
 def validate_review_result_assignment(
     result: ReviewResult,
     work_item: WorkItem,
@@ -118,7 +133,12 @@ class WorkerExecution(ReviewContractModel):
     tool_rounds: int = Field(default=0, ge=0)
     tokens_used: int = Field(default=0, ge=0)
     error: Optional[str] = None
+    error_code: Optional[str] = None
+    retryable: bool = False
+    attempt_number: int = Field(default=1, ge=1)
+    predecessor_attempt_id: Optional[str] = None
     context_fingerprint: str = Field(min_length=1)
+    attempt: Optional[WorkerAttempt] = None
 
 
 class ReviewRunSummary(ReviewContractModel):
@@ -128,11 +148,13 @@ class ReviewRunSummary(ReviewContractModel):
     completed: int = Field(default=0, ge=0)
     failed: int = Field(default=0, ge=0)
     event_log_path: str = Field(min_length=1)
+    attempts: list[WorkerAttempt] = Field(default_factory=list)
 
 
 class ValidationIssue(ReviewContractModel):
     code: str = Field(min_length=1)
-    severity: Literal["error", "suspicious"]
+    # "suspicious" is accepted only for reading older artifacts; new output uses "flag".
+    severity: Literal["error", "flag", "suspicious"]
     message: str = Field(min_length=1)
 
 
@@ -144,7 +166,8 @@ class ValidatedReviewRow(ReviewContractModel):
     attempt_id: Optional[str] = None
     row: Optional[ControlSurfaceResult] = None
     valid: bool
-    suspicious: bool
+    flags: list[str] = Field(default_factory=list)
+    suspicious: bool = False
     result_origin: Literal["reviewed", "reused"] = "reviewed"
     previous_run_id: Optional[str] = None
     issues: list[ValidationIssue] = Field(default_factory=list)
@@ -154,6 +177,7 @@ class ResultValidationResult(ReviewContractModel):
     contract: Literal["result_validation.v1"] = "result_validation.v1"
     valid: bool
     rows: list[ValidatedReviewRow] = Field(default_factory=list)
+    flags: dict[str, list[str]] = Field(default_factory=dict)
     suspicious_row_ids: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
 
@@ -204,6 +228,8 @@ class ScopedToolResult(ReviewContractModel):
     ok: bool
     output: Any = None
     error: Optional[str] = None
+    error_code: Optional[str] = None
+    retryable: bool = False
 
 
 def work_item_surface(work_item: WorkItem) -> Surface:

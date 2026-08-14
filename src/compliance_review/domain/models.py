@@ -302,6 +302,11 @@ class CoverageGateResult(ContractModel):
     rows: list[CoverageManifestRow] = Field(default_factory=list)
     blocking_reasons: list[str] = Field(default_factory=list)
     warning_reasons: list[str] = Field(default_factory=list)
+    validation_flags: dict[str, list[str]] = Field(default_factory=dict)
+    manual_review_new_ids: list[str] = Field(default_factory=list)
+    manual_review_existing_ids: list[str] = Field(default_factory=list)
+    manual_review_resolved_ids: list[str] = Field(default_factory=list)
+    automated_evidence_regression_ids: list[str] = Field(default_factory=list)
 
 
 class Snapshot(ContractModel):
@@ -318,6 +323,11 @@ class Snapshot(ContractModel):
     reused_rows: list[str] = Field(default_factory=list)
     missing_surfaces: list[Surface] = Field(default_factory=list)
     regressions: list[str] = Field(default_factory=list)
+    validation_flags: dict[str, list[str]] = Field(default_factory=dict)
+    manual_review_new_ids: list[str] = Field(default_factory=list)
+    manual_review_existing_ids: list[str] = Field(default_factory=list)
+    manual_review_resolved_ids: list[str] = Field(default_factory=list)
+    automated_evidence_regression_ids: list[str] = Field(default_factory=list)
     run_status: RunStatus
     repository_revisions: dict[str, str] = Field(default_factory=dict)
     repository_fingerprints: dict[str, str] = Field(default_factory=dict)

@@ -178,6 +178,113 @@ def test_phase2_compiles_traceable_controls_with_two_structured_calls(tmp_path: 
     assert control.source_refs[0].source_id == result.source_registry.sources[0].source_id
 
 
+def test_phase2_accepts_mixed_obligation_and_no_obligation_sections(tmp_path: Path) -> None:
+    source = tmp_path / "mixed-policy.md"
+    source.write_text(
+        "# Normative\n\n"
+        + "Terms must be disclosed before approval. " * 8
+        + "\n\n# Informational\n\n"
+        + "This section explains the document structure. " * 8
+        + "\n",
+        encoding="utf-8",
+    )
+
+    def response(request: object) -> ModelResponse:
+        kind = request.request_kind  # type: ignore[attr-defined]
+        payload = json.loads(request.messages[1]["content"])  # type: ignore[attr-defined]
+        if kind == "obligation_extraction":
+            sections = payload["sources"][0]["sections"]
+            decisions = []
+            obligations = []
+            for section in sections:
+                if section["title"] == "Normative":
+                    decisions.append(
+                        {
+                            "section_id": section["section_id"],
+                            "decision": "obligations_extracted",
+                            "obligation_ids": ["obl.mixed.disclosure"],
+                        }
+                    )
+                    obligations.append(
+                        {
+                            "obligation_id": "obl.mixed.disclosure",
+                            "source_id": payload["source_id"],
+                            "source_section": section["section_id"],
+                            "statement": "Terms must be disclosed before approval.",
+                            "concepts": ["loan", "disclosure"],
+                            "applicability_expression": "business_type includes personal_loan",
+                            "required_surfaces": ["frontend_h5"],
+                            "source_refs": [
+                                {
+                                    "source_id": payload["source_id"],
+                                    "source_section": section["section_id"],
+                                }
+                            ],
+                        }
+                    )
+                else:
+                    decisions.append(
+                        {
+                            "section_id": section["section_id"],
+                            "decision": "no_obligation",
+                            "reason": "Informational text only.",
+                        }
+                    )
+            return ModelResponse(
+                content=json.dumps(
+                    {
+                        "contract": "obligation_extraction_batch.v1",
+                        "version": "1.0",
+                        "source_id": payload["source_id"],
+                        "batch_id": payload["batch_id"],
+                        "section_decisions": decisions,
+                        "obligations": obligations,
+                    }
+                )
+            )
+
+        obligation = payload["obligations"][0]
+        return ModelResponse(
+            content=json.dumps(
+                {
+                    "contract": "control_draft_set.v1",
+                    "version": "1.0",
+                    "status": "draft",
+                    "controls": [
+                        {
+                            "control_id": "mixed.disclosure",
+                            "module_id": "loan_disclosure",
+                            "title": "Loan terms are disclosed before approval",
+                            "severity": "high",
+                            "obligation_ids": [obligation["obligation_id"]],
+                            "source_refs": obligation["source_refs"],
+                            "applicability_expression": obligation["applicability_expression"],
+                            "required_surfaces": ["frontend_h5"],
+                            "evidence_requirements": {
+                                "frontend_h5": {
+                                    "minimum_strength": "static_proof",
+                                    "rationale": "Disclosure is user-facing.",
+                                }
+                            },
+                            "missing_evidence_policy": "block",
+                            "reuse_invalidation_keys": ["control_version"],
+                        }
+                    ],
+                }
+            )
+        )
+
+    result = Phase2CompilationService(
+        tmp_path / "workspace",
+        StaticModelProvider(response),
+        source_builder=SourceRegistryBuilder(max_section_chars=500),
+    ).compile([source])
+
+    assert len(result.source_registry.sources[0].sections) == 2
+    assert len(result.obligations.obligations) == 1
+    assert result.control_validation.valid is True
+
+
 def test_invalid_control_draft_does_not_write_validated_controls(tmp_path: Path) -> None:
     source = tmp_path / "policy.txt"
     source.write_text("Terms must be disclosed.", encoding="utf-8")
@@ -216,7 +323,7 @@ def test_invalid_control_draft_does_not_write_validated_controls(tmp_path: Path)
     assert (tmp_path / "workspace" / "setup" / "sources.json").is_file()
 
 
-def test_validator_requires_complete_section_mapping_and_control_provenance() -> None:
+def test_validator_separates_section_coverage_from_control_provenance() -> None:
     source = ComplianceSource(
         source_id="policy",
         path="policy.md",
@@ -262,8 +369,31 @@ def test_validator_requires_complete_section_mapping_and_control_provenance() ->
     )
 
     assert validation.valid is False
-    assert any("not covered by an obligation: policy/two" in error for error in validation.errors)
+    assert not any(
+        "not covered by an obligation: policy/two" in error for error in validation.errors
+    )
     assert any("narrows applicability" in error for error in validation.errors)
+
+
+def test_validator_accepts_empty_validated_set_when_all_sections_have_no_obligation() -> None:
+    source = ComplianceSource(
+        source_id="informational",
+        path="informational.md",
+        title="Informational",
+        sha256="c" * 64,
+        source_family="internal",
+        media_type="md",
+        extraction_status="ok",
+        sections=[SourceSection(section_id="one", title="One", text="One", ordinal=1)],
+    )
+
+    validation = ControlValidator().validate(
+        SourceRegistry(sources=[source], version="1.0"),
+        ObligationSet(version="1.0", status="draft", obligations=[]),
+        ControlDraftSet(version="1.0", controls=[]),
+    )
+
+    assert validation.valid is True
 
 
 def test_validator_rejects_duplicate_obligations_or_orphans() -> None:

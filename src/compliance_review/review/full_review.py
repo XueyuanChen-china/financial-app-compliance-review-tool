@@ -18,11 +18,16 @@ from compliance_review.review.finalization import (
     ComplianceResolver,
     CoverageGate,
     ResultValidator,
-    SuspiciousRouter,
-    TargetedVerifier,
 )
-from compliance_review.review.models import FullReviewRunResult, ReviewRunSummary, VerifierResult
+from compliance_review.review.models import (
+    FullReviewRunResult,
+    ResultValidationResult,
+    ReviewRunSummary,
+    SuspiciousReviewSet,
+    VerifierResult,
+)
 from compliance_review.review.provider import ModelProvider
+from compliance_review.review.redaction import redact_sensitive_text
 from compliance_review.setup.service import ReviewSetupResult
 
 
@@ -102,17 +107,20 @@ class FullReviewService:
             work_items=setup.work_items,
             collector_results=collector_results,
         )
-        suspicious = SuspiciousRouter().route(validation)
-        verifier = (
-            TargetedVerifier(self.verifier_provider).verify(suspicious, validation, controls)
-            if self.verifier_provider is not None
-            else VerifierResult(
-                status="not_required" if not suspicious.row_ids else "failed",
-                errors=[] if not suspicious.row_ids else ["verifier provider is unavailable"],
-            )
+        resolved = ComplianceResolver().resolve(
+            controls,
+            setup.coverage,
+            validation,
         )
-        resolved = ComplianceResolver().resolve(controls, setup.coverage, validation, verifier)
-        gate = CoverageGate().evaluate(controls, setup.coverage, validation, resolved)
+        gate = CoverageGate().evaluate(
+            controls,
+            setup.coverage,
+            validation,
+            resolved,
+            mode="full",
+        )
+        suspicious = _legacy_flag_set(validation)
+        verifier = VerifierResult(status="not_required")
         snapshot = Snapshot(
             contract="compliance_snapshot.v1",
             run_id=setup.run_id,
@@ -130,6 +138,9 @@ class FullReviewService:
                 row.coverage_unit_id for row in gate.rows if row.result_origin == "reviewed"
             ],
             missing_surfaces=setup.coverage.missing_surfaces,
+            validation_flags=validation.flags,
+            manual_review_existing_ids=gate.manual_review_existing_ids,
+            automated_evidence_regression_ids=gate.automated_evidence_regression_ids,
             run_status="completed",
             repository_revisions={
                 inventory.repo_id: inventory.git_revision or "unversioned"
@@ -155,8 +166,7 @@ class FullReviewService:
         report = render_markdown_report(snapshot, gate)
         self.store.write_run_model(setup.run_id, "review_summary.json", summary)
         self.store.write_run_model(setup.run_id, "result_validation.json", validation)
-        self.store.write_run_model(setup.run_id, "suspicious_rows.json", suspicious)
-        self.store.write_run_model(setup.run_id, "verifier/verifier_result.json", verifier)
+        self.store.write_run_model(setup.run_id, "validation_flags.json", validation)
         self.store.write_run_json(
             setup.run_id,
             "control_results.json",
@@ -216,6 +226,35 @@ def render_markdown_report(snapshot: Snapshot, gate: object) -> str:
             f"| `{row.coverage_unit_id}` | {row.surface} | {row.evidence_status} | "
             f"{row.resolution_status} | {row.result_origin} |"
         )
+    lines.extend(["", "## CI Delta", ""])
+    if snapshot.mode == "full":
+        lines.append(
+            f"- Manual review required: `{len(coverage_gate.manual_review_existing_ids)}`"
+        )
+    else:
+        lines.extend(
+            [
+                f"- New manual review: `{len(coverage_gate.manual_review_new_ids)}`",
+                f"- Existing manual review: `{len(coverage_gate.manual_review_existing_ids)}`",
+                f"- Resolved manual review: `{len(coverage_gate.manual_review_resolved_ids)}`",
+            ]
+        )
+    lines.extend(
+        [
+            f"- Automated evidence regressions: "
+            f"`{len(coverage_gate.automated_evidence_regression_ids)}`",
+            "",
+            "## Validation Flags",
+            "",
+        ]
+    )
+    if coverage_gate.validation_flags:
+        lines.extend(
+            f"- `{row_id}`: {', '.join(flags)}"
+            for row_id, flags in sorted(coverage_gate.validation_flags.items())
+        )
+    else:
+        lines.append("- none")
     lines.extend(
         [
             "",
@@ -228,7 +267,12 @@ def render_markdown_report(snapshot: Snapshot, gate: object) -> str:
             "",
         ]
     )
-    return "\n".join(lines)
+    return redact_sensitive_text("\n".join(lines))
+
+
+def _legacy_flag_set(validation: object) -> SuspiciousReviewSet:
+    result = ResultValidationResult.model_validate(validation)
+    return SuspiciousReviewSet(row_ids=sorted(result.flags), reasons=result.flags)
 
 
 def _combined_revision(setup: ReviewSetupResult) -> str:

@@ -22,6 +22,10 @@ class ReviewScheduler:
         max_concurrency: int = 3,
         token_budget: int = 4000,
         checkpointer: object | None = None,
+        max_attempts: int = 2,
+        model_timeout_seconds: float = 30.0,
+        tool_timeout_seconds: float = 5.0,
+        attempt_timeout_seconds: float = 90.0,
     ) -> None:
         self.runtime = LangGraphReviewRuntime(
             provider=provider,
@@ -29,6 +33,10 @@ class ReviewScheduler:
             max_concurrency=max_concurrency,
             token_budget=token_budget,
             checkpointer=checkpointer,
+            max_attempts=max_attempts,
+            model_timeout_seconds=model_timeout_seconds,
+            tool_timeout_seconds=tool_timeout_seconds,
+            attempt_timeout_seconds=attempt_timeout_seconds,
         )
 
     def run(

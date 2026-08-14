@@ -29,7 +29,13 @@ from compliance_review.review.langgraph_runtime import (
     _anchors_from_tool_results,
     _parse_compressed_memory,
 )
-from compliance_review.review.models import ModelRequest, ModelResponse, ScopedToolResult, ToolCall
+from compliance_review.review.models import (
+    ModelRequest,
+    ModelResponse,
+    ScopedToolResult,
+    ToolCall,
+    WorkerAttempt,
+)
 from compliance_review.review.provider import tool_schemas
 from compliance_review.review.tools import ScopedToolExecutor
 
@@ -138,6 +144,212 @@ def test_scheduler_runs_three_work_items_in_parallel_and_isolates_outputs(tmp_pa
     assert [event["sequence"] for event in events] == list(range(1, len(events) + 1))
     assert sum(event["event_type"] == "worker_started" for event in events) == 3
     assert sum(event["event_type"] == "worker_completed" for event in events) == 3
+
+
+def test_model_failure_retries_without_overwriting_attempt_history(tmp_path: Path) -> None:
+    item = _work_item("wi.retry")
+    calls = 0
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TimeoutError("temporary provider timeout")
+        return ModelResponse(content=_review_json(request, request.work_item, request.agent_id))
+
+    summary = LangGraphReviewRuntime(
+        provider=StaticModelProvider(response_factory),
+        max_concurrency=1,
+        max_attempts=2,
+    ).run(
+        manifest_run_id="run-retry",
+        work_items=[item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+    )
+
+    assert calls == 2
+    assert summary.completed == 1
+    assert summary.failed == 0
+    assert [attempt.status for attempt in summary.attempts] == ["failed", "completed"]
+    assert (tmp_path / "work-items" / item.work_item_id / "attempts" / "attempt-001").is_dir()
+    assert (tmp_path / "work-items" / item.work_item_id / "attempts" / "attempt-002").is_dir()
+
+
+def test_retryable_tool_failure_starts_a_new_attempt(tmp_path: Path) -> None:
+    item = _work_item("wi.tool-retry")
+    calls = 0
+
+    class FlakyCodeMap:
+        def query(self, request: object) -> CodeMapQueryResult:
+            if not hasattr(self, "failed_once"):
+                self.failed_once = True
+                raise OSError("temporary graph service failure")
+            return CodeMapQueryResult(query="loan", surface="backend_code", status="available")
+
+        def path(self, request: object) -> object:
+            raise AssertionError("path should not be called")
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        nonlocal calls
+        calls += 1
+        if calls in {1, 2}:
+            return ModelResponse(
+                tool_calls=[
+                    ToolCall(
+                        call_id=f"graph-{calls}",
+                        name="code_map_query",
+                        arguments={"query": "loan"},
+                    )
+                ]
+            )
+        return ModelResponse(content=_review_json(request, request.work_item, request.agent_id))
+
+    summary = LangGraphReviewRuntime(
+        provider=StaticModelProvider(response_factory),
+        max_concurrency=1,
+        max_attempts=2,
+        code_map_providers={"backend_code": FlakyCodeMap()},
+    ).run(
+        manifest_run_id="run-tool-retry",
+        work_items=[item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+    )
+
+    assert calls == 3
+    assert summary.completed == 1
+    assert [attempt.status for attempt in summary.attempts] == ["failed", "completed"]
+
+
+def test_non_retryable_path_escape_keeps_one_failed_attempt(tmp_path: Path) -> None:
+    item = _work_item("wi.path-escape")
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        return ModelResponse(
+            tool_calls=[
+                ToolCall(
+                    call_id="escape",
+                    name="read_file",
+                    arguments={"path": "../secret.txt"},
+                )
+            ]
+        )
+
+    summary = LangGraphReviewRuntime(
+        provider=StaticModelProvider(response_factory), max_concurrency=1, max_attempts=3
+    ).run(
+        manifest_run_id="run-path-escape",
+        work_items=[item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+    )
+
+    assert summary.failed == 1
+    assert len(summary.attempts) == 1
+    assert summary.attempts[0].error_code == "path_escape"
+    assert (tmp_path / "work-items" / item.work_item_id / "attempts" / "attempt-001").is_dir()
+
+
+def test_completed_attempt_is_reused_after_resume(tmp_path: Path) -> None:
+    item = _work_item("wi.resume")
+    calls = 0
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        nonlocal calls
+        calls += 1
+        return ModelResponse(content=_review_json(request, request.work_item, request.agent_id))
+
+    first = LangGraphReviewRuntime(
+        provider=StaticModelProvider(response_factory), max_concurrency=1
+    ).run(
+        manifest_run_id="run-resume",
+        work_items=[item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+    )
+    second = LangGraphReviewRuntime(
+        provider=StaticModelProvider(response_factory), max_concurrency=1
+    ).run(
+        manifest_run_id="run-resume",
+        work_items=[item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+    )
+
+    assert first.completed == second.completed == 1
+    assert calls == 1
+    events = [
+        json.loads(line)
+        for line in (tmp_path / "worker-events.jsonl").read_text().splitlines()
+    ]
+    assert any(event["event_type"] == "worker_resume_skipped" for event in events)
+
+
+def test_fingerprint_mismatch_does_not_reuse_completed_attempt(tmp_path: Path) -> None:
+    item = _work_item("wi.fingerprint")
+    calls = 0
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        nonlocal calls
+        calls += 1
+        return ModelResponse(content=_review_json(request, request.work_item, request.agent_id))
+
+    provider = StaticModelProvider(response_factory)
+    LangGraphReviewRuntime(provider=provider, max_concurrency=1).run(
+        manifest_run_id="run-fingerprint",
+        work_items=[item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+    )
+    changed_item = item.model_copy(update={"control_ids": ["control.changed"]})
+    second = LangGraphReviewRuntime(provider=provider, max_concurrency=1).run(
+        manifest_run_id="run-fingerprint",
+        work_items=[changed_item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+    )
+
+    assert calls == 2
+    assert second.completed == 1
+    assert second.executions[0].attempt_number == 2
+
+
+def test_stale_running_attempt_is_interrupted_before_resume(tmp_path: Path) -> None:
+    item = _work_item("wi.stale")
+    output_root = tmp_path / "work-items"
+    stale = WorkerAttempt(
+        work_item_id=item.work_item_id,
+        attempt_id="run-stale.wi.stale.attempt-001-old",
+        attempt_number=1,
+        status="running",
+        started_at="2026-01-01T00:00:00+00:00",
+        retryable=True,
+        context_fingerprint="stale-fingerprint",
+    )
+    attempt_dir = output_root / item.work_item_id / "attempts" / "attempt-001"
+    attempt_dir.mkdir(parents=True)
+    (attempt_dir / "attempt.json").write_text(
+        stale.model_dump_json(indent=2), encoding="utf-8"
+    )
+
+    summary = LangGraphReviewRuntime(
+        provider=StaticModelProvider(
+            lambda request: ModelResponse(
+                content=_review_json(request, request.work_item, request.agent_id)
+            )
+        ),
+        max_concurrency=1,
+        max_attempts=2,
+    ).run(
+        manifest_run_id="run-stale",
+        work_items=[item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=output_root,
+    )
+
+    assert summary.completed == 1
+    assert [attempt.status for attempt in summary.attempts] == ["interrupted", "completed"]
 
 
 def test_worker_tool_call_is_scoped_to_work_item_root() -> None:

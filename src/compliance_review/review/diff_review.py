@@ -30,13 +30,13 @@ from compliance_review.review.finalization import (
     ComplianceResolver,
     CoverageGate,
     ResultValidator,
-    SuspiciousRouter,
-    TargetedVerifier,
+    is_automatable_surface,
 )
 from compliance_review.review.models import (
     DiffReviewRunResult,
     ResultValidationResult,
     ReviewRunSummary,
+    SuspiciousReviewSet,
     ValidatedReviewRow,
     VerifierResult,
 )
@@ -481,17 +481,24 @@ class DiffReviewService:
             plan.reuse,
             previous_snapshot.run_id,
         )
-        suspicious = SuspiciousRouter().route(reviewed_validation)
-        verifier = (
-            TargetedVerifier(self.verifier_provider).verify(suspicious, validation, controls)
-            if self.verifier_provider is not None
-            else VerifierResult(
-                status="not_required" if not suspicious.row_ids else "failed",
-                errors=[] if not suspicious.row_ids else ["verifier provider is unavailable"],
-            )
+        suspicious = _legacy_flag_set(validation)
+        verifier = VerifierResult(status="not_required")
+        previous_manual_ids = _manual_review_ids(
+            setup.coverage, previous_validation, previous_snapshot
         )
-        resolved = ComplianceResolver().resolve(controls, setup.coverage, validation, verifier)
-        gate = CoverageGate().evaluate(controls, setup.coverage, validation, resolved)
+        automated_regressions = _automated_evidence_regressions(
+            setup.coverage, previous_validation, validation, plan
+        )
+        resolved = ComplianceResolver().resolve(controls, setup.coverage, validation)
+        gate = CoverageGate().evaluate(
+            controls,
+            setup.coverage,
+            validation,
+            resolved,
+            mode="diff",
+            previous_manual_ids=sorted(previous_manual_ids),
+            automated_evidence_regression_ids=sorted(automated_regressions),
+        )
         snapshot = Snapshot(
             contract="compliance_snapshot.v1",
             run_id=setup.run_id,
@@ -513,6 +520,11 @@ class DiffReviewService:
                 row.coverage_unit_id for row in gate.rows if row.result_origin == "reused"
             ],
             missing_surfaces=setup.coverage.missing_surfaces,
+            validation_flags=validation.flags,
+            manual_review_new_ids=gate.manual_review_new_ids,
+            manual_review_existing_ids=gate.manual_review_existing_ids,
+            manual_review_resolved_ids=gate.manual_review_resolved_ids,
+            automated_evidence_regression_ids=gate.automated_evidence_regression_ids,
             run_status="completed",
             repository_revisions={
                 item.repo_id: item.git_revision or "unversioned" for item in setup.inventories
@@ -525,23 +537,6 @@ class DiffReviewService:
         )
         policies = {item.control_id: item.missing_evidence_policy for item in controls.controls}
         regressions = compare_regression(snapshot, previous_snapshot, policies)
-        final_ci = _highest_ci_status(gate.ci_status, regressions.ci_status)
-        if final_ci != gate.ci_status:
-            regression_messages = [
-                f"{item.control_id}:{item.reason}"
-                for item in regressions.changes
-                if item.classification in {"regression", "warning"}
-            ]
-            gate = gate.model_copy(
-                update={
-                    "ci_status": final_ci,
-                    "blocking_reasons": gate.blocking_reasons
-                    + (regression_messages if regressions.ci_status == "block" else []),
-                    "warning_reasons": gate.warning_reasons
-                    + (regression_messages if regressions.ci_status == "warn" else []),
-                }
-            )
-            snapshot = snapshot.model_copy(update={"ci_status": final_ci})
         snapshot = snapshot.model_copy(
             update={
                 "regressions": [
@@ -558,8 +553,7 @@ class DiffReviewService:
         )
         self.store.write_run_model(setup.run_id, "review_summary.json", summary)
         self.store.write_run_model(setup.run_id, "result_validation.json", validation)
-        self.store.write_run_model(setup.run_id, "suspicious_rows.json", suspicious)
-        self.store.write_run_model(setup.run_id, "verifier/verifier_result.json", verifier)
+        self.store.write_run_model(setup.run_id, "validation_flags.json", validation)
         self.store.write_run_json(
             setup.run_id,
             "control_results.json",
@@ -618,7 +612,6 @@ def merge_validations(
             if (
                 previous_row is None
                 or not previous_row.valid
-                or previous_row.suspicious
                 or previous_row.row is None
                 or previous_row.row.evidence_status != "complete"
                 or previous_row.row.recommended_control_status != "pass"
@@ -656,6 +649,7 @@ def merge_validations(
     return ResultValidationResult(
         valid=not errors and reviewed.valid,
         rows=rows,
+        flags={item.row_id: item.flags for item in rows if item.flags},
         suspicious_row_ids=[item.row_id for item in rows if item.suspicious],
         errors=[*reviewed.errors, *errors],
     )
@@ -680,6 +674,64 @@ def _filtered_work_items(work_items: Sequence[WorkItem], unit_ids: set[str]) -> 
     return filtered
 
 
-def _highest_ci_status(left: str, right: str) -> Literal["pass", "warn", "block"]:
-    rank = {"pass": 0, "warn": 1, "block": 2}
-    return left if rank[left] >= rank[right] else right  # type: ignore[return-value]
+def _legacy_flag_set(validation: ResultValidationResult) -> SuspiciousReviewSet:
+    return SuspiciousReviewSet(row_ids=sorted(validation.flags), reasons=validation.flags)
+
+
+def _manual_review_ids(
+    coverage: CoverageSet,
+    validation: ResultValidationResult,
+    snapshot: Snapshot | None = None,
+) -> set[str]:
+    if snapshot is not None:
+        snapshot_manual_ids = (
+            set(snapshot.manual_review_new_ids)
+            | set(snapshot.manual_review_existing_ids)
+        )
+        if snapshot_manual_ids:
+            return snapshot_manual_ids
+    rows = {item.row_id: item for item in validation.rows}
+    manual: set[str] = set()
+    for unit in coverage.units:
+        if is_automatable_surface(unit.surface):
+            continue
+        row = rows.get(f"{unit.control_id}:{unit.surface}")
+        if row is None or row.row is None or row.row.evidence_status == "manual_required":
+            manual.add(unit.coverage_unit_id)
+    return manual
+
+
+def _automated_evidence_regressions(
+    coverage: CoverageSet,
+    previous: ResultValidationResult,
+    current: ResultValidationResult,
+    plan: DiffReviewPlan,
+) -> set[str]:
+    previous_by_id = {item.row_id: item for item in previous.rows}
+    current_by_id = {item.row_id: item for item in current.rows}
+    decisions = {item.coverage_unit_id: item for item in plan.reuse.decisions}
+    regressions: set[str] = set()
+    for unit in coverage.units:
+        if not is_automatable_surface(unit.surface):
+            continue
+        row_id = f"{unit.control_id}:{unit.surface}"
+        old = previous_by_id.get(row_id)
+        new = current_by_id.get(row_id)
+        old_good = bool(
+            old
+            and old.valid
+            and old.row is not None
+            and old.row.evidence_status == "complete"
+            and old.row.recommended_control_status == "pass"
+        )
+        new_bad = not bool(
+            new
+            and new.valid
+            and new.row is not None
+            and new.row.evidence_status == "complete"
+        )
+        decision = decisions.get(unit.coverage_unit_id)
+        affected = bool(decision and not decision.reusable)
+        if old_good and new_bad and affected:
+            regressions.add(unit.coverage_unit_id)
+    return regressions

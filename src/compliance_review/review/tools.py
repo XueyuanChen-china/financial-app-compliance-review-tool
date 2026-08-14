@@ -16,6 +16,8 @@ from compliance_review.collectors.base import CollectorResult
 from compliance_review.domain.models import WorkItem
 from compliance_review.repository import ReadOnlyRepositoryTools, RepositorySandbox
 from compliance_review.review.models import ScopedToolResult, ToolCall
+from compliance_review.review.redaction import redact_value
+from compliance_review.review.reliability import classify_error
 
 
 class ScopedToolExecutor:
@@ -62,13 +64,21 @@ class ScopedToolExecutor:
                 output = self._read_file(call.arguments)
             else:
                 raise ValueError(f"unsupported tool: {call.name}")
-            return ScopedToolResult(call_id=call.call_id, name=call.name, ok=True, output=output)
+            return ScopedToolResult(
+                call_id=call.call_id,
+                name=call.name,
+                ok=True,
+                output=redact_value(output),
+            )
         except (OSError, TypeError, ValueError) as exc:
+            classification = classify_error(exc)
             return ScopedToolResult(
                 call_id=call.call_id,
                 name=call.name,
                 ok=False,
-                error=str(exc),
+                error=redact_value(str(exc)),
+                error_code=classification.error_code,
+                retryable=classification.retryable,
             )
 
     def _code_map_query(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -285,4 +295,6 @@ def _bounded_int(
 
 
 def serialize_tool_result(result: ScopedToolResult) -> str:
-    return json.dumps(result.model_dump(), ensure_ascii=False, sort_keys=True)
+    return json.dumps(
+        redact_value(result.model_dump()), ensure_ascii=False, sort_keys=True
+    )
