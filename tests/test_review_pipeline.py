@@ -37,6 +37,7 @@ from compliance_review.review.models import (
     WorkerAttempt,
 )
 from compliance_review.review.provider import tool_schemas
+from compliance_review.review.result_parser import parse_review_result
 from compliance_review.review.tools import ScopedToolExecutor
 
 FIXTURES = Path(__file__).parent / "fixtures" / "day2"
@@ -54,6 +55,81 @@ def _work_item(work_item_id: str) -> WorkItem:
         max_files_read=2,
         max_lines_per_read=20,
     )
+
+
+def test_scoped_search_code_accepts_empty_root_as_all_allowed_roots() -> None:
+    executor = ScopedToolExecutor(
+        RepositorySandbox(FIXTURES),
+        _work_item("search-empty-root"),
+    )
+
+    result = executor.execute(
+        ToolCall(
+            call_id="call-search-empty-root",
+            name="search_code",
+            arguments={"query": "/api/loan", "root": "", "file_globs": ["*.py"]},
+        )
+    )
+
+    assert result.ok is True
+    assert result.output == [
+        {
+            "path": "backend/app.py",
+            "line_number": 2,
+            "line_text": "@app.post('/api/loan/disburse')",
+        }
+    ]
+
+
+def test_review_result_parser_accepts_wrapped_and_single_control_shapes() -> None:
+    work_item = _work_item("parser-shape")
+    wrapped = json.dumps(
+        {
+            "review_result.v1": {
+                "contract": "review_result.v1",
+                "work_item_id": work_item.work_item_id,
+                "attempt_id": "attempt-1",
+                "execution_status": "completed",
+                "rows": [
+                    {
+                        "control_id": work_item.control_ids[0],
+                        "surface": work_item.surface,
+                        "evidence_status": "partial",
+                        "recommended_control_status": "indeterminate",
+                    }
+                ],
+                "agent_id": "reviewer-1",
+            }
+        }
+    )
+    wrapped_result = parse_review_result(wrapped, work_item, "attempt-1", "reviewer-1")
+    assert wrapped_result.rows[0].control_id == work_item.control_ids[0]
+
+    flat = json.dumps(
+        {
+            "review_result_version": "review_result.v1",
+            "control_id": work_item.control_ids[0],
+            "surface": work_item.surface,
+            "status": "insufficient_evidence",
+            "assessment": "The repository does not prove the requirement.",
+            "limitations": ["No runtime evidence"],
+        }
+    )
+    flat_result = parse_review_result(flat, work_item, "attempt-2", "reviewer-2")
+    assert flat_result.rows[0].recommended_control_status == "indeterminate"
+    assert flat_result.rows[0].evidence_status == "missing"
+
+    implicit_assignment = json.dumps(
+        {
+            "review_result_version": "review_result.v1",
+            "status": "fail",
+            "summary": "A finding was observed.",
+        }
+    )
+    implicit_result = parse_review_result(
+        implicit_assignment, work_item, "attempt-3", "reviewer-3"
+    )
+    assert implicit_result.rows[0].recommended_control_status == "fail"
 
 
 def _review_json(request: ModelRequest, work_item: WorkItem, agent_id: str) -> str:
@@ -717,7 +793,7 @@ def test_seven_work_items_are_bounded_and_waiting_items_progress(tmp_path: Path)
     assert any(completed_before_start >= 1 for _, completed_before_start in start_records[3:])
 
 
-def test_context_budget_exhaustion_returns_indeterminate_for_one_work_item(
+def test_context_budget_exhaustion_completes_with_bounded_indeterminate_result(
     tmp_path: Path,
 ) -> None:
     item = _work_item("wi.context-budget")
@@ -736,12 +812,13 @@ def test_context_budget_exhaustion_returns_indeterminate_for_one_work_item(
         output_root=tmp_path / "work-items",
     )
 
-    assert summary.completed == 0
-    assert summary.failed == 1
+    assert summary.completed == 1
+    assert summary.failed == 0
     execution = summary.executions[0]
-    assert execution.error == "context_budget_exhausted"
+    assert execution.error is None
     assert execution.result is not None
     assert execution.result.rows[0].recommended_control_status == "indeterminate"
+    assert execution.result.rows[0].gap_reasons == ["context_budget_exhausted"]
 
 
 def test_tool_budgets_remain_cumulative_across_model_rounds(tmp_path: Path) -> None:

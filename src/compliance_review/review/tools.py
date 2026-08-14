@@ -19,6 +19,13 @@ from compliance_review.review.models import ScopedToolResult, ToolCall
 from compliance_review.review.redaction import redact_value
 from compliance_review.review.reliability import classify_error
 
+# Reviewer tool results must remain small enough to leave room for the next
+# model turn and the structured review response.
+_MAX_FACT_RESULTS = 20
+_MAX_LIST_RESULTS = 40
+_MAX_SEARCH_RESULTS = 25
+_MAX_READ_LINES = 120
+
 
 class ScopedToolExecutor:
     """Execute only read-only tools inside one Work Item's allowed roots."""
@@ -127,7 +134,7 @@ class ScopedToolExecutor:
         fact_type = arguments.get("fact_type")
         if fact_type is not None and not isinstance(fact_type, str):
             raise TypeError("fact_type must be a string")
-        limit = _bounded_int(arguments, "limit", 50, 1, 100)
+        limit = _bounded_int(arguments, "limit", 20, 1, _MAX_FACT_RESULTS)
         allowed_fact_ids = set(self.work_item.collector_fact_refs)
         disallowed_requests = sorted(set(raw_fact_ids) - allowed_fact_ids)
         if disallowed_requests:
@@ -204,7 +211,7 @@ class ScopedToolExecutor:
 
     def _list_files(self, arguments: dict[str, Any]) -> list[str]:
         pattern = _string_argument(arguments, "pattern", "**/*")
-        limit = _bounded_int(arguments, "limit", 100, 1, 100)
+        limit = _bounded_int(arguments, "limit", 40, 1, _MAX_LIST_RESULTS)
         if Path(pattern).is_absolute() or ".." in Path(pattern).parts:
             raise ValueError("list_files pattern leaves the allowed roots")
         paths: list[str] = []
@@ -218,11 +225,14 @@ class ScopedToolExecutor:
 
     def _search_code(self, arguments: dict[str, Any]) -> list[dict[str, Any]]:
         query = _string_argument(arguments, "query")
-        root = _string_argument(arguments, "root", "")
+        root_value = arguments.get("root", "")
+        if not isinstance(root_value, str):
+            raise TypeError("root must be a string")
+        root = root_value
         file_globs = arguments.get("file_globs", ())
         if not isinstance(file_globs, (list, tuple)):
             raise TypeError("file_globs must be a list")
-        limit = _bounded_int(arguments, "limit", 100, 1, 100)
+        limit = _bounded_int(arguments, "limit", 25, 1, _MAX_SEARCH_RESULTS)
         roots: tuple[str, ...]
         if root:
             roots = (self._allowed_path(root),)
@@ -249,9 +259,9 @@ class ScopedToolExecutor:
         line_count = _bounded_int(
             arguments,
             "line_count",
-            self.work_item.max_lines_per_read,
+            min(self.work_item.max_lines_per_read, _MAX_READ_LINES),
             1,
-            self.work_item.max_lines_per_read,
+            min(self.work_item.max_lines_per_read, _MAX_READ_LINES),
         )
         return self.tools.read_file(path, start_line=start_line, line_count=line_count)
 

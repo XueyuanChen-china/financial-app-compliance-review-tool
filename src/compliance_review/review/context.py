@@ -25,7 +25,7 @@ class ReviewerRuntimeConfig(BaseModel):
     compression_target: float = Field(default=0.60, gt=0, le=1)
     hard_limit: float = Field(default=0.90, gt=0, le=1)
     max_compression_attempts: int = Field(default=2, ge=1, le=5)
-    context_window_tokens: int = Field(default=12000, ge=100)
+    context_window_tokens: int = Field(default=32000, ge=100)
 
     @model_validator(mode="after")
     def validate_thresholds(self) -> "ReviewerRuntimeConfig":
@@ -152,6 +152,14 @@ class ReviewerContextManager:
         for round_item in rounds:
             response = round_item.model_response
             if response.get("tool_calls"):
+                def tool_arguments(call: dict[str, Any]) -> str:
+                    raw = (
+                        call["arguments"]
+                        if "arguments" in call
+                        else call["function"]["arguments"]
+                    )
+                    return raw if isinstance(raw, str) else json.dumps(raw, sort_keys=True)
+
                 messages.append(
                     {
                         "role": "assistant",
@@ -163,11 +171,7 @@ class ReviewerContextManager:
                                     "name": call["name"]
                                     if "name" in call
                                     else call["function"]["name"],
-                                    "arguments": (
-                                        call["arguments"]
-                                        if "arguments" in call
-                                        else call["function"]["arguments"]
-                                    ),
+                                    "arguments": tool_arguments(call),
                                 },
                             }
                             for call in response["tool_calls"]
@@ -203,6 +207,10 @@ class ReviewerContextManager:
         current.last_context_usage_ratio = usage_ratio
         if usage_ratio < self.config.compression_trigger:
             return current, messages
+        if not current.retired_rounds and len(current.active_rounds) > 1:
+            # Preserve the most recent investigation round verbatim and make the
+            # older round available to the bounded compression step.
+            current.retired_rounds.append(current.active_rounds.pop(0))
         if not current.retired_rounds and current.compressed_memory is None:
             raise ContextBudgetExceeded("context_budget_exhausted")
 

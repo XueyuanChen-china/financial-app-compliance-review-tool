@@ -54,3 +54,7 @@ select = ["E", "F", "I", "B"]
 python_version = "3.9"
 strict = true
 packages = ["compliance_review"]
+
+[[tool.mypy.overrides]]
+module = ["anyio.*"]
+follow_imports = "skip"

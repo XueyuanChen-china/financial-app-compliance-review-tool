@@ -136,9 +136,6 @@ def _provider_for_valid_compilation() -> StaticModelProvider:
                             "title": "Loan terms are disclosed before approval",
                             "severity": "high",
                             "obligation_ids": [obligation["obligation_id"]],
-                            "source_refs": obligation["source_refs"],
-                            "applicability_expression": obligation["applicability_expression"],
-                            "required_surfaces": ["frontend_h5"],
                             "evidence_requirements": [
                                 {
                                     "surface": "frontend_h5",
@@ -258,9 +255,6 @@ def test_phase2_accepts_mixed_obligation_and_no_obligation_sections(tmp_path: Pa
                             "title": "Loan terms are disclosed before approval",
                             "severity": "high",
                             "obligation_ids": [obligation["obligation_id"]],
-                            "source_refs": obligation["source_refs"],
-                            "applicability_expression": obligation["applicability_expression"],
-                            "required_surfaces": ["frontend_h5"],
                             "evidence_requirements": [
                                 {
                                     "surface": "frontend_h5",

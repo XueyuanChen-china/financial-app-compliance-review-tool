@@ -153,6 +153,7 @@ def test_full_review_writes_snapshot_and_blocks_missing_backend_evidence(
     report = (run_root / "report.md").read_text(encoding="utf-8")
     assert report == render_markdown_report(stored_snapshot, stored_gate)
     assert "# 金融应用合规审查报告" in report
+    assert "已形成完整证据单元" in report
     assert "| CI 判定 | **阻断** |" in report
     assert "## 证据覆盖台账" in report
     assert "backend_code" in report

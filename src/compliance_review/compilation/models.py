@@ -17,6 +17,18 @@ from compliance_review.domain.models import (
 SourceMediaType = Literal["md", "txt", "pdf", "docx"]
 CompilationStatus = Literal["draft", "validated"]
 
+_APPLICABILITY_FIELD = r"(?:business_type|evidence_surfaces|self_lending|jurisdiction)"
+_APPLICABILITY_VALUE = r"[A-Za-z0-9_.-]+"
+_APPLICABILITY_CLAUSE = (
+    rf"(?:{_APPLICABILITY_FIELD}\s*(?:==\s*{_APPLICABILITY_VALUE}"
+    rf"|includes\s+{_APPLICABILITY_VALUE})"
+    rf"|{_APPLICABILITY_VALUE}\s+in\s+{_APPLICABILITY_FIELD})"
+)
+APPLICABILITY_EXPRESSION_PATTERN = (
+    rf"^(?:unknown|{_APPLICABILITY_CLAUSE}"
+    rf"(?:\s+(?:and|&&)\s+{_APPLICABILITY_CLAUSE})*)$"
+)
+
 
 class SourceSection(ContractModel):
     section_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
@@ -73,7 +85,9 @@ class Obligation(ContractModel):
     source_section: str = Field(min_length=1)
     statement: str = Field(min_length=1)
     concepts: list[str] = Field(min_length=1)
-    applicability_expression: str = Field(min_length=1)
+    applicability_expression: str = Field(
+        min_length=1, pattern=APPLICABILITY_EXPRESSION_PATTERN
+    )
     required_surfaces: list[Surface] = Field(min_length=1)
     source_refs: list[SourceRef] = Field(min_length=1)
 
@@ -101,7 +115,9 @@ class ControlDraft(ContractModel):
     severity: Severity
     obligation_ids: list[str] = Field(min_length=1)
     source_refs: list[SourceRef] = Field(min_length=1)
-    applicability_expression: str = Field(min_length=1)
+    applicability_expression: str = Field(
+        min_length=1, pattern=APPLICABILITY_EXPRESSION_PATTERN
+    )
     required_surfaces: list[Surface] = Field(min_length=1)
     evidence_requirements: dict[Surface, EvidenceRequirement] = Field(min_length=1)
     missing_evidence_policy: Literal["warn", "block"]
@@ -131,9 +147,6 @@ class ControlDraftTransport(ContractModel):
     title: str = Field(min_length=1)
     severity: Literal["critical", "high", "medium", "low"]
     obligation_ids: list[str] = Field(min_length=1)
-    source_refs: list[SourceRef] = Field(min_length=1)
-    applicability_expression: str = Field(min_length=1)
-    required_surfaces: list[Surface] = Field(min_length=1)
     evidence_requirements: list[ControlEvidenceRequirementItem] = Field(min_length=1)
     missing_evidence_policy: Literal["warn", "block"]
     reuse_invalidation_keys: list[str] = Field(min_length=1)

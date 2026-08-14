@@ -12,9 +12,9 @@ from compliance_review.review.events import AppendOnlyEventLog
 from compliance_review.review.models import (
     ModelRequest,
     WorkerExecution,
-    validate_review_result_assignment,
 )
 from compliance_review.review.provider import ModelProvider, tool_schemas
+from compliance_review.review.result_parser import parse_review_result
 from compliance_review.review.tools import ScopedToolExecutor, serialize_tool_result
 
 
@@ -172,7 +172,10 @@ class ReviewWorker:
                             {
                                 "id": call.call_id,
                                 "type": "function",
-                                "function": {"name": call.name, "arguments": call.arguments},
+                                "function": {
+                                    "name": call.name,
+                                    "arguments": json.dumps(call.arguments, sort_keys=True),
+                                },
                             }
                             for call in response.tool_calls
                         ],
@@ -235,20 +238,7 @@ class ReviewWorker:
 def _parse_review_result(
     content: str, work_item: WorkItem, attempt_id: str, agent_id: str
 ) -> ReviewResult:
-    text = content.strip()
-    if text.startswith("```"):
-        text = text.strip("`").strip()
-        if text.startswith("json"):
-            text = text[4:].strip()
-    try:
-        result = ReviewResult.model_validate(json.loads(text))
-    except (json.JSONDecodeError, ValueError) as exc:
-        raise RuntimeError(f"invalid structured review result: {exc}") from exc
-    try:
-        validate_review_result_assignment(result, work_item, attempt_id, agent_id)
-    except ValueError as exc:
-        raise RuntimeError(str(exc)) from exc
-    return result
+    return parse_review_result(content, work_item, attempt_id, agent_id)
 
 
 def _context_fingerprint(run_id: str, work_item: WorkItem) -> str:
