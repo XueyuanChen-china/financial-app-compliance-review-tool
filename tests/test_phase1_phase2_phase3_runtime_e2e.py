@@ -92,12 +92,13 @@ def test_phase1_phase2_phase3_runtime_handoff(tmp_path: Path) -> None:
                             "source_refs": obligation["source_refs"],
                             "applicability_expression": obligation["applicability_expression"],
                             "required_surfaces": ["frontend_h5"],
-                            "evidence_requirements": {
-                                "frontend_h5": {
+                            "evidence_requirements": [
+                                {
+                                    "surface": "frontend_h5",
                                     "minimum_strength": "static_proof",
                                     "rationale": "Terms must be visible in the user-facing app.",
                                 }
-                            },
+                            ],
                             "missing_evidence_policy": "block",
                             "reuse_invalidation_keys": ["control_version"],
                         }

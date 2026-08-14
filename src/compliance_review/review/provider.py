@@ -15,6 +15,12 @@ from compliance_review.review.models import ModelRequest, ModelResponse, ToolCal
 load_dotenv()
 
 _REASONING_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
+_STRUCTURED_MODES = {"json_schema", "json_object"}
+_COMPILATION_REQUEST_KINDS = {
+    "obligation_extraction",
+    "control_compilation",
+}
+_STRUCTURED_REQUEST_KINDS = _COMPILATION_REQUEST_KINDS | {"verification"}
 
 
 class ModelProvider(Protocol):
@@ -52,20 +58,62 @@ class OpenAICompatibleProvider:
         api_key: str | None = None,
         base_url: str = "https://api.openai.com/v1/chat/completions",
         timeout_seconds: float = 30.0,
+        compilation_timeout_seconds: float | None = None,
     ) -> None:
         self.model = model
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
         self.base_url = base_url
         self.timeout_seconds = timeout_seconds
+        self.compilation_timeout_seconds = compilation_timeout_seconds or _env_float(
+            "COMPLIANCE_COMPILATION_TIMEOUT_SECONDS", 120.0
+        )
         self.actor_authorization = os.environ.get(
             "COMPLIANCE_REVIEW_ACTOR_AUTHORIZATION"
         )
         self.reasoning_effort = os.environ.get("COMPLIANCE_REVIEW_REASONING_EFFORT")
+        self.compilation_reasoning_effort = os.environ.get(
+            "COMPLIANCE_COMPILATION_REASONING_EFFORT", "low"
+        )
+        self.compilation_structured_mode = os.environ.get(
+            "COMPLIANCE_COMPILATION_STRUCTURED_MODE", "json_schema"
+        )
+        self.obligation_structured_mode = os.environ.get(
+            "COMPLIANCE_OBLIGATION_STRUCTURED_MODE", self.compilation_structured_mode
+        )
+        self.control_structured_mode = os.environ.get(
+            "COMPLIANCE_CONTROL_STRUCTURED_MODE", self.compilation_structured_mode
+        )
         if self.reasoning_effort and self.reasoning_effort not in _REASONING_EFFORTS:
             allowed = ", ".join(sorted(_REASONING_EFFORTS))
             raise ValueError(
                 "COMPLIANCE_REVIEW_REASONING_EFFORT must be one of: " + allowed
             )
+        if self.compilation_reasoning_effort not in _REASONING_EFFORTS:
+            allowed = ", ".join(sorted(_REASONING_EFFORTS))
+            raise ValueError(
+                "COMPLIANCE_COMPILATION_REASONING_EFFORT must be one of: " + allowed
+            )
+        configured_modes = {
+            "COMPLIANCE_COMPILATION_STRUCTURED_MODE": self.compilation_structured_mode,
+            "COMPLIANCE_OBLIGATION_STRUCTURED_MODE": self.obligation_structured_mode,
+            "COMPLIANCE_CONTROL_STRUCTURED_MODE": self.control_structured_mode,
+        }
+        invalid_modes = {
+            name: value
+            for name, value in configured_modes.items()
+            if value not in _STRUCTURED_MODES
+        }
+        if invalid_modes:
+            allowed = ", ".join(sorted(_STRUCTURED_MODES))
+            raise ValueError(
+                "structured compilation mode must be one of: "
+                + allowed
+                + " (invalid: "
+                + ", ".join(f"{name}={value}" for name, value in invalid_modes.items())
+                + ")"
+            )
+        if self.compilation_timeout_seconds <= 0:
+            raise ValueError("COMPLIANCE_COMPILATION_TIMEOUT_SECONDS must be positive")
 
     def complete(self, request: ModelRequest) -> ModelResponse:
         if not self.api_key:
@@ -73,26 +121,27 @@ class OpenAICompatibleProvider:
         body = {
             "model": self.model,
             "messages": request.messages,
-            "tools": request.tools,
-            "tool_choice": "auto",
             "temperature": 0,
         }
-        if self.reasoning_effort:
-            body["reasoning_effort"] = self.reasoning_effort
-        if request.request_kind in {
-            "obligation_extraction",
-            "control_compilation",
-            "verification",
-        }:
+        if request.tools:
+            body["tools"] = request.tools
+            body["tool_choice"] = "auto"
+        reasoning_effort = self._reasoning_effort_for(request.request_kind)
+        if reasoning_effort:
+            body["reasoning_effort"] = reasoning_effort
+        if request.request_kind in _STRUCTURED_REQUEST_KINDS:
             if request.response_schema:
-                body["response_format"] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": request.request_kind,
-                        "strict": True,
-                        "schema": _strict_json_schema(request.response_schema),
-                    },
-                }
+                if self._structured_mode_for(request.request_kind) == "json_schema":
+                    body["response_format"] = {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": request.request_kind,
+                            "strict": True,
+                            "schema": _strict_json_schema(request.response_schema),
+                        },
+                    }
+                else:
+                    body["response_format"] = {"type": "json_object"}
             else:
                 body["response_format"] = {"type": "json_object"}
         encoded = json.dumps(body).encode("utf-8")
@@ -109,11 +158,48 @@ class OpenAICompatibleProvider:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(http_request, timeout=self.timeout_seconds) as response:
+            with urllib.request.urlopen(
+                http_request, timeout=self._timeout_for(request.request_kind)
+            ) as response:
                 payload = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            try:
+                detail = exc.read().decode("utf-8", errors="replace")
+            except OSError:
+                detail = "<unavailable>"
+            raise RuntimeError(
+                f"model provider request failed: HTTP {exc.code}: {detail}"
+            ) from exc
         except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
             raise RuntimeError(f"model provider request failed: {exc}") from exc
         return _parse_chat_completion(payload)
+
+    def _reasoning_effort_for(self, request_kind: str) -> str | None:
+        if request_kind in _COMPILATION_REQUEST_KINDS:
+            return self.compilation_reasoning_effort
+        return self.reasoning_effort
+
+    def _timeout_for(self, request_kind: str) -> float:
+        if request_kind in _COMPILATION_REQUEST_KINDS:
+            return self.compilation_timeout_seconds
+        return self.timeout_seconds
+
+    def _structured_mode_for(self, request_kind: str) -> str:
+        if request_kind == "obligation_extraction":
+            return self.obligation_structured_mode
+        if request_kind == "control_compilation":
+            return self.control_structured_mode
+        return os.environ.get("COMPLIANCE_VERIFICATION_STRUCTURED_MODE", "json_schema")
+
+
+def _env_float(name: str, default: float) -> float:
+    raw_value = os.environ.get(name)
+    if raw_value is None or not raw_value.strip():
+        return default
+    try:
+        return float(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number") from exc
 
 
 def review_result_json(result: ReviewResult) -> str:

@@ -8,6 +8,7 @@ from compliance_review.domain.models import (
     ContractModel,
     ControlSet,
     EvidenceRequirement,
+    EvidenceStrength,
     Severity,
     SourceRef,
     Surface,
@@ -112,6 +113,39 @@ class ControlDraftSet(ContractModel):
     version: str = Field(min_length=1)
     status: Literal["draft"] = "draft"
     controls: list[ControlDraft] = Field(default_factory=list)
+
+
+class ControlEvidenceRequirementItem(ContractModel):
+    """Transport-friendly form of a surface-keyed evidence requirement."""
+
+    surface: Surface
+    minimum_strength: EvidenceStrength
+    rationale: str = Field(min_length=1)
+
+
+class ControlDraftTransport(ContractModel):
+    """Structured-output shape that avoids arbitrary JSON object property names."""
+
+    control_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    module_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    title: str = Field(min_length=1)
+    severity: Literal["critical", "high", "medium", "low"]
+    obligation_ids: list[str] = Field(min_length=1)
+    source_refs: list[SourceRef] = Field(min_length=1)
+    applicability_expression: str = Field(min_length=1)
+    required_surfaces: list[Surface] = Field(min_length=1)
+    evidence_requirements: list[ControlEvidenceRequirementItem] = Field(min_length=1)
+    missing_evidence_policy: Literal["warn", "block"]
+    reuse_invalidation_keys: list[str] = Field(min_length=1)
+
+
+class ControlDraftSetTransport(ContractModel):
+    """Transport shape for providers that reject map schemas in strict mode."""
+
+    contract: Literal["control_draft_set.v1"] = "control_draft_set.v1"
+    version: str = Field(min_length=1)
+    status: Literal["draft"] = "draft"
+    controls: list[ControlDraftTransport] = Field(default_factory=list)
 
 
 class ControlValidationResult(ContractModel):

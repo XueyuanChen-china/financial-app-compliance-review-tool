@@ -139,14 +139,15 @@ def _provider_for_valid_compilation() -> StaticModelProvider:
                             "source_refs": obligation["source_refs"],
                             "applicability_expression": obligation["applicability_expression"],
                             "required_surfaces": ["frontend_h5"],
-                            "evidence_requirements": {
-                                "frontend_h5": {
+                            "evidence_requirements": [
+                                {
+                                    "surface": "frontend_h5",
                                     "minimum_strength": "static_proof",
                                     "rationale": (
                                         "The user-facing disclosure must be visible in the app."
                                     ),
                                 }
-                            },
+                            ],
                             "missing_evidence_policy": "block",
                             "reuse_invalidation_keys": ["control_version", "frontend_h5_revision"],
                         }
@@ -260,12 +261,13 @@ def test_phase2_accepts_mixed_obligation_and_no_obligation_sections(tmp_path: Pa
                             "source_refs": obligation["source_refs"],
                             "applicability_expression": obligation["applicability_expression"],
                             "required_surfaces": ["frontend_h5"],
-                            "evidence_requirements": {
-                                "frontend_h5": {
+                            "evidence_requirements": [
+                                {
+                                    "surface": "frontend_h5",
                                     "minimum_strength": "static_proof",
                                     "rationale": "Disclosure is user-facing.",
                                 }
-                            },
+                            ],
                             "missing_evidence_policy": "block",
                             "reuse_invalidation_keys": ["control_version"],
                         }
