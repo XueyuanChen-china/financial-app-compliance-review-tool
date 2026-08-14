@@ -1,0 +1,367 @@
+--- page 1 ---
+List of Apps/platforms Reported as of May 19, 2025  
+ 
+NOTE: This list contains particulars of illegal lending apps /platforms as identified and reported by the Securities and Exchange Commission of Pakistan (SECP) to FIA 
+/PTA/Google/Apple. However, this list is not exhaustive. Any app not appearing in the list should not be assumed to be an app roved application. List of SECP approved 
+lending apps is available at following link; 
+secp.gov.pk/document/digital-lending-apps-being-run-and-administered-by-duly-licensed-lending-nbfcs/?wpdmdl=46367&refresh=682ac7fed7e7a1747634174 
+  
+No  Name of App/platform  Company/Developer   Link   
+1   Easy Cash Loans   CapitalPoint Limited   https://play.google.com/store/apps/details?id=com.capitalpoint.easycashloans   
+2   Little Cash- Mobile Loans   Optipay Limited   https://play.google.com/store/apps/details?id=com.optipay.littlecash   
+3   Superb Loans    Superb Loans Team   https://play.google.com/store/apps/details?id=com.superb.loans.borrownow   
+4   Fair Loans   Cemens Ltd   https://play.google.com/store/apps/details?id=com.fairlend.fairloans   
+5   Plati Loans   Muhammad Noman Shaikh 
+(Tech Productions)   
+https://play.google.com/store/apps/details?id=com.plati.feb.loans   
+6   Fori Qarz Online Personal 
+Loan   
+Fori Qarz Ltd   https://play.google.com/store/apps/details?id=com.fori.ready.naqd.paisa.jazz.foriqarz   
+7   QuickCash- Quick Mobile 
+Loans   
+StarLink-Tech   https://play.google.com/store/apps/details?id=com.quickcash.pak.appv001.io   
+8   Debit Campsite (Old Name 
+Debt Campsite)   
+Iqtidar Hussain   https://play.google.com/store/apps/details?id=com.campsite.debit.pk.gold.simple   
+9   Easy Loans Credit Fast Pay   Boj Inc   https://play.google.com/store/apps/details?id=com.easyloans.solutions   
+10   UrCash   Muka   https://play.google.com/store/apps/details?id=com.metaloanpro.app   
+11   MyCash   Muka   https://play.google.com/store/apps/details?id=com.plati.feb.loans   
+12   DiDi Loans   DidiLoans   https://play.google.com/store/apps/details?id=com.didiloans.android   
+13   Easy Mobile Loans    Rapidpay Apps   https://play.google.com/store/apps/details?id=com.rapidpayapps.finepayloans   
+14   LendHome   Susan R Tabor   https://play.google.com/store/apps/details?id=app.lendhome.com   
+15   FinMore- Online Credit 
+Loans   
+Easy Digital Technology   https://play.google.com/store/apps/details?id=com.pk.finmore   
+16   ZetaLoan- Easy Credit Wallet   ZetaLoan Team   https://play.google.com/store/apps/details?id=com.pakist.loan.aicash   
+17   Haath Pocket Old Name 
+Qarza Pocket -Personal 
+Funds (old Name:   
+Qarza Rupee)   
+Qarza Rupee   https://play.google.com/store/apps/details?id=com.pak.qarza.cash.app   
+18   MrLoan   LE THUY DUNG   https://play.google.com/store/apps/details?id=com.user.vay.pakistan   
+19   Asaan Qarza- credit loans   S&P Fintech   https://play.google.com/store/apps/details?id=com.instantloan.easy.fast.credit.   
+mobile.cash.loan.forimoney   
+20   Fast Loan   Gibraltar Lea   https://play.google.com/store/apps/details?id=rpo1.muvfwokh.merarupiya   
+21   Harsha Tube- Quick Money   Harsha Credit Office   https://play.google.com/store/apps/details?id=com.pak.loan.creditharsha.app   
+22   LoanClub   Quick Mob Pay Pvt. Ltd   https://play.google.com/store/apps/details?id=com.loanclub.lcapp   
+  
+
+
+--- page 2 ---
+ 
+No  Name   Company/Developer   Link   
+23   Hayar Pocket Easy Fund   Hayar private company   https://play.google.com/store/apps/details?id=com.usxkwl.imzulitu   
+24   Tazza Center- Get Money 
+Soon   
+Ali Asad Tanveer   https://play.google.com/store/apps/details?id=com.dspj.ajhdi.tazza   
+25   Aasan Lab- Easy Apply 
+Money   
+Aco Startup   https://play.google.com/store/apps/details?id=com.pak.api.aasancash.app   
+26   CashCredit-Online Loan   Tom Edler   https://play.google.com/store/apps/details?id=com.credit.pk.cash   
+27   money bee   Mr. Arming Saelee   https://play.google.com/store/apps/details?id=com.kaka.kuka   
+28   Galaxy Loan   Amrit Malwa   https://play.google.com/store/apps/details?id=com.natd.snoa   
+29   LaonArrive-Loan Money 
+Cash(Old Name Ti Cash)   
+tcashwin   https://play.google.com/store/apps/details?id=com.pk.cashwin   
+30   CashPro-Immediate 
+Approval   
+Cashpro Technology   https://play.google.com/store/apps/details?id=com.pk.cashpro   
+31   Rose Cash- Loan Cash   Khalid475   https://play.google.com/store/apps/details?id=pk.credit.loan.rosecash   
+32   HamdardLoan   Hamdard Team   https://play.google.com/store/apps/details?id=com.hamdardloan.android   
+33   Get It Now   Get It Now App   https://play.google.com/store/apps/details?id=get.it.now.fast.app   
+34   Bee Cash   superthaliyou   https://play.google.com/store/apps/details?id=com.pkst.gdtdkaa   
+35   MoneyBox   Ejaz Hasan Mujawar (QistBazaar)   https://play.google.com/store/apps/details?id=com.moneybox.pkbox   
+36   Pyoor Pack- Personal  
+Lend (old Name: Pyoor 
+Loan)   
+Pyoor Loan Office   https://play.google.com/store/apps/details?id=com.rkmyb.cotmyc   
+37   YoCash   ambrose770250   https://play.google.com/store/apps/details?id=com.vt.yang.yocash   
+38   Sallam Loan- Online 
+Loan App   
+Paput   https://play.google.com/store/apps/details?id=com.oxygen.salkm   
+39   Whale   Dev Shubham   https://play.google.com/store/apps/details?id=com.whaleloan.mobile.pkg   
+40   Zenn Park- Easy Instant 
+Help   
+Zen Credit Office   https://play.google.com/store/apps/details?id=com.oshuf.zen.atgwu   
+41   Get Welfare   Naseem Techniques Ltd 
+Muhammad Imran   
+https://play.google.com/store/apps/details?id=com.jsnwvcm.rpesltp   
+42   CreditLoan   mhld studio   https://play.google.com/store/apps/details?id=co.tw.qz_app   
+43   360 Online Qarz   Mahbubur Technology   https://play.google.com/store/apps/details?id=ijuyiewj.k94899wtewrwe   
+44   567 Speed Loan   Chunu Technology   https://play.google.com/store/apps/details?id=ifdjfdgl.dkf675tyuhgtj   
+45   Rico Box – Easy Apply 
+Online   
+RT first startup   https://play.google.com/store/apps/details?id=com.tqbdtmava.ftwnyrwdvx.ouwdb   
+46   CredStar- Personal Credit 
+Loan   
+Jinglecred   https://play.google.com/store/apps/details?id=credit.prestamos.personale.cash.loan.barwaqt.credstar  
+ 
+ 
+ 
+ 
+
+
+--- page 3 ---
+No  Name   Company/Developer   Link   
+47   MiniLoan- Personal 
+OnlineLoan   
+Credito.pk   https://play.google.com/store/apps/details?id=com.lend.play.paisa.credit.kredit.game.dhan.easy.  
+loan.miniloan.jaldi   
+48   Fori Instant Loans   BorrowN   https://play.google.com/store/apps/details?id=com.easyloans.instantloans.foriloan   
+49   99 Fast Cash Loan   Morsalin Technology   https://play.google.com/store/apps/details?id=iashbfias.fbisdiofbwieuisadfo   
+50   MY Cash   Arham Sarwar   https://play.google.com/store/apps/details?id=com.arham.mycash   
+51   Apple Qist Qarz   Rabeya Technology   https://play.google.com/store/apps/details?id=apple.poasufgdschfsdkfdskf   
+52   Private Credit-Online 
+Borrow   
+Fahad Nabeel   https://play.google.com/store/apps/details?id=com.conte.ntspoc.kpaytm.tiktok.jazzcash.tasker.yota   
+53   BG Loan: Unsecured 
+Loans   
+Shakhawat Technology   https://play.google.com/store/apps/details?id=on8ajuqw.ekagsdifqabfewf   
+54   JaidiCredit   Adnan Rahim   https://play.google.com/store/apps/details?id=com.jaidicredit.app   
+55   Swift Loans- Fast Loan 
+Disbur   
+Platinum Developer   https://play.google.com/store/apps/details?id=com.swifts.mobile.loans   
+56   Naqad Qarza-ABC   Khudeza Technology   https://play.google.com/store/apps/details?id=lkdsfndskldnf.abc   
+57   MyCash   Muka   https://play.google.com/store/apps/details?id=com.metaloanmy.app   
+58   Fast Manne Loan Guide   Quicksoft Technology   https://play.google.com/store/apps/details?id=com.simpleloan.instant.suparkash   
+59   FastLend (old  
+Name:Money Club)   
+QPAY MBP PVT LTD   https://play.google.com/store/apps/details?id=rpo1.muvfwokh.merarupiya   
+60   Super Magic-  
+StableOnlineLoan   
+Ganhewalage Anil Desapriya       
+61   Easy Pocket   Dev Raja Kumar   https://play.google.com/store/apps/details?id=host.easypocket.moblie.release   
+62   Monii Pro – Quick Funds   Monii Loan Studio   https://play.google.com/store/apps/details?id=com.apdlym.wsnnwrjlu   
+63   Holiday Loan   rtyfgyau787   https://play.google.com/store/apps/details?id=com.holiday.loan.pk.com   
+64   Credit Now – Safe Loan 
+App   
+CreditNow   https://play.google.com/store/apps/details?id=com.credit.now   
+65   EasyLoan Lite- Cash  
+Credit   
+Aleaty Microfinance (Pvt) Ltd   https://play.google.com/store/apps/details?id=com.game.rupee.dhan.borrow.credit.kredit.daily 
+.jaldi.easy.play.udhaar.cash   
+66   Haath Pocket   Qarza Rupee   https://play.google.com/store/apps/details?id=com.pak.qarza.cash.app   
+67   OK wallet   okwallet   https://play.google.com/store/apps/details?id=com.loan.okwallet.paki   
+68   ColeCash   sickleking   https://play.google.com/store/apps/details?id=com.pk.colecas   
+69   focus loan   readymoneyCS   https://play.google.com/store/apps/details?id=com.fintech.quick.cash.focusloan   
+70   loan app 3uperman online 
+2021   
+2Darm   https://play.google.com/store/apps/details?id=com.darm.personaloans   
+71   Wcash Loan   Geek Lab   https://play.google.com/store/apps/details?id=com.geeklabdevelopers.wcashloan   
+72   Pakkicash   ThankDeveloper   https://play.google.com/store/apps/details?id=pakkicash.cash.pk   
+ 
+ 
+ 
+ 
+ 
+
+
+--- page 4 ---
+No  Name   Company/Developer   Link   
+73   LuckMoney   LuckMoney   https://play.google.com/store/apps/details?id=com.loanmarket   
+74   candycash   CandyCash   https://play.google.com/store/apps/details?id=com.candycash.cash   
+75   Pakket Pocket- Instant 
+Money   
+Pakket Pocket Ltd.   https://play.google.com/store/apps/details?id=com.mdul.pakk.gyert   
+76   Coin Bee   Coin Vinimay Private Limited   https://play.google.com/store/apps/details?id=com.guide.loper   
+77   QuickLend-Online Credit 
+Loan   
+Beverly Lee   https://play.google.com/store/apps/details?id=com.cash.quicklylend   
+78   Theek Case Instant Help   Theek OB Private Limited   https://play.google.com/store/apps/details?id=com.cbnldllk.nvkkjn.zxycs   
+79   BkLoan   ACCS1111   https://play.google.com/store/apps/details?id=com.bk.cash.loan   
+80   Galaxy Wallet   huhployy   https://play.google.com/store/apps/details?id=com.galaxy.wallet.kill.bare.in   
+81   PKLOAN LITE   JC Loan   https://play.google.com/store/apps/details?id=com.cash.apoyo.credit.lana.lending.   
+branch.tala.credito.yumi.ifectivo   
+82   Credit Coin- Credit Loan 
+App   
+Harita Srinivasan Private Limited   https://play.google.com/store/apps/details?id=com.app.easycredit   
+83   LendingMart-Online Loan   Lending Mart   https://play.google.com/store/apps/details?id=com.quicklending.mart   
+84   Single Click Pe Loan   Athens App Authorities   https://play.google.com/store/apps/details?id=com.singleclick.loanpe.trading.colourloan.b2l   
+85   HipkLoan   Haikyfin   https://play.google.com/store/apps/details?id=com.hipkloan.easypaisa.jazzcash.credit   
+86   CashRun Tez Asaan 
+Mehfooz   
+Jeran Shehan Malik   https://play.google.com/store/apps/details?id=com.cash.sh.run   
+87   Moon Loan   moonloan   https://play.google.com/store/apps/details?id=com.pakistan.moonlan   
+88   Express Loan   thidarat khamkhom   https://play.google.com/store/apps/details?id=com.pk.expressloan.cash   
+89   Pkr Loan   napasin chompung   https://play.google.com/store/apps/details?id=com.pkr.loan   
+90   Soulfa Loan   DEVDAVO   https://play.google.com/store/apps/details?id=com.soulfaquick.soulfa   
+91   Zaber Go- Quick Money   Zebbex   https://play.google.com/store/apps/details?id=com.uylusw.udimxl.ammxrs   
+92   Mango Credit   MangoCredit   https://play.google.com/store/apps/details?id=com.mango.onlycreditfast   
+93   Ready Loans- Fast Mobile 
+Loan   
+LendC   https://play.google.com/store/apps/details?id=com.fairercredit.readyloans   
+94   Flexy Loan- Quick Loan 
+Guide   
+JoseSmart Llp   https://play.google.com/store/apps/details?id=com.flexyguide.quickloan   
+95   Credit Cash- MobileLoan 
+Guide   
+Kitecat App   https://play.google.com/store/apps/details?id=com.financeapp.credicash.easycashloan   
+96   Arpa Credit   Arpa Private Limited   https://play.google.com/store/apps/details?id=com.tqbdtmava.ftwnyrwdvx.ouwdbf   
+97   Umepaisa   Umepaisa   https://play.google.com/store/apps/details?id=pk.credit.loan.rosecash   
+98   Go Kash Electronic 
+Wallet   
+Go Cash Pro   https://play.google.com/store/apps/details?id=com.timproject.pakistantw   
+ 
+ 
+ 
+ 
+ 
+
+
+--- page 5 ---
+ 
+No  Name   Company/Developer   Link   
+99   Superman Loan   Fdrshhyo55   https://play.google.com/store/apps/details?id=com.supeman.loan.ffvop.idfgpp   
+100  Hello Cash   Loiug   https://play.google.com/store/apps/details?id=com.hellocash.dassw.rqhww   
+101  UltraCash   Alihaider   https://play.google.com/store/apps/details?id=com.wicash.pk   
+102  Lucky wallet--- Safe and 
+Fast   
+Tehreem Akram   https://play.google.com/store/apps/details?id=com.tonafishfi.funatiamcrea   
+103  Fibo: Cash Wallet, Credit 
+Loan   
+Fibo Fintech Limited   https://play.google.com/store/apps/details?id=com.ftfarm.fibo   
+104  Hela Credit Loans   Gypsum Fintech Inc   https://play.google.com/store/apps/details?id=com.helacreditloans   
+105  Happy Credit- Credit Loan   Q Cash Finance Corporation   https://play.google.com/store/apps/details?id=com.happycredit.inc.fast.max   
+106  Bada Loan- Instant Cash 
+Loan   
+Bull Money PVT. LTD   https://play.google.com/store/apps/details?id=com.getinstantloan.creditloan.cashloan   
+107  Get Easy Paisa Loan   Shubh Mittal DEVTEST   https://play.google.com/store/apps/details?id=com.paisaloanguide.loanguidepaisatips   
+108  CreditEase   Credit Ease   https://play.google.com/store/apps/details?id=cn.lk.creat   
+109  2023 Loans   Loan Solutions   https://play.google.com/store/apps/details?id=com.twentythreeloans   
+110  Cash peso- Online Quick 
+Loan   
+Branches Studio   https://play.google.com/store/apps/details?id=com.bjst1.zwgsht   
+111  GetMinutes   GetMinutes   https://play.google.com/store/apps/details?id=get.minutes.credit.cash   
+112  Napakaa – Online Lend   Napaka creator   https://play.google.com/store/apps/details?id=gshtmkf.kakcrbh.dyycpirm.misjrf   
+113  Easy loan - Online Cash 
+Loan App   
+zeli   https://play.google.com/store/apps/details?id=com.jalurlaba.app   
+114  Speed Loan- Fast Cash 
+Loan   
+iVenus Infotech   https://play.google.com/store/apps/details?id=com.loanapp.onlineloan.applyonline.calc. 
+Bankbalancecheck   
+115  Speed Loan- Instant Cash 
+Coach   
+Gallery Developer Team   https://play.google.com/store/apps/details?id=com.loanapp.onlineloan.applyonline.calc.  
+Bankbalancecheck   
+116  Speed Loan- Fast Cash 
+Loan   
+Cisco media   https://play.google.com/store/apps/details?id=com.loan.aadhar.pan.insurance.calculator.  
+getloanonpancard   
+117  Mini Cash Loan Coach 
+App   
+Finvalue info.   https://play.google.com/store/apps/details?id=com.fast.easy.instant.rapid.quickloan.miniloan.  
+cash.loan.coach   
+118  Mini Credit – Instant Loan   Cassworay Studio   https://play.google.com/store/apps/details?id=com.ptechmini.instantcredit   
+119  Fast Credit Loan (Apple)  -  https://apps.apple.com/pk/app/ozone-loan/id6443550729  
+120. Ozone Loan (Apple)   Pavo Technologies (Private) 
+Limited   
+https://apps.apple.com/pk/app/fast-credit-loan/id6447633850   
+121. Focus Loan (Through 
+Website)   
+https://www.focusloan.me/   https://www.focusloan.me/apk/FocusLoan.apk   
+ 
+ 
+ 
+ 
+
+
+--- page 6 ---
+No  Name   Company/Developer   Link   
+122. FinMore (Through 
+Website)   
+https://finmoretech.com/   https://mx-yijie-apks.oss- 
+accelerate.aliyuncs.com/prod/FinMore_1.9_20230718173141.GP_Release.apk   
+123. ZetaLoan (Through 
+Website)   
+http://fintech-pk.com/   http://fintech-pk.com/ZetaLoan_v2.0.2_release.apk   
+124. CashPro (Through 
+Website)   
+https://cashproo.com/   https://mx-yijie-apks.oss- 
+accelerate.aliyuncs.com/prod/CashPro_1.3_20230719161404.GP_Release.apk   
+125. Sallam Loan (Through 
+Website)   
+https://www.sallamloan.top/   https://bit.ly/SaLan   
+126. JaidiCredit (Through 
+Website)   
+https://www.jaidicredit.com/#/      
+127. SuperMagic (Through 
+Website)   
+http://www.supermagicpk.com/   https://www.supermagic-pk.com/app/supermagic.apk   
+128. DastiQarza (Through 
+Website)   
+https://www.dastiqarza.com/   https://www.dastiqarza.com/download/app/   
+DastiQarza_v1.0.5_release_website_20230711083245.apk   
+129. Lucky Warehouse   pkab0629   https://play.google.com/store/apps/details?id=com.warehouse.scan_collect   
+130. Hayat Islamic loan master 
+(Through Play Store and  
+Website)   
+Tech House Inc https://hayatpay.pk/   https://play.google.com/store/apps/details?id=com.hayat.islamicloanmaster   
+131. Finbook-  Your  Bill  
+   Tracking   
+(Through Play Store and  
+Website)   
+Finbook   
+https://www.finbooktech.com/   
+https://play.google.com/store/apps/details?id=com.pk.finbook   
+132. MaxLoan (Through  
+Website)   
+https://www.maxloantech.com/   https://mx-yijie-apks.oss- 
+accelerate.aliyuncs.com/prod/Maxloan_1.6_20230719175606.GP_Release.apk   
+133. Moon Loan  moonloan  https://apkcombo.com/moon-loan/com.pakistan.moonlan/  
+134. 
+ 
+Superman Loan  
+ 
+fdrshhyo55  https://apkcombo.com/superman-loan/com.supeman.loan.ffvop.idfgpp/  
+135. YeLo Online Instant 
+Personal Loan  
+YeLo Finance InfoTech  https://apkcombo.com/yelo-online-instant-personal-l/com.app.yelonow/  
+136. Candy Loan  Pavi Technology Co., Ltd  https://apkcombo.com/candy-loan/com.ywgspm.zhcohpf/  
+137. Kolibre  kolibre Financial Services Limited  https://apkcombo.com/kolibre/com.pakistan.instantloan.kolibre/  
+138. MrLoan  LE THUY DUNG  https://apkcombo.com/mrloan/com.user.vay.pakistan/  
+139. RazCash - Instant Cash  
+Loan APK  
+RazCash team  https://apk.support/app/com.din.karaz.loan.cash.qarza.credit.jazz.paisa.barwaqt.easy  
+140. Front Loan- Loan Pioneer  PSPR ENTERPRISES PVTLTD  https://apkcombo.com/front-loan-loan-pioneer/com.from.outside/  
+ 
+ 
+ 
+ 
+ 
+ 
+
+
+--- page 7 ---
+No  Name   Company/Developer   Link   
+141. DD Credit  DDCredit  Dddcredit.com/#/home  
+https://pak-cat.s3.ap-south-1.amazonaws.com/ddcredit-ga-1.0.apk?time=1711696440365  
+142 Akhuwat Foundation  Sponsored advertisements under 
+different unrelated third -party accounts 
+[Akhuwat Islamic Microfinance, has 
+denied any connection with these 
+advertisements and has placed alert on its 
+website; 
+https://akhuwatislamicmicrofinance.or
+g.pk/wp-
+content/uploads/2023/02/akhuwat-
+popup.jpg ] 
+https://www.facebook.com/ads/library/?id=1411165479912988 
+ 
+https://www.facebook.com/ads/library/?id=1315220290334804 
+ 
+https://www.facebook.com/ads/library/?id=627205643624890 
+ 
+https://www.facebook.com/ads/library/?id=1211417980388867 
+ 
+https://www.facebook.com/ads/library/?id=671695872313102 
+ 
+https://www.facebook.com/ads/library/?id=1206409334520103 
+ 
+https://www.facebook.com/ads/library/?id=698786199337046 
+ 
+https://www.facebook.com/ads/library/?id=620819001006123 
+ 
+https://www.facebook.com/ads/library/?id=1408654659989723 
+ 
+https://www.facebook.com/ads/library/?id=948587223787754

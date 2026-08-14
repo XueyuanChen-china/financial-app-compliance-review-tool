@@ -1,0 +1,21 @@
+version: "1.0"
+purpose: phase2_obligation_control_test_input
+
+# This manifest documents the curated text pack. The current CLI accepts the two
+# source directories directly; it does not consume this YAML automatically yet.
+source_sets:
+  - source_family: country_regulator
+    directory: country_regulator/secp
+    source_count: 14
+    provenance_root: compliance-copilot/compliance/references/secp/text_cache
+    notes:
+      - SECP text cache copied from the prior source collection.
+      - Includes digital lending, NBFC, pricing, whitelist, and illegal-app materials.
+
+  - source_family: google_play
+    directory: google_play
+    source_count: 8
+    provenance_root: compliance-copilot/compliance/references/google_play/GooglePlay_Policy_Center_Original
+    notes:
+      - Curated original.txt files for financial services, user data, permissions, SDKs, and developer policy.
+      - HTML, JSON, metadata, and unrelated policy pages are intentionally excluded from this test pack.

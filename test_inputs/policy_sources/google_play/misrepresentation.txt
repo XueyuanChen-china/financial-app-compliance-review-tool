@@ -1,0 +1,23 @@
+Misrepresentation
+Disclaimer:
+Policy summaries and Key Considerations are overviews only; always refer to the full policy for compliance. The full policy takes precedence in case of conflict.
+Policy Summary
+To protect users and ensure they can trust an app's true identity and purpose, Google Play prohibits apps and developer accounts from misrepresenting or concealing their ownership, or primary purpose, or faking their country of origin to target users. This policy also strictly forbids coordinating with other apps, sites, or accounts to mislead users by hiding an app's true identity or other material details, especially when the content involves politics, social issues, or matters of public concern. Please review the full policy to ensure compliance.
+Full Policy
+We do not allow apps or developer accounts that:
+impersonate any person or organization, or that misrepresent or conceal their ownership or primary purpose.
+that engage in coordinated activity to mislead users. This includes, but isn’t limited to, apps or developer accounts that misrepresent or conceal their country of origin and that direct content at users in another country.
+coordinate with other apps, sites, developers, or other accounts to conceal or misrepresent developer or app identity or other material details, where app content relates to politics, social issues or matters of public concern.
+Key Considerations
+Do
+Don't
+Clearly and accurately represent your developer name, organization, and contact information in your account.
+Don't misrepresent or conceal your app's primary purpose.
+Ensure your app's title, icon, and description honestly represent its functionality and purpose.
+Don't hide or misrepresent your identity or who owns the app.
+Be truthful about your country of origin and location in your developer profile.
+Don't falsify your country of origin to target users in another country.
+If your app relates to politics, social issues, or public concerns, be
+extra transparent
+about who you are and any affiliations you may have.
+Don't coordinate with other developers, apps, or websites to hide your identity or mislead users, especially about political or social content.

@@ -4,7 +4,7 @@ import hashlib
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Mapping, Protocol
+from typing import Mapping, Protocol, Sequence
 
 from compliance_review.collectors.base import CollectorResult
 from compliance_review.domain.models import ControlSet, Snapshot, WorkItem
@@ -192,82 +192,188 @@ def render_markdown_report(snapshot: Snapshot, gate: object) -> str:
 
     coverage_gate = CoverageGateResult.model_validate(gate)
     status_counts = Counter(item.status for item in snapshot.control_results)
+    control_counts = json.dumps(
+        {
+            _REPORT_CONTROL_STATUS[key]: value for key, value in status_counts.items()
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    ci_status = _REPORT_CI_STATUS[snapshot.ci_status]
     lines = [
-        "# Compliance Review Report",
+        "# 金融应用合规审查报告",
         "",
-        f"- Run: `{snapshot.run_id}`",
-        f"- CI decision: **{snapshot.ci_status.upper()}**",
-        f"- Coverage ledger complete: `{str(coverage_gate.complete).lower()}`",
-        f"- Reviewed: `{len(snapshot.reviewed_rows)}`",
-        f"- Reused: `{len(snapshot.reused_rows)}`",
-        f"- Missing surfaces: {', '.join(snapshot.missing_surfaces) or 'none'}",
+        "> 本报告由当前运行的结构化校验结果、覆盖台账和快照生成。"
+        "模型输出仅作为审查建议，不直接决定最终状态。",
         "",
-        "## Control Summary",
+        "## 结论概览",
         "",
-        "| control | severity | status | reason |",
+        "| 项目 | 结果 |",
+        "|---|---|",
+        f"| 运行 ID | `{snapshot.run_id}` |",
+        f"| 审查模式 | {_REPORT_MODE[snapshot.mode]} |",
+        f"| CI 判定 | **{ci_status}** |",
+        f"| 覆盖台账 | {_REPORT_BOOLEAN[coverage_gate.complete]} |",
+        f"| 已审查单元 | `{len(snapshot.reviewed_rows)}` |",
+        f"| 复用单元 | `{len(snapshot.reused_rows)}` |",
+        f"| 缺失证据面 | {_display_surfaces(snapshot.missing_surfaces)} |",
+        "",
+        "## 控制项结论",
+        "",
+        "| 控制项 | 严重级别 | 最终状态 | 结论说明 |",
         "|---|---|---|---|",
     ]
     for item in snapshot.control_results:
         lines.append(
-            f"| `{item.control_id}` | {item.severity} | **{item.status}** | "
-            f"{' '.join(item.reasons)} |"
+            f"| `{item.control_id}` | {_REPORT_SEVERITY[item.severity]} | "
+            f"**{_REPORT_CONTROL_STATUS[item.status]}** | "
+            f"{_join_reasons(item.reasons)} |"
         )
     lines.extend(
         [
             "",
-            "## Coverage Manifest",
+            "## 证据覆盖台账",
             "",
-            "| coverage unit | surface | evidence | resolution | origin |",
+            "| 覆盖单元 | 证据面 | 证据状态 | 控制结论 | 来源 |",
             "|---|---|---|---|---|",
         ]
     )
     for row in coverage_gate.rows:
         lines.append(
-            f"| `{row.coverage_unit_id}` | {row.surface} | {row.evidence_status} | "
-            f"{row.resolution_status} | {row.result_origin} |"
+            f"| `{row.coverage_unit_id}` | {_REPORT_SURFACE[row.surface]} | "
+            f"{_REPORT_EVIDENCE_STATUS[row.evidence_status]} | "
+            f"{_REPORT_CONTROL_STATUS[row.resolution_status]} | "
+            f"{_REPORT_ORIGIN[row.result_origin]} |"
         )
-    lines.extend(["", "## CI Delta", ""])
+    lines.extend(["", "## CI 与人工复核变化", ""])
     if snapshot.mode == "full":
         lines.append(
-            f"- Manual review required: `{len(coverage_gate.manual_review_existing_ids)}`"
+            f"- 当前需要人工复核的覆盖单元：`{len(coverage_gate.manual_review_existing_ids)}`"
         )
     else:
         lines.extend(
             [
-                f"- New manual review: `{len(coverage_gate.manual_review_new_ids)}`",
-                f"- Existing manual review: `{len(coverage_gate.manual_review_existing_ids)}`",
-                f"- Resolved manual review: `{len(coverage_gate.manual_review_resolved_ids)}`",
+                f"- 新增人工复核：`{len(coverage_gate.manual_review_new_ids)}`",
+                f"- 延续人工复核：`{len(coverage_gate.manual_review_existing_ids)}`",
+                f"- 已解除人工复核：`{len(coverage_gate.manual_review_resolved_ids)}`",
             ]
         )
     lines.extend(
         [
-            f"- Automated evidence regressions: "
+            f"- 自动化证据退化："
             f"`{len(coverage_gate.automated_evidence_regression_ids)}`",
             "",
-            "## Validation Flags",
+            "## 校验标记",
             "",
         ]
     )
     if coverage_gate.validation_flags:
         lines.extend(
-            f"- `{row_id}`: {', '.join(flags)}"
+            f"- `{row_id}`：{', '.join(flags)}"
             for row_id, flags in sorted(coverage_gate.validation_flags.items())
         )
     else:
-        lines.append("- none")
+        lines.append("- 无")
+    if coverage_gate.blocking_reasons:
+        lines.extend(["", "### 阻断原因", ""])
+        lines.extend(
+            f"- {_format_gate_reason(reason)}" for reason in coverage_gate.blocking_reasons
+        )
+    if coverage_gate.warning_reasons:
+        lines.extend(["", "### 警告原因", ""])
+        lines.extend(f"- {_format_gate_reason(reason)}" for reason in coverage_gate.warning_reasons)
     lines.extend(
         [
             "",
-            "## Machine Summary",
+            "## 机器产物",
             "",
-            f"Control counts: `{json.dumps(status_counts, sort_keys=True)}`",
+            f"- 快照：`runs/{snapshot.run_id}/snapshot.json`",
+            f"- 覆盖台账：`runs/{snapshot.run_id}/coverage_manifest.json`",
+            f"- 校验结果：`runs/{snapshot.run_id}/result_validation.json`",
+            f"- 控制项统计：`{control_counts}`",
             "",
-            "This report is deterministically derived from snapshot.json and "
-            "coverage_manifest.json; raw agent prose is not used as a reporting source.",
+            "报告正文由确定性字段生成，原始 Agent 自由文本不参与最终判定。",
             "",
         ]
     )
     return redact_sensitive_text("\n".join(lines))
+
+
+_REPORT_BOOLEAN = {True: "完整", False: "不完整"}
+_REPORT_CI_STATUS = {"pass": "通过", "warn": "警告", "block": "阻断"}
+_REPORT_MODE = {"full": "完整基线审查", "diff": "增量审查"}
+_REPORT_CONTROL_STATUS = {
+    "pass": "通过",
+    "fail": "失败",
+    "indeterminate": "无法确定",
+    "not_applicable": "不适用",
+    "waived": "已豁免",
+}
+_REPORT_SEVERITY = {
+    "critical": "严重",
+    "high": "高",
+    "medium": "中",
+    "low": "低",
+}
+_REPORT_EVIDENCE_STATUS = {
+    "complete": "完整",
+    "partial": "部分",
+    "missing": "缺失",
+    "manual_required": "需人工提供",
+}
+_REPORT_ORIGIN = {
+    "reviewed": "本次审查",
+    "reused": "复用基线",
+    "manual_required": "人工材料",
+    "blocked": "被阻断",
+    "not_applicable": "不适用",
+    "waived": "已豁免",
+}
+_REPORT_SURFACE = {
+    "frontend_h5": "H5 / WebView",
+    "android_native": "Android 原生",
+    "backend_api_doc": "后端 API 文档",
+    "backend_code": "后端代码",
+    "play_console": "Google Play Console",
+    "regulator_external": "监管机构材料",
+    "other_external": "其他外部材料",
+}
+
+
+def _display_surfaces(surfaces: Sequence[str]) -> str:
+    return ", ".join(_REPORT_SURFACE.get(surface, surface) for surface in surfaces) or "无"
+
+
+def _join_reasons(reasons: list[str]) -> str:
+    return "；".join(_translate_reason(reason) for reason in reasons) or "无补充说明"
+
+
+def _translate_reason(reason: str) -> str:
+    translations = {
+        "Control applicability evaluated false.": "适用性判定为不适用",
+        "Validated reviewer evidence explicitly supports failure.": "已验证证据明确支持失败结论",
+        "One or more required evidence surfaces are unavailable or unresolved.": (
+            "一个或多个必需证据面不可用或未解决"
+        ),
+        "Validated evidence is incomplete or invalid.": "验证后的证据不完整或无效",
+        "All required surfaces have validated complete evidence.": (
+            "所有必需证据面均有完整且通过校验的证据"
+        ),
+        "Reviewer recommendations do not support a deterministic terminal result.": (
+            "审查建议不足以形成确定性结论"
+        ),
+    }
+    return translations.get(reason, reason)
+
+
+def _format_gate_reason(reason: str) -> str:
+    if reason == "coverage_incomplete":
+        return "覆盖台账不完整"
+    if reason.startswith("automated_evidence_regression:"):
+        return f"自动化证据退化：`{reason.split(':', 1)[1]}`"
+    if reason.startswith("new_manual_required:"):
+        return f"新增人工复核要求：`{reason.split(':', 1)[1]}`"
+    return _translate_reason(reason)
 
 
 def _legacy_flag_set(validation: object) -> SuspiciousReviewSet:
