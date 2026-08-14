@@ -118,6 +118,26 @@ def test_compression_is_structured_and_preserves_immutable_and_evidence() -> Non
     assert prepared.last_context_usage_ratio <= 0.60
 
 
+def test_compression_can_retire_an_old_active_round_when_needed() -> None:
+    manager = _manager(active_window_size=3)
+    state = manager.create(_work_item(), "instructions")
+    state = manager.record_round(state, _round(1, "x" * 3500))
+    state = manager.record_round(state, _round(2, "small"))
+
+    prepared, _ = manager.prepare_for_model(
+        state,
+        manager.render_messages(state),
+        lambda _memory, retired: CompressedReviewMemory(
+            generation=1,
+            findings=[f"retired round {retired[0].round_number}"],
+        ),
+    )
+
+    assert prepared.compressed_memory is not None
+    assert prepared.compressed_memory.findings == ["retired round 1"]
+    assert [item.round_number for item in prepared.active_rounds] == [2]
+
+
 def test_compression_retries_against_original_retired_rounds() -> None:
     manager = _manager()
     state = manager.create(_work_item(), "instructions")

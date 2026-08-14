@@ -191,6 +191,8 @@ class ControlValidator:
 def validate_applicability_expression(expression: str) -> list[str]:
     if not expression.strip():
         return ["applicability_expression is empty"]
+    if expression.strip().lower() == "unknown":
+        return []
     errors: list[str] = []
     clauses = re.split(r"\s+(?:and|&&)\s+", expression.strip(), flags=re.IGNORECASE)
     for clause in clauses:
@@ -263,6 +265,10 @@ def _source_ref_keys(refs: list[SourceRef]) -> set[tuple[str, str]]:
 
 
 def _applicability_is_no_narrower(obligation: str, control: str) -> bool:
+    if obligation.strip().lower() == "unknown":
+        return control.strip().lower() == "unknown"
+    if control.strip().lower() == "unknown":
+        return True
     obligation_clauses = _normalized_clauses(obligation)
     control_clauses = _normalized_clauses(control)
     if obligation_clauses is None or control_clauses is None:

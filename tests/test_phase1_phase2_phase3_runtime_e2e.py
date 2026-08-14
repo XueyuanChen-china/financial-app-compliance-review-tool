@@ -89,9 +89,6 @@ def test_phase1_phase2_phase3_runtime_handoff(tmp_path: Path) -> None:
                             "title": "Loan terms are disclosed before approval",
                             "severity": "low",
                             "obligation_ids": [obligation["obligation_id"]],
-                            "source_refs": obligation["source_refs"],
-                            "applicability_expression": obligation["applicability_expression"],
-                            "required_surfaces": ["frontend_h5"],
                             "evidence_requirements": [
                                 {
                                     "surface": "frontend_h5",

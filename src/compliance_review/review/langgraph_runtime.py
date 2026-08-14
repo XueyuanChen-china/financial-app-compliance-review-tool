@@ -19,6 +19,7 @@ from compliance_review.collectors.base import CollectorResult
 from compliance_review.domain.models import (
     ControlSurfaceResult,
     EvidenceAnchor,
+    EvidenceStatus,
     EvidenceStrength,
     ReviewResult,
     Surface,
@@ -47,7 +48,6 @@ from compliance_review.review.models import (
     ToolCall,
     WorkerAttempt,
     WorkerExecution,
-    validate_review_result_assignment,
 )
 from compliance_review.review.provider import ModelProvider, tool_schemas
 from compliance_review.review.redaction import redact_sensitive_text
@@ -59,9 +59,11 @@ from compliance_review.review.reliability import (
     call_with_timeout,
     classify_error,
 )
+from compliance_review.review.result_parser import parse_review_result
 from compliance_review.review.tools import ScopedToolExecutor, serialize_tool_result
 
 ProviderFactory = Callable[[WorkItem], ModelProvider]
+_DEFAULT_REVIEW_TOKEN_BUDGET = 32000
 
 
 class ParentState(TypedDict, total=False):
@@ -121,7 +123,7 @@ class LangGraphReviewRuntime:
         provider: ModelProvider | None = None,
         provider_factory: ProviderFactory | None = None,
         max_concurrency: int = 3,
-        token_budget: int = 4000,
+        token_budget: int = _DEFAULT_REVIEW_TOKEN_BUDGET,
         checkpointer: Any | None = None,
         code_map_providers: Mapping[Surface, CodeMapProvider] | None = None,
         collector_results: Mapping[str, CollectorResult] | None = None,
@@ -402,7 +404,7 @@ def _fan_out(state: ParentState) -> list[Send] | list[str]:
                 # Do not pass a shared nested dict/list object into parallel branches.
                 "work_item": deepcopy(work_item),
                 "agent_index": index,
-                "token_budget": state.get("token_budget", 4000),
+                "token_budget": state.get("token_budget", _DEFAULT_REVIEW_TOKEN_BUDGET),
                 "output_root": state["output_root"],
             },
         )
@@ -442,7 +444,10 @@ def _build_reviewer_graph(
         instructions = (
             "Review only the assigned Work Item. Use read-only tools, cite observed "
             "evidence, and return one JSON review_result.v1 object. Do not claim "
-            "runtime behavior from static evidence."
+            "runtime behavior from static evidence. Prefer collector facts and "
+            "code-map navigation before exact reads. Keep search results narrow "
+            "and read at most 120 lines per call; use multiple targeted reads "
+            "instead of listing or reading a whole repository."
         )
         context = context_manager.create(work_item, instructions)
         messages = context_manager.render_messages(context)
@@ -519,7 +524,7 @@ def _build_reviewer_graph(
                     "retired_rounds": [round_item.model_dump() for round_item in retired_rounds],
                 }
                 remaining_for_compression = (
-                    state.get("token_budget", 4000)
+                    state.get("token_budget", _DEFAULT_REVIEW_TOKEN_BUDGET)
                     - state.get("tokens_used", 0)
                     - compression_tokens
                 )
@@ -568,10 +573,19 @@ def _build_reviewer_graph(
                 context, messages, compress
             )
             remaining = (
-                state.get("token_budget", 4000) - state.get("tokens_used", 0) - compression_tokens
+                state.get("token_budget", _DEFAULT_REVIEW_TOKEN_BUDGET)
+                - state.get("tokens_used", 0)
+                - compression_tokens
             )
             if remaining < 100:
-                raise RuntimeError("token budget exceeded before model call")
+                return {
+                    "error": "review budget exhausted before model conclusion",
+                    "error_code": "review_budget_exhausted",
+                    "retryable": False,
+                    "response": {},
+                    "context": prepared_context.model_dump(),
+                    "tokens_used": state.get("tokens_used", 0) + compression_tokens,
+                }
             response = call_with_timeout(
                 lambda: resolve_provider(work_item).complete(
                     ModelRequest(
@@ -593,8 +607,21 @@ def _build_reviewer_graph(
                 + response.output_tokens
             )
             used += _approx_tokens(response.content)
-            if used > state.get("token_budget", 4000):
-                raise RuntimeError("token budget exceeded")
+            # A response that finishes the Work Item is still useful even when the
+            # provider reports a higher-than-estimated cumulative token count. Do
+            # not start another tool round once the budget is exhausted.
+            if response.tool_calls and used > state.get(
+                "token_budget", _DEFAULT_REVIEW_TOKEN_BUDGET
+            ):
+                return {
+                    "error": "review budget exhausted before model conclusion",
+                    "error_code": "review_budget_exhausted",
+                    "retryable": False,
+                    "response": {},
+                    "context": prepared_context.model_dump(),
+                    "messages": prepared_messages,
+                    "tokens_used": used,
+                }
             updates: dict[str, Any] = {
                 "context": prepared_context.model_dump(),
                 "messages": prepared_messages,
@@ -657,7 +684,10 @@ def _build_reviewer_graph(
                         {
                             "id": call.call_id,
                             "type": "function",
-                            "function": {"name": call.name, "arguments": call.arguments},
+                            "function": {
+                                "name": call.name,
+                                "arguments": json.dumps(call.arguments, sort_keys=True),
+                            },
                         }
                         for call in response.tool_calls
                     ],
@@ -688,8 +718,6 @@ def _build_reviewer_graph(
                     {"role": "tool", "tool_call_id": call.call_id, "content": serialized}
                 )
                 used += _approx_tokens(serialized)
-            if used > state.get("token_budget", 4000):
-                raise RuntimeError("token budget exceeded after tool result")
             round_item = AgentRound(
                 round_number=_next_round_number(context),
                 model_response=response.model_dump(),
@@ -707,6 +735,19 @@ def _build_reviewer_graph(
                 context,
                 _anchors_from_tool_results(work_item, response.tool_calls, tool_results, sandbox),
             )
+            if used > state.get("token_budget", _DEFAULT_REVIEW_TOKEN_BUDGET):
+                return {
+                    "messages": messages,
+                    "context": context.model_dump(),
+                    "tool_rounds": tool_rounds,
+                    "tokens_used": used,
+                    "tool_calls_used": executor.tool_calls,
+                    "read_paths": sorted(executor.read_paths),
+                    "error": "review budget exhausted before model conclusion",
+                    "error_code": "review_budget_exhausted",
+                    "retryable": False,
+                    "response": {},
+                }
             return {
                 "messages": messages,
                 "context": context.model_dump(),
@@ -739,15 +780,29 @@ def _build_reviewer_graph(
         retryable = state.get("retryable", False)
         try:
             if error:
-                raise RuntimeError(error)
-            response = ModelResponse.model_validate(state.get("response", {}))
-            if not response.content:
-                raise RuntimeError("model provider returned neither content nor tool calls")
-            result = _parse_review_result(
-                response.content, work_item, attempt_id, state["agent_id"]
-            )
-            context = ReviewerContextState.model_validate(state["context"])
-            result = _attach_evidence_ledger(result, context.evidence_ledger)
+                context = ReviewerContextState.model_validate(state["context"])
+                if error_code in {"review_budget_exhausted", "context_budget_exhausted"}:
+                    result = _bounded_inconclusive_result(
+                        work_item,
+                        attempt_id,
+                        state["agent_id"],
+                        context.evidence_ledger,
+                        error,
+                    )
+                    error = None
+                    error_code = None
+                    retryable = False
+                else:
+                    raise RuntimeError(error)
+            else:
+                response = ModelResponse.model_validate(state.get("response", {}))
+                if not response.content:
+                    raise RuntimeError("model provider returned neither content nor tool calls")
+                result = _parse_review_result(
+                    response.content, work_item, attempt_id, state["agent_id"]
+                )
+                context = ReviewerContextState.model_validate(state["context"])
+                result = _attach_evidence_ledger(result, context.evidence_ledger)
         except Exception as exc:
             classification = classify_error(exc)
             error = redact_sensitive_text(str(exc))
@@ -844,20 +899,7 @@ def _build_reviewer_graph(
 def _parse_review_result(
     content: str, work_item: WorkItem, attempt_id: str, agent_id: str
 ) -> ReviewResult:
-    text = redact_sensitive_text(content).strip()
-    if text.startswith("```"):
-        text = text.strip("`").strip()
-        if text.startswith("json"):
-            text = text[4:].strip()
-    try:
-        result = ReviewResult.model_validate(json.loads(text))
-    except (json.JSONDecodeError, ValueError) as exc:
-        raise RuntimeError(f"invalid structured review result: {exc}") from exc
-    try:
-        validate_review_result_assignment(result, work_item, attempt_id, agent_id)
-    except ValueError as exc:
-        raise RuntimeError(str(exc)) from exc
-    return result
+    return parse_review_result(redact_sensitive_text(content), work_item, attempt_id, agent_id)
 
 
 def _parse_compressed_memory(content: str, generation: int) -> CompressedReviewMemory:
@@ -1039,6 +1081,45 @@ def _failure_result(
         ],
         agent_id=agent_id,
         errors=[error],
+    )
+
+
+def _bounded_inconclusive_result(
+    work_item: WorkItem,
+    attempt_id: str,
+    agent_id: str,
+    anchors: list[EvidenceAnchor],
+    reason: str,
+) -> ReviewResult:
+    """Finish safely when bounded investigation cannot request another model turn."""
+    relevant_anchor_ids = [
+        anchor.anchor_id
+        for anchor in anchors
+        if set(anchor.control_ids).intersection(work_item.control_ids)
+    ]
+    evidence_status: EvidenceStatus = "partial" if relevant_anchor_ids else "missing"
+    return ReviewResult(
+        contract="review_result.v1",
+        work_item_id=work_item.work_item_id,
+        attempt_id=attempt_id,
+        execution_status="completed",
+        rows=[
+            ControlSurfaceResult(
+                control_id=control_id,
+                surface=work_item.surface,
+                evidence_status=evidence_status,
+                recommended_control_status="indeterminate",
+                anchor_ids=relevant_anchor_ids,
+                gap_reasons=[reason],
+                observations=[
+                    "Bounded static investigation ended before a model conclusion; "
+                    "manual follow-up is required."
+                ],
+            )
+            for control_id in work_item.control_ids
+        ],
+        anchors=anchors,
+        agent_id=agent_id,
     )
 
 

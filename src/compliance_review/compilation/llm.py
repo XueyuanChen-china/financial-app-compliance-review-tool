@@ -111,7 +111,17 @@ def obligation_extraction_call(
             "Do not invent requirements or combine unrelated sections. Every obligation "
             "must preserve source_id, source_section, statement, concepts, applicability "
             "expression, required_surfaces, and source_refs. Use only supplied source IDs "
-            "and section IDs. This is one structured call, not repository exploration."
+            "and section IDs. The applicability_expression must use only this finite DSL: "
+            "business_type includes personal_loan; evidence_surfaces includes android_native; "
+            "self_lending == true; jurisdiction == Pakistan; clauses may be joined by "
+            "and or &&. If the source condition cannot be represented exactly in that DSL, "
+            "return exactly unknown instead of natural-language prose or a new field. "
+            "Use business_type includes personal_loan whenever the source says personal "
+            "loan or personal loan app, and use jurisdiction == Pakistan for an explicit "
+            "Pakistan condition; do not use unknown for those exact mappings. Use unknown "
+            "for rate thresholds, licensing/document requirements, or multi-country logic "
+            "that the DSL cannot represent exactly. "
+            "This is one structured call, not repository exploration."
         ),
         user_payload=payload,
         output_model=ObligationExtractionBatchResult,
@@ -128,22 +138,55 @@ def control_compilation_call(provider: ModelProvider, payload: Any) -> ControlDr
             "Compile executable compliance controls only from the supplied obligations. "
             "Do not read or infer directly from source text. Return JSON matching "
             "control_draft_set.v1 with status draft. Each control must include exactly "
-            "control_id, module_id, title, severity, obligation_ids, source_refs, "
-            "applicability_expression, required_surfaces, evidence_requirements, "
-            "missing_evidence_policy, and reuse_invalidation_keys. Preserve "
-            "obligation_ids and source_refs. "
+            "control_id, module_id, title, severity, obligation_ids, "
+            "evidence_requirements, missing_evidence_policy, and "
+            "reuse_invalidation_keys. Preserve obligation_ids exactly. "
             "evidence_requirements must be an array of objects with surface, "
             "minimum_strength, and rationale; do not return it as a keyed object. "
-            "Use the finite applicability DSL: field == value, field includes value, "
-            "value in field, joined only by and/&&. Every required surface must have an "
-            "evidence requirement. Do not claim that a document proves source code or runtime."
+            "The program derives source_refs, required_surfaces, and "
+            "applicability_expression from the linked obligations, so do not output "
+            "those fields. Every derived required surface must have exactly one "
+            "evidence requirement. Do not claim that a document proves source code "
+            "or runtime."
         ),
         user_payload=payload,
         output_model=ControlDraftSetTransport,
         response_schema=ControlDraftSetTransport.model_json_schema(),
     )
+    obligations = {
+        item["obligation_id"]: item for item in payload.get("obligations", [])
+    }
     controls: list[ControlDraft] = []
     for draft in transport.controls:
+        linked_obligations = [obligations.get(item) for item in draft.obligation_ids]
+        if any(item is None for item in linked_obligations):
+            missing = [
+                item
+                for item, obligation in zip(draft.obligation_ids, linked_obligations)
+                if obligation is None
+            ]
+            raise ValueError(
+                f"control {draft.control_id} references unknown obligations: {', '.join(missing)}"
+            )
+        source_refs: list[dict[str, Any]] = []
+        source_ref_keys: set[str] = set()
+        required_surfaces: list[str] = []
+        for obligation in linked_obligations:
+            assert obligation is not None
+            for source_ref in obligation["source_refs"]:
+                key = json.dumps(source_ref, sort_keys=True)
+                if key not in source_ref_keys:
+                    source_ref_keys.add(key)
+                    source_refs.append(source_ref)
+            for surface in obligation["required_surfaces"]:
+                if surface not in required_surfaces:
+                    required_surfaces.append(surface)
+        expressions = {
+            obligation["applicability_expression"]
+            for obligation in linked_obligations
+            if obligation is not None
+        }
+        applicability_expression = expressions.pop() if len(expressions) == 1 else "unknown"
         evidence_requirements: dict[str, Any] = {}
         for item in draft.evidence_requirements:
             if item.surface in evidence_requirements:
@@ -159,6 +202,9 @@ def control_compilation_call(provider: ModelProvider, payload: Any) -> ControlDr
             ControlDraft.model_validate(
                 {
                     **draft.model_dump(exclude={"evidence_requirements"}),
+                    "source_refs": source_refs,
+                    "applicability_expression": applicability_expression,
+                    "required_surfaces": required_surfaces,
                     "evidence_requirements": evidence_requirements,
                 }
             )

@@ -214,7 +214,7 @@ def render_markdown_report(snapshot: Snapshot, gate: object) -> str:
         f"| 审查模式 | {_REPORT_MODE[snapshot.mode]} |",
         f"| CI 判定 | **{ci_status}** |",
         f"| 覆盖台账 | {_REPORT_BOOLEAN[coverage_gate.complete]} |",
-        f"| 已审查单元 | `{len(snapshot.reviewed_rows)}` |",
+        f"| 已形成完整证据单元 | `{len(snapshot.reviewed_rows)}` |",
         f"| 复用单元 | `{len(snapshot.reused_rows)}` |",
         f"| 缺失证据面 | {_display_surfaces(snapshot.missing_surfaces)} |",
         "",
