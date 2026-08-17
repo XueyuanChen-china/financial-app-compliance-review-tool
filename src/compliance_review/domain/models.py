@@ -42,6 +42,7 @@ ResultOrigin = Literal[
     "waived",
 ]
 ApplicabilityDecisionStatus = Literal["applicable", "not_applicable", "unknown"]
+SurfaceRequirementStatus = Literal["required", "not_required", "unknown"]
 CoverageUnitStatus = Literal[
     "planned",
     "missing_surface",
@@ -153,12 +154,21 @@ class ProfileFactRef(ContractModel):
     expected_value: str = Field(min_length=1)
 
 
+class SurfaceRequirementDecision(ContractModel):
+    surface: Surface
+    decision: SurfaceRequirementStatus
+    reason: str = Field(min_length=1)
+    source_refs: list[SourceRef] = Field(default_factory=list)
+    profile_fact_refs: list[ProfileFactRef] = Field(default_factory=list)
+
+
 class ApplicabilityDecision(ContractModel):
     control_id: str = Field(min_length=1)
     decision: ApplicabilityDecisionStatus
     reason: str = Field(min_length=1)
     source_refs: list[SourceRef] = Field(default_factory=list)
     profile_fact_refs: list[ProfileFactRef] = Field(default_factory=list)
+    surface_requirements: list[SurfaceRequirementDecision] = Field(default_factory=list)
     unresolved_conditions: list[str] = Field(default_factory=list)
     confidence: Confidence = "medium"
 

@@ -141,8 +141,7 @@ class FullReviewService:
                 row.coverage_unit_id
                 for row in gate.rows
                 if row.execution_status == "completed"
-                and row.evidence_status == "partial"
-                and row.result_origin == "blocked"
+                and row.evidence_status in {"partial", "missing"}
             ],
             reviewer_work_items_completed=summary.completed,
             reviewer_work_items_failed=summary.failed,
@@ -374,7 +373,7 @@ _REPORT_EXECUTION_STATUS = {
     "pending": "未执行",
     "running": "执行中",
     "completed": "已执行",
-    "failed": "未执行",
+    "failed": "执行失败",
 }
 _REPORT_APPLICABILITY = {
     "applicable": "适用",

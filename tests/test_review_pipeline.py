@@ -38,7 +38,13 @@ from compliance_review.review.models import (
 )
 from compliance_review.review.provider import tool_schemas
 from compliance_review.review.result_parser import parse_review_result
-from compliance_review.review.tools import ScopedToolExecutor
+from compliance_review.review.tools import (
+    _MAX_FACT_RESULTS,
+    _MAX_LIST_RESULTS,
+    _MAX_READ_LINES,
+    _MAX_SEARCH_RESULTS,
+    ScopedToolExecutor,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "day2"
 PROJECT_ROOT = Path(__file__).parents[1]
@@ -620,6 +626,22 @@ def test_tool_schema_exposes_all_read_only_reviewer_tools() -> None:
         "search_code",
         "read_file",
     }
+
+
+def test_tool_schema_limits_match_runtime_limits() -> None:
+    schemas = {
+        schema["function"]["name"]: schema["function"]["parameters"]
+        for schema in tool_schemas()
+    }
+    assert (
+        schemas["get_collector_facts"]["properties"]["limit"]["maximum"]
+        == _MAX_FACT_RESULTS
+    )
+    assert schemas["list_files"]["properties"]["limit"]["maximum"] == _MAX_LIST_RESULTS
+    assert schemas["search_code"]["properties"]["limit"]["maximum"] == _MAX_SEARCH_RESULTS
+    assert (
+        schemas["read_file"]["properties"]["line_count"]["maximum"] == _MAX_READ_LINES
+    )
 
 
 def test_work_items_have_independent_contexts_and_tool_histories(tmp_path: Path) -> None:
