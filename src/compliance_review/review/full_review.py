@@ -137,6 +137,18 @@ class FullReviewService:
             reviewed_rows=[
                 row.coverage_unit_id for row in gate.rows if row.result_origin == "reviewed"
             ],
+            reviewed_partial_rows=[
+                row.coverage_unit_id
+                for row in gate.rows
+                if row.execution_status == "completed"
+                and row.evidence_status == "partial"
+                and row.result_origin == "blocked"
+            ],
+            reviewer_work_items_completed=summary.completed,
+            reviewer_work_items_failed=summary.failed,
+            applicability_decisions=(
+                setup.applicability.decisions if setup.applicability is not None else []
+            ),
             missing_surfaces=setup.coverage.missing_surfaces,
             validation_flags=validation.flags,
             manual_review_existing_ids=gate.manual_review_existing_ids,
@@ -193,9 +205,7 @@ def render_markdown_report(snapshot: Snapshot, gate: object) -> str:
     coverage_gate = CoverageGateResult.model_validate(gate)
     status_counts = Counter(item.status for item in snapshot.control_results)
     control_counts = json.dumps(
-        {
-            _REPORT_CONTROL_STATUS[key]: value for key, value in status_counts.items()
-        },
+        {_REPORT_CONTROL_STATUS[key]: value for key, value in status_counts.items()},
         ensure_ascii=False,
         sort_keys=True,
     )
@@ -214,7 +224,10 @@ def render_markdown_report(snapshot: Snapshot, gate: object) -> str:
         f"| 审查模式 | {_REPORT_MODE[snapshot.mode]} |",
         f"| CI 判定 | **{ci_status}** |",
         f"| 覆盖台账 | {_REPORT_BOOLEAN[coverage_gate.complete]} |",
-        f"| 已形成完整证据单元 | `{len(snapshot.reviewed_rows)}` |",
+        f"| Reviewer WorkItem 完成 / 失败 | `{snapshot.reviewer_work_items_completed}` / "
+        f"`{snapshot.reviewer_work_items_failed}` |",
+        f"| 已验证完整证据单元 | `{len(snapshot.reviewed_rows)}` |",
+        f"| 已执行但证据未完整单元 | `{len(snapshot.reviewed_partial_rows)}` |",
         f"| 复用单元 | `{len(snapshot.reused_rows)}` |",
         f"| 缺失证据面 | {_display_surfaces(snapshot.missing_surfaces)} |",
         "",
@@ -234,16 +247,45 @@ def render_markdown_report(snapshot: Snapshot, gate: object) -> str:
             "",
             "## 证据覆盖台账",
             "",
-            "| 覆盖单元 | 证据面 | 证据状态 | 控制结论 | 来源 |",
-            "|---|---|---|---|---|",
+            "| 覆盖单元 | 证据面 | 执行情况 | 证据状态 | 控制结论 | 处理结果 | 缺口/适用说明 |",
+            "|---|---|---|---|---|---|---|",
         ]
     )
     for row in coverage_gate.rows:
         lines.append(
             f"| `{row.coverage_unit_id}` | {_REPORT_SURFACE[row.surface]} | "
+            f"{_REPORT_EXECUTION_STATUS[row.execution_status]} | "
             f"{_REPORT_EVIDENCE_STATUS[row.evidence_status]} | "
             f"{_REPORT_CONTROL_STATUS[row.resolution_status]} | "
-            f"{_REPORT_ORIGIN[row.result_origin]} |"
+            f"{_REPORT_ORIGIN[row.result_origin]} | {_translate_reason(row.coverage_reason)} |"
+        )
+    lines.extend(["", "## 适用性台账", ""])
+    lines.extend(["| 控制项 | 适用性 | 是否进入 Reviewer | 判断依据 |", "|---|---|---|---|"])
+    work_item_controls = {
+        control_id
+        for row in coverage_gate.rows
+        if row.work_item_id is not None
+        for control_id in [row.control_id]
+    }
+    for decision in snapshot.applicability_decisions:
+        source_refs = (
+            ", ".join(
+                reference.source_id or reference.url or reference.path or "source_ref"
+                for reference in decision.source_refs
+            )
+            or "无"
+        )
+        profile_refs = (
+            ", ".join(reference.field_name for reference in decision.profile_fact_refs) or "无"
+        )
+        unresolved = ", ".join(decision.unresolved_conditions) or "无"
+        details = (
+            f"{_translate_reason(decision.reason)}；来源：{source_refs}；"
+            f"画像：{profile_refs}；未决：{unresolved}"
+        )
+        lines.append(
+            f"| `{decision.control_id}` | {_REPORT_APPLICABILITY[decision.decision]} | "
+            f"{'是' if decision.control_id in work_item_controls else '否'} | {details} |"
         )
     lines.extend(["", "## CI 与人工复核变化", ""])
     if snapshot.mode == "full":
@@ -260,8 +302,7 @@ def render_markdown_report(snapshot: Snapshot, gate: object) -> str:
         )
     lines.extend(
         [
-            f"- 自动化证据退化："
-            f"`{len(coverage_gate.automated_evidence_regression_ids)}`",
+            f"- 自动化证据退化：`{len(coverage_gate.automated_evidence_regression_ids)}`",
             "",
             "## 校验标记",
             "",
@@ -325,9 +366,20 @@ _REPORT_ORIGIN = {
     "reviewed": "本次审查",
     "reused": "复用基线",
     "manual_required": "人工材料",
-    "blocked": "被阻断",
+    "blocked": "未形成有效自动化证据",
     "not_applicable": "不适用",
     "waived": "已豁免",
+}
+_REPORT_EXECUTION_STATUS = {
+    "pending": "未执行",
+    "running": "执行中",
+    "completed": "已执行",
+    "failed": "未执行",
+}
+_REPORT_APPLICABILITY = {
+    "applicable": "适用",
+    "not_applicable": "不适用",
+    "unknown": "未知（保守保留）",
 }
 _REPORT_SURFACE = {
     "frontend_h5": "H5 / WebView",

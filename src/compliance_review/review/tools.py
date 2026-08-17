@@ -21,10 +21,10 @@ from compliance_review.review.reliability import classify_error
 
 # Reviewer tool results must remain small enough to leave room for the next
 # model turn and the structured review response.
-_MAX_FACT_RESULTS = 20
-_MAX_LIST_RESULTS = 40
-_MAX_SEARCH_RESULTS = 25
-_MAX_READ_LINES = 120
+_MAX_FACT_RESULTS = 30
+_MAX_LIST_RESULTS = 60
+_MAX_SEARCH_RESULTS = 40
+_MAX_READ_LINES = 200
 
 
 class ScopedToolExecutor:
@@ -305,6 +305,4 @@ def _bounded_int(
 
 
 def serialize_tool_result(result: ScopedToolResult) -> str:
-    return json.dumps(
-        redact_value(result.model_dump()), ensure_ascii=False, sort_keys=True
-    )
+    return json.dumps(redact_value(result.model_dump()), ensure_ascii=False, sort_keys=True)

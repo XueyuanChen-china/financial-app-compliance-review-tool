@@ -25,7 +25,7 @@ class ReviewerRuntimeConfig(BaseModel):
     compression_target: float = Field(default=0.60, gt=0, le=1)
     hard_limit: float = Field(default=0.90, gt=0, le=1)
     max_compression_attempts: int = Field(default=2, ge=1, le=5)
-    context_window_tokens: int = Field(default=32000, ge=100)
+    context_window_tokens: int = Field(default=64000, ge=100)
 
     @model_validator(mode="after")
     def validate_thresholds(self) -> "ReviewerRuntimeConfig":

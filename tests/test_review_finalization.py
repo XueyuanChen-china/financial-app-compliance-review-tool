@@ -66,7 +66,7 @@ def _coverage() -> CoverageSet:
                 control_id="privacy.backend_required",
                 module_id="privacy",
                 surface="frontend_h5",
-                applicability_status="true",
+                applicability_status="applicable",
                 coverage_status="planned",
                 required_evidence_strength="static_proof",
                 reason="fixture",
@@ -77,7 +77,7 @@ def _coverage() -> CoverageSet:
                 control_id="privacy.backend_required",
                 module_id="privacy",
                 surface="backend_code",
-                applicability_status="true",
+                applicability_status="applicable",
                 coverage_status="missing_surface",
                 required_evidence_strength="server_code",
                 reason="backend repository unavailable",
@@ -261,7 +261,7 @@ def test_full_external_manual_requirement_is_reported_without_ci_warning() -> No
                 control_id=control.control_id,
                 module_id="privacy",
                 surface="play_console",
-                applicability_status="true",
+                applicability_status="applicable",
                 coverage_status="planned",
                 required_evidence_strength="declared",
                 reason="manual store evidence",
@@ -276,9 +276,7 @@ def test_full_external_manual_requirement_is_reported_without_ci_warning() -> No
     assert gate.complete is True
     assert gate.ci_status == "pass"
     assert gate.warning_reasons == []
-    assert gate.manual_review_existing_ids == [
-        "cu.privacy.backend_required.play_console"
-    ]
+    assert gate.manual_review_existing_ids == ["cu.privacy.backend_required.play_console"]
 
 
 def test_mixed_automated_and_external_gap_does_not_block_complete_automation(
@@ -303,7 +301,7 @@ def test_mixed_automated_and_external_gap_does_not_block_complete_automation(
         control_id=control.control_id,
         module_id="privacy",
         surface="play_console",
-        applicability_status="true",
+        applicability_status="applicable",
         coverage_status="planned",
         required_evidence_strength="declared",
         reason="manual store evidence",
@@ -345,7 +343,7 @@ def test_diff_manual_delta_and_automated_regression_policy() -> None:
                 control_id=control.control_id,
                 module_id="privacy",
                 surface="play_console",
-                applicability_status="true",
+                applicability_status="applicable",
                 coverage_status="planned",
                 required_evidence_strength="declared",
                 reason="manual store evidence",
@@ -405,7 +403,7 @@ def test_failed_worker_becomes_indeterminate_and_blocked_coverage() -> None:
                 control_id=control.control_id,
                 module_id="privacy",
                 surface="frontend_h5",
-                applicability_status="true",
+                applicability_status="applicable",
                 coverage_status="planned",
                 required_evidence_strength="static_proof",
                 reason="worker failure fixture",
@@ -597,7 +595,7 @@ def test_partial_api_document_fact_can_support_declared_endpoint_evidence(
                 control_id=control.control_id,
                 module_id="privacy",
                 surface="backend_api_doc",
-                applicability_status="true",
+                applicability_status="applicable",
                 coverage_status="planned",
                 required_evidence_strength="server_doc",
                 reason="fixture",
@@ -903,7 +901,7 @@ def test_not_applicable_units_are_terminal_and_ci_neutral() -> None:
                 control_id=control.control_id,
                 module_id="privacy",
                 surface="frontend_h5",
-                applicability_status="false",
+                applicability_status="not_applicable",
                 coverage_status="not_applicable",
                 required_evidence_strength="static_proof",
                 reason="fixture",

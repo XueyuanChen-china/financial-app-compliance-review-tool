@@ -485,9 +485,7 @@ def run_review(
         str, typer.Option(help="OpenAI-compatible chat completions URL")
     ] = DEFAULT_BASE_URL,
     max_concurrency: Annotated[int, typer.Option(help="Maximum parallel workers")] = 3,
-    token_budget: Annotated[
-        int, typer.Option(help="Per-work-item Reviewer token budget")
-    ] = 32000,
+    token_budget: Annotated[int, typer.Option(help="Per-work-item Reviewer token budget")] = 64000,
     checkpoint_db: Annotated[
         Optional[Path], typer.Option(help="Optional SQLite checkpoint database")
     ] = None,
@@ -551,20 +549,18 @@ def full_review(
     ] = DEFAULT_BASE_URL,
     run_id: Annotated[Optional[str], typer.Option(help="Stable run identifier")] = None,
     max_concurrency: Annotated[int, typer.Option(help="Maximum parallel Reviewer work items")] = 3,
-    token_budget: Annotated[
-        int, typer.Option(help="Per-work-item Reviewer token budget")
-    ] = 32000,
+    token_budget: Annotated[int, typer.Option(help="Per-work-item Reviewer token budget")] = 64000,
 ) -> None:
     """Run setup handoff, parallel review, deterministic resolution, and report."""
     try:
         workspace = workspace.expanduser().resolve()
-        setup = ReviewSetupService(workspace).compile(
+        provider = OpenAICompatibleProvider(model=model, base_url=base_url)
+        setup = ReviewSetupService(workspace, applicability_provider=provider).compile(
             run_id=run_id, max_concurrency=max_concurrency
         )
         controls = ControlSet.model_validate(
             json.loads((workspace / "setup" / "controls.json").read_text(encoding="utf-8"))
         )
-        provider = OpenAICompatibleProvider(model=model, base_url=base_url)
         result = FullReviewService(
             workspace,
             LangGraphReviewRuntime(
@@ -616,7 +612,8 @@ def diff_review(
     """Run deterministic Git impact planning, safe reuse, and incremental review."""
     try:
         workspace = workspace.expanduser().resolve()
-        setup = ReviewSetupService(workspace).compile(
+        provider = OpenAICompatibleProvider(model=model, base_url=base_url)
+        setup = ReviewSetupService(workspace, applicability_provider=provider).compile(
             run_id=run_id,
             mode="diff",
             max_concurrency=max_concurrency,
@@ -629,7 +626,6 @@ def diff_review(
                 (workspace / "runs" / baseline_run_id / "snapshot.json").read_text(encoding="utf-8")
             )
         )
-        provider = OpenAICompatibleProvider(model=model, base_url=base_url)
         result = DiffReviewService(
             workspace,
             LangGraphReviewRuntime(provider=provider, max_concurrency=max_concurrency),

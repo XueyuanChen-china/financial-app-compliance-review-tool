@@ -9,7 +9,6 @@ from typing import Literal, Sequence
 
 from compliance_review.collectors.base import CollectorResult
 from compliance_review.domain.models import (
-    ApplicabilityDecision,
     ApplicabilityProfile,
     ApplicabilitySet,
     ControlSet,
@@ -19,7 +18,12 @@ from compliance_review.domain.models import (
     WorkItem,
 )
 from compliance_review.repository import RepositorySandbox
-from compliance_review.review.applicability import control_applicability
+from compliance_review.review.applicability import (
+    ApplicabilityValidator,
+    SemanticApplicabilityEvaluator,
+    legacy_applicability_decision,
+)
+from compliance_review.review.provider import ModelProvider
 from compliance_review.setup.models import AppFactSet, RepositoryInventory
 
 _ROOT_BACKED_SURFACES: set[Surface] = {
@@ -39,36 +43,40 @@ class WorkItemPlan:
 
 
 class ApplicabilityEngine:
-    """Evaluate every Control with the finite, non-eval applicability DSL."""
+    """Build a complete, validated applicability ledger for every Control."""
+
+    def __init__(self, provider: ModelProvider | None = None) -> None:
+        self.provider = provider
 
     def evaluate(self, profile: ApplicabilityProfile, controls: ControlSet) -> ApplicabilitySet:
-        decisions: list[ApplicabilityDecision] = []
-        excluded: list[str] = []
-        unknown: list[str] = []
-        for control in controls.controls:
-            result = control_applicability(control, profile)
-            if result is True:
-                status: Literal["true", "false", "unknown"] = "true"
-                reason = "applicability expression evaluated true"
-            elif result is False:
-                status = "false"
-                reason = "applicability expression evaluated false"
-                excluded.append(control.control_id)
-            else:
-                status = "unknown"
-                reason = (
-                    "applicability expression or required profile value is unknown; "
-                    "control is retained conservatively"
+        if self.provider is None:
+            decisions = [
+                legacy_applicability_decision(control, profile) for control in controls.controls
+            ]
+        else:
+            try:
+                decisions = SemanticApplicabilityEvaluator(self.provider).evaluate(
+                    profile, controls
                 )
-                unknown.append(control.control_id)
-            decisions.append(
-                ApplicabilityDecision(
-                    control_id=control.control_id,
-                    expression=control.applicability_expression,
-                    status=status,
-                    reason=reason,
-                )
-            )
+            except (OSError, TypeError, ValueError):
+                # The semantic call is advisory. A transport or schema failure must
+                # never make controls disappear from the deterministic denominator.
+                decisions = [
+                    legacy_applicability_decision(control, profile).model_copy(
+                        update={
+                            "decision": "unknown",
+                            "reason": (
+                                "semantic applicability evaluation failed; retained conservatively"
+                            ),
+                            "unresolved_conditions": ["semantic_applicability_unavailable"],
+                            "confidence": "low",
+                        }
+                    )
+                    for control in controls.controls
+                ]
+        decisions = ApplicabilityValidator().validate(profile, controls, decisions)
+        excluded = [item.control_id for item in decisions if item.decision == "not_applicable"]
+        unknown = [item.control_id for item in decisions if item.decision == "unknown"]
         return ApplicabilitySet(
             profile_version=profile.version,
             control_version=controls.version,
@@ -92,18 +100,52 @@ class CoverageUnitBuilder:
         missing_surfaces: set[Surface] = set()
         for control in controls.controls:
             decision = decision_by_control[control.control_id]
+            ui_delivery_surfaces: set[Surface] = {"frontend_h5", "android_native"}
+            has_ui_alternative = ui_delivery_surfaces.issubset(set(control.required_surfaces))
+            active_ui_surfaces = ui_delivery_surfaces.intersection(profile.evidence_surfaces)
             for surface in control.required_surfaces:
-                if decision.status == "false":
+                requirement = control.evidence_requirements.get(surface)
+                requirement_rationale = (
+                    requirement.rationale
+                    if requirement is not None
+                    else "No evidence requirement rationale recorded."
+                )
+                if decision.decision == "not_applicable":
                     units.append(
                         CoverageUnit(
                             coverage_unit_id=f"cu.{control.control_id}.{surface}",
                             control_id=control.control_id,
                             module_id=control.module_id,
                             surface=surface,
-                            applicability_status=decision.status,
+                            applicability_status=decision.decision,
                             coverage_status="not_applicable",
                             required_evidence_strength=control.minimum_evidence_strength[surface],
-                            reason="control applicability evaluated false",
+                            reason="control applicability evaluated not_applicable",
+                            evidence_requirement_rationale=requirement_rationale,
+                        )
+                    )
+                    continue
+                if (
+                    has_ui_alternative
+                    and surface in ui_delivery_surfaces
+                    and surface not in active_ui_surfaces
+                    and active_ui_surfaces
+                ):
+                    units.append(
+                        CoverageUnit(
+                            coverage_unit_id=f"cu.{control.control_id}.{surface}",
+                            control_id=control.control_id,
+                            module_id=control.module_id,
+                            surface=surface,
+                            applicability_status=decision.decision,
+                            coverage_status="not_applicable",
+                            required_evidence_strength=control.minimum_evidence_strength[surface],
+                            reason=(
+                                f"{surface} is not an active delivery surface in the confirmed "
+                                "AppProfile; an in-scope UI surface provides the applicable "
+                                "evidence path"
+                            ),
+                            evidence_requirement_rationale=requirement_rationale,
                         )
                     )
                     continue
@@ -119,7 +161,7 @@ class CoverageUnitBuilder:
                         f"required surface {surface} is not present in the confirmed "
                         "AppProfile evidence_surfaces"
                     )
-                elif decision.status == "unknown":
+                elif decision.decision == "unknown":
                     coverage_status = "unknown_applicability"
                     reason = "control retained because applicability is unknown"
                 else:
@@ -131,10 +173,11 @@ class CoverageUnitBuilder:
                         control_id=control.control_id,
                         module_id=control.module_id,
                         surface=surface,
-                        applicability_status=decision.status,
+                        applicability_status=decision.decision,
                         coverage_status=coverage_status,
                         required_evidence_strength=control.minimum_evidence_strength[surface],
                         reason=reason,
+                        evidence_requirement_rationale=requirement_rationale,
                     )
                 )
         return CoverageSet(

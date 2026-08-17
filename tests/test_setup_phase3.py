@@ -9,9 +9,12 @@ from compliance_review.compilation.models import ControlValidationResult
 from compliance_review.config.loader import load_controls
 from compliance_review.domain.models import (
     ApplicabilityProfile,
+    ApplicabilityProfileFact,
     Control,
     ControlSet,
     EvidenceRequirement,
+    ProfileFactRef,
+    SourceRef,
 )
 from compliance_review.persistence import ArtifactStore
 from compliance_review.review import LangGraphReviewRuntime
@@ -233,4 +236,138 @@ def test_unknown_applicability_is_retained_as_unknown_coverage() -> None:
 
     assert applicability.unknown_control_ids == ["control.unknown"]
     assert len(coverage.units) == 1
+    assert coverage.units[0].coverage_status == "unknown_applicability"
+
+
+def test_semantic_not_applicable_requires_real_sources_and_human_profile_facts() -> None:
+    profile = ApplicabilityProfile(
+        contract="applicability_profile.v1",
+        version="1.0",
+        app_name="Example",
+        package_name="com.example",
+        jurisdiction="Pakistan",
+        business_type=["personal_loan"],
+        self_lending=True,
+        evidence_surfaces=["frontend_h5"],
+        review_scope="multi_surface_static_review",
+        roots={"frontend_h5": "."},
+        confirmed_facts={
+            "business_type": ApplicabilityProfileFact(
+                value=["personal_loan"], source="human_confirmed"
+            )
+        },
+    )
+    source_ref = SourceRef(source_id="policy-1", source_section="section-1")
+    control = Control(
+        control_id="control.semantic",
+        module_id="privacy",
+        title="Semantic applicability fixture",
+        severity="high",
+        applicability_expression="unknown",
+        required_surfaces=["frontend_h5"],
+        minimum_evidence_strength={"frontend_h5": "static_proof"},
+        missing_evidence_policy="block",
+        source_refs=[source_ref],
+        reuse_invalidation_keys=["control_version"],
+    )
+    controls = ControlSet(contract="control_set.v1", version="1.0", controls=[control])
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        assert request.request_kind == "applicability"
+        assert request.tools == []
+        return ModelResponse(
+            content=json.dumps(
+                {
+                    "decisions": [
+                        {
+                            "control_id": control.control_id,
+                            "decision": "not_applicable",
+                            "reason": "The confirmed profile is a personal-loan product.",
+                            "source_refs": [source_ref.model_dump(mode="json")],
+                            "profile_fact_refs": [
+                                ProfileFactRef(
+                                    field_name="business_type",
+                                    expected_value='["personal_loan"]',
+                                ).model_dump(mode="json")
+                            ],
+                            "unresolved_conditions": [],
+                            "confidence": "high",
+                        }
+                    ]
+                }
+            )
+        )
+
+    from compliance_review.setup.planning import ApplicabilityEngine, CoverageUnitBuilder
+
+    engine = ApplicabilityEngine(StaticModelProvider(response_factory))
+    applicability = engine.evaluate(profile, controls)
+    coverage = CoverageUnitBuilder().build(profile, controls, applicability)
+
+    assert applicability.excluded_control_ids == [control.control_id]
+    assert applicability.decisions[0].decision == "not_applicable"
+    assert coverage.units[0].coverage_status == "not_applicable"
+
+
+def test_unverified_semantic_exclusion_downgrades_to_unknown_and_is_not_dropped() -> None:
+    profile = ApplicabilityProfile(
+        contract="applicability_profile.v1",
+        version="1.0",
+        app_name="Example",
+        package_name="com.example",
+        jurisdiction="Pakistan",
+        business_type=["personal_loan"],
+        self_lending=True,
+        evidence_surfaces=["frontend_h5"],
+        review_scope="multi_surface_static_review",
+        roots={"frontend_h5": "."},
+        confirmed_facts={
+            "business_type": ApplicabilityProfileFact(
+                value=["personal_loan"], source="human_confirmed"
+            )
+        },
+    )
+    control = Control(
+        control_id="control.unverified-exclusion",
+        module_id="privacy",
+        title="Unverified exclusion fixture",
+        severity="high",
+        applicability_expression="unknown",
+        required_surfaces=["frontend_h5"],
+        minimum_evidence_strength={"frontend_h5": "static_proof"},
+        missing_evidence_policy="block",
+        source_refs=[SourceRef(source_id="policy-1", source_section="section-1")],
+        reuse_invalidation_keys=["control_version"],
+    )
+    controls = ControlSet(contract="control_set.v1", version="1.0", controls=[control])
+
+    def response_factory(_: ModelRequest) -> ModelResponse:
+        return ModelResponse(
+            content=json.dumps(
+                {
+                    "decisions": [
+                        {
+                            "control_id": control.control_id,
+                            "decision": "not_applicable",
+                            "reason": "Unsupported exclusion.",
+                            "source_refs": [{"source_id": "invented", "source_section": "x"}],
+                            "profile_fact_refs": [],
+                            "unresolved_conditions": [],
+                            "confidence": "high",
+                        }
+                    ]
+                }
+            )
+        )
+
+    from compliance_review.setup.planning import ApplicabilityEngine, CoverageUnitBuilder
+
+    engine = ApplicabilityEngine(StaticModelProvider(response_factory))
+    applicability = engine.evaluate(profile, controls)
+    coverage = CoverageUnitBuilder().build(profile, controls, applicability)
+
+    assert applicability.excluded_control_ids == []
+    assert applicability.unknown_control_ids == [control.control_id]
+    assert applicability.decisions[0].decision == "unknown"
+    assert "unverified_not_applicable" in applicability.decisions[0].unresolved_conditions
     assert coverage.units[0].coverage_status == "unknown_applicability"
