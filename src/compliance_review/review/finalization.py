@@ -612,6 +612,15 @@ class CoverageGate:
                 execution_status = "completed"
                 evidence_status = "complete"
             elif (
+                unit.coverage_status in {"missing_surface", "unknown_applicability"}
+                and is_automatable_surface(unit.surface)
+            ):
+                # No automated Worker was scheduled for an unavailable or
+                # unresolved prerequisite; this is not a Worker failure.
+                origin = "blocked"
+                execution_status = "pending"
+                evidence_status = "missing"
+            elif (
                 validated is not None
                 and validated.valid
                 and reviewed_row is not None

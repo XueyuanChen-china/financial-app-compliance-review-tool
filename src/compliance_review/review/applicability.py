@@ -149,6 +149,11 @@ class SemanticApplicabilityEvaluator:
                 for control in controls.controls
             ],
         }
+        candidate_surfaces = {
+            surface
+            for control in controls.controls
+            for surface in control.required_surfaces
+        }
         request = ModelRequest(
             work_item=work_item,
             attempt_id="applicability.semantic.v1",
@@ -177,7 +182,10 @@ class SemanticApplicabilityEvaluator:
                 {
                     "role": "user",
                     "content": json.dumps(
-                        _with_delivery_surface_facts(payload, profile), ensure_ascii=False
+                        _with_delivery_surface_facts(
+                            payload, profile, candidate_surfaces
+                        ),
+                        ensure_ascii=False,
                     ),
                 },
             ],
@@ -246,7 +254,11 @@ def _validated_surface_requirements(
         source_refs_valid = _source_refs_valid(
             item.source_refs, allowed_source_refs, source_registry
         )
-        profile_refs_valid = _profile_refs_valid(item.profile_fact_refs, profile)
+        profile_refs_valid = _profile_refs_valid(
+            item.profile_fact_refs,
+            profile,
+            trusted_sources={"human_confirmed", "deterministic"},
+        )
         exclusion_refs_present = bool(item.source_refs and item.profile_fact_refs)
         if not item.source_refs or not source_refs_valid or not profile_refs_valid or (
             item.decision == "not_required" and not exclusion_refs_present
@@ -327,7 +339,9 @@ def _obligation_context(
 
 
 def _with_delivery_surface_facts(
-    payload: dict[str, object], profile: ApplicabilityProfile
+    payload: dict[str, object],
+    profile: ApplicabilityProfile,
+    candidate_surfaces: set[Surface],
 ) -> dict[str, object]:
     confirmed = profile.confirmed_facts.get("evidence_surfaces")
     surface_facts = [
@@ -337,7 +351,9 @@ def _with_delivery_surface_facts(
             "root": profile.roots.get(surface),
             "confirmation_source": confirmed.source if confirmed else "unresolved",
         }
-        for surface in sorted(set(profile.evidence_surfaces) | set(profile.roots))
+        for surface in sorted(
+            set(profile.evidence_surfaces) | set(profile.roots) | candidate_surfaces
+        )
     ]
     return {**payload, "delivery_surface_facts": surface_facts}
 
@@ -389,12 +405,17 @@ def _allowed_source_refs(
     return list({_ref_key(reference): reference for reference in refs}.values())
 
 
-def _profile_refs_valid(provided: list[ProfileFactRef], profile: ApplicabilityProfile) -> bool:
+def _profile_refs_valid(
+    provided: list[ProfileFactRef],
+    profile: ApplicabilityProfile,
+    trusted_sources: set[str] | None = None,
+) -> bool:
+    allowed_sources = trusted_sources or {"human_confirmed"}
     for reference in provided:
         fact = profile.confirmed_facts.get(reference.field_name)
         if (
             fact is None
-            or fact.source != "human_confirmed"
+            or fact.source not in allowed_sources
             or _canonical_json(fact.value) != reference.expected_value
         ):
             return False
