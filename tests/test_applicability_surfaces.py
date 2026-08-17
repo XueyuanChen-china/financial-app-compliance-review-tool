@@ -142,7 +142,7 @@ def test_android_only_disclosure_does_not_create_h5_gap() -> None:
     by_surface = {unit.surface: unit for unit in coverage.units}
     assert applicability.decisions[0].decision == "applicable"
     assert by_surface["android_native"].coverage_status == "planned"
-    assert by_surface["frontend_h5"].coverage_status == "not_applicable"
+    assert by_surface["frontend_h5"].coverage_status == "not_required"
     assert coverage.missing_surfaces == []
 
 
@@ -178,7 +178,7 @@ def test_offered_web_surface_can_be_explicitly_not_required_for_this_control() -
     _, coverage = _compile(profile, [_requirement("android_native"), requirement])
 
     assert coverage.missing_surfaces == []
-    assert coverage.units[1].coverage_status == "not_applicable"
+    assert coverage.units[1].coverage_status == "not_required"
 
 
 def test_invalid_source_reference_is_conservative_unknown() -> None:
@@ -240,7 +240,7 @@ def test_deterministic_profile_source_is_trusted_for_surface_requirement() -> No
         profile,
         [_requirement("android_native"), _not_required("frontend_h5")],
     )
-    assert coverage.units[1].coverage_status == "not_applicable"
+    assert coverage.units[1].coverage_status == "not_required"
 
 
 def test_semantic_payload_contains_absent_surface_and_policy_context() -> None:

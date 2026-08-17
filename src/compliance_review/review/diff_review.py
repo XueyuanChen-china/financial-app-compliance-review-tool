@@ -165,7 +165,7 @@ class DiffReviewPlanner:
                 else None
             )
             previous_row = previous_rows.get(f"{unit.control_id}:{unit.surface}")
-            reusable = unit.coverage_status == "not_applicable" or (
+            reusable = unit.coverage_status in {"not_applicable", "not_required"} or (
                 not impact.affected
                 and previous_snapshot is not None
                 and previous_snapshot.run_status == "completed"
@@ -176,8 +176,12 @@ class DiffReviewPlanner:
                 and previous_row.row.evidence_status == "complete"
             )
             reasons = list(impact.reasons)
-            if unit.coverage_status == "not_applicable":
-                reasons.append("coverage unit is not applicable")
+            if unit.coverage_status in {"not_applicable", "not_required"}:
+                reasons.append(
+                    "coverage unit is not applicable"
+                    if unit.coverage_status == "not_applicable"
+                    else "coverage unit is not required"
+                )
                 terminal.append(unit.coverage_unit_id)
             elif reusable:
                 reasons.append("exact fingerprint and valid terminal PASS are available")

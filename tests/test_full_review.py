@@ -233,6 +233,26 @@ def test_report_distinguishes_completed_work_from_complete_evidence_and_records_
     assert "未知（保守保留）" in report
     assert "## 阻断原因" in report
 
+    not_required_report = render_markdown_report(
+        snapshot,
+        gate.model_copy(
+            update={
+                "rows": [
+                    gate.rows[0].model_copy(
+                        update={
+                            "execution_status": "not_required",
+                            "evidence_status": "not_required",
+                            "result_origin": "not_required",
+                        }
+                    )
+                ]
+            }
+        ),
+    )
+    assert "| `cu.control-0007.frontend_h5` | H5 / WebView | 无需执行 | 不要求 |" in (
+        not_required_report
+    )
+
     missing_report = render_markdown_report(
         snapshot,
         gate.model_copy(
