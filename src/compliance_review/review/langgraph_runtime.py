@@ -19,8 +19,8 @@ from compliance_review.collectors.base import CollectorResult
 from compliance_review.domain.models import (
     ControlSurfaceResult,
     EvidenceAnchor,
-    EvidenceStatus,
     EvidenceStrength,
+    ReviewerEvidenceStatus,
     ReviewResult,
     Surface,
     WorkItem,
@@ -1195,7 +1195,7 @@ def _bounded_inconclusive_result(
         for anchor in anchors
         if set(anchor.control_ids).intersection(work_item.control_ids)
     ]
-    evidence_status: EvidenceStatus = "partial" if relevant_anchor_ids else "missing"
+    evidence_status: ReviewerEvidenceStatus = "partial" if relevant_anchor_ids else "missing"
     return ReviewResult(
         contract="review_result.v1",
         work_item_id=work_item.work_item_id,

@@ -4,10 +4,14 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from compliance_review.collectors.base import CollectorResult
 from compliance_review.domain.models import (
     Control,
     ControlSet,
+    ControlSurfaceResult,
     CoverageSet,
     CoverageUnit,
     EvidenceAnchor,
@@ -976,12 +980,23 @@ def test_not_required_surface_is_terminal_without_fake_execution() -> None:
     gate = CoverageGate().evaluate(controls, coverage, validation, resolved)
 
     assert validation.valid is True
-    assert resolved[0].status == "pass"
-    assert gate.ci_status == "pass"
+    assert resolved[0].status == "indeterminate"
+    assert "no_required_surface" in resolved[0].reasons[0]
+    assert gate.ci_status == "block"
     assert gate.complete is True
     assert gate.rows[0].result_origin == "not_required"
     assert gate.rows[0].execution_status == "not_required"
     assert gate.rows[0].evidence_status == "not_required"
+
+
+def test_reviewer_evidence_status_cannot_change_surface_applicability() -> None:
+    with pytest.raises(ValidationError):
+        ControlSurfaceResult(
+            control_id="privacy.backend_required",
+            surface="frontend_h5",
+            evidence_status="not_required",  # type: ignore[arg-type]
+            recommended_control_status="indeterminate",
+        )
 
 
 def test_explicit_fail_precedes_missing_other_surface(tmp_path: Path) -> None:

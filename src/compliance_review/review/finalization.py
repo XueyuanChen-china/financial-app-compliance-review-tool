@@ -11,12 +11,12 @@ from compliance_review.domain.models import (
     ControlSet,
     ControlStatus,
     ControlSurfaceResult,
+    CoverageEvidenceStatus,
     CoverageExecutionStatus,
     CoverageGateResult,
     CoverageManifestRow,
     CoverageSet,
     EvidenceAnchor,
-    EvidenceStatus,
     EvidenceStrength,
     Fact,
     ResolvedControlResult,
@@ -550,7 +550,12 @@ class ComplianceResolver:
                 )
             else:
                 reviewable_units = [unit for unit in units if unit.coverage_status == "planned"]
-                if len(rows) != len(reviewable_units) or any(
+                if not reviewable_units:
+                    status = "indeterminate"
+                    reasons.append(
+                        "Applicable control has no required evidence surface (no_required_surface)."
+                    )
+                elif len(rows) != len(reviewable_units) or any(
                     not row.valid or row.row is None or row.row.evidence_status != "complete"
                     for row in rows
                 ):
@@ -625,7 +630,7 @@ class CoverageGate:
                 "waived",
             ]
             execution_status: CoverageExecutionStatus
-            evidence_status: EvidenceStatus
+            evidence_status: CoverageEvidenceStatus
             if unit.coverage_status == "not_applicable":
                 origin = "not_applicable"
                 execution_status = "not_required"
