@@ -20,7 +20,11 @@ _COMPILATION_REQUEST_KINDS = {
     "obligation_extraction",
     "control_compilation",
 }
-_STRUCTURED_REQUEST_KINDS = _COMPILATION_REQUEST_KINDS | {"verification"}
+_STRUCTURED_REQUEST_KINDS = _COMPILATION_REQUEST_KINDS | {
+    "applicability",
+    "review_finalization",
+    "verification",
+}
 
 
 class ModelProvider(Protocol):
@@ -34,6 +38,7 @@ class StaticModelProvider:
     """Deterministic provider for tests and local pipeline smoke runs."""
 
     def __init__(self, response_factory: Any) -> None:
+        self.supports_strict_finalization = False
         self.response_factory = response_factory
         self.requests: list[ModelRequest] = []
 
@@ -60,6 +65,7 @@ class OpenAICompatibleProvider:
         timeout_seconds: float = 30.0,
         compilation_timeout_seconds: float | None = None,
     ) -> None:
+        self.supports_strict_finalization = True
         self.model = model
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
         self.base_url = base_url
@@ -67,9 +73,7 @@ class OpenAICompatibleProvider:
         self.compilation_timeout_seconds = compilation_timeout_seconds or _env_float(
             "COMPLIANCE_COMPILATION_TIMEOUT_SECONDS", 120.0
         )
-        self.actor_authorization = os.environ.get(
-            "COMPLIANCE_REVIEW_ACTOR_AUTHORIZATION"
-        )
+        self.actor_authorization = os.environ.get("COMPLIANCE_REVIEW_ACTOR_AUTHORIZATION")
         self.reasoning_effort = os.environ.get("COMPLIANCE_REVIEW_REASONING_EFFORT")
         self.compilation_reasoning_effort = os.environ.get(
             "COMPLIANCE_COMPILATION_REASONING_EFFORT", "low"
@@ -85,14 +89,10 @@ class OpenAICompatibleProvider:
         )
         if self.reasoning_effort and self.reasoning_effort not in _REASONING_EFFORTS:
             allowed = ", ".join(sorted(_REASONING_EFFORTS))
-            raise ValueError(
-                "COMPLIANCE_REVIEW_REASONING_EFFORT must be one of: " + allowed
-            )
+            raise ValueError("COMPLIANCE_REVIEW_REASONING_EFFORT must be one of: " + allowed)
         if self.compilation_reasoning_effort not in _REASONING_EFFORTS:
             allowed = ", ".join(sorted(_REASONING_EFFORTS))
-            raise ValueError(
-                "COMPLIANCE_COMPILATION_REASONING_EFFORT must be one of: " + allowed
-            )
+            raise ValueError("COMPLIANCE_COMPILATION_REASONING_EFFORT must be one of: " + allowed)
         configured_modes = {
             "COMPLIANCE_COMPILATION_STRUCTURED_MODE": self.compilation_structured_mode,
             "COMPLIANCE_OBLIGATION_STRUCTURED_MODE": self.obligation_structured_mode,
@@ -167,9 +167,7 @@ class OpenAICompatibleProvider:
                 detail = exc.read().decode("utf-8", errors="replace")
             except OSError:
                 detail = "<unavailable>"
-            raise RuntimeError(
-                f"model provider request failed: HTTP {exc.code}: {detail}"
-            ) from exc
+            raise RuntimeError(f"model provider request failed: HTTP {exc.code}: {detail}") from exc
         except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
             raise RuntimeError(f"model provider request failed: {exc}") from exc
         return _parse_chat_completion(payload)

@@ -69,6 +69,8 @@ class ModelRequest(ReviewContractModel):
         "compression",
         "obligation_extraction",
         "control_compilation",
+        "applicability",
+        "review_finalization",
         "verification",
     ] = "review"
 
@@ -164,6 +166,7 @@ class ValidatedReviewRow(ReviewContractModel):
     surface: Surface
     work_item_id: Optional[str] = None
     attempt_id: Optional[str] = None
+    execution_status: Optional[Literal["completed", "failed"]] = None
     row: Optional[ControlSurfaceResult] = None
     valid: bool
     flags: list[str] = Field(default_factory=list)

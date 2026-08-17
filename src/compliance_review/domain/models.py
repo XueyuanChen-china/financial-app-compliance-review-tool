@@ -41,7 +41,7 @@ ResultOrigin = Literal[
     "not_applicable",
     "waived",
 ]
-ApplicabilityDecisionStatus = Literal["true", "false", "unknown"]
+ApplicabilityDecisionStatus = Literal["applicable", "not_applicable", "unknown"]
 CoverageUnitStatus = Literal[
     "planned",
     "missing_surface",
@@ -136,13 +136,31 @@ class ApplicabilityProfile(ContractModel):
     evidence_surfaces: list[Surface] = Field(min_length=1)
     review_scope: Literal["full_release_package", "multi_surface_static_review", "partial"]
     roots: dict[Surface, str] = Field(default_factory=dict)
+    confirmed_facts: dict[str, "ApplicabilityProfileFact"] = Field(default_factory=dict)
+
+
+class ApplicabilityProfileFact(ContractModel):
+    """A profile value that an applicability decision may cite."""
+
+    value: Any
+    source: Literal["declared", "human_confirmed", "deterministic", "inferred", "unresolved"]
+
+
+class ProfileFactRef(ContractModel):
+    field_name: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+    # JSON text retains arbitrary profile values while presenting a concrete type
+    # to strict OpenAI-compatible schema providers.
+    expected_value: str = Field(min_length=1)
 
 
 class ApplicabilityDecision(ContractModel):
     control_id: str = Field(min_length=1)
-    expression: str = Field(min_length=1)
-    status: ApplicabilityDecisionStatus
+    decision: ApplicabilityDecisionStatus
     reason: str = Field(min_length=1)
+    source_refs: list[SourceRef] = Field(default_factory=list)
+    profile_fact_refs: list[ProfileFactRef] = Field(default_factory=list)
+    unresolved_conditions: list[str] = Field(default_factory=list)
+    confidence: Confidence = "medium"
 
 
 class ApplicabilitySet(ContractModel):
@@ -163,6 +181,9 @@ class CoverageUnit(ContractModel):
     coverage_status: CoverageUnitStatus
     required_evidence_strength: EvidenceStrength
     reason: str = Field(min_length=1)
+    evidence_requirement_rationale: str = Field(
+        default="No evidence requirement rationale recorded.", min_length=1
+    )
     work_item_id: Optional[str] = None
 
 
@@ -291,6 +312,7 @@ class CoverageManifestRow(ContractModel):
     execution_status: ExecutionStatus
     evidence_status: EvidenceStatus
     result_origin: ResultOrigin
+    coverage_reason: str = Field(default="coverage reason unavailable", min_length=1)
     previous_run_id: Optional[str] = None
     resolution_status: ControlStatus
 
@@ -320,7 +342,11 @@ class Snapshot(ContractModel):
     applicability_hash: str = Field(min_length=1)
     ci_status: CiStatus
     reviewed_rows: list[str] = Field(default_factory=list)
+    reviewed_partial_rows: list[str] = Field(default_factory=list)
     reused_rows: list[str] = Field(default_factory=list)
+    reviewer_work_items_completed: int = Field(default=0, ge=0)
+    reviewer_work_items_failed: int = Field(default=0, ge=0)
+    applicability_decisions: list[ApplicabilityDecision] = Field(default_factory=list)
     missing_surfaces: list[Surface] = Field(default_factory=list)
     regressions: list[str] = Field(default_factory=list)
     validation_flags: dict[str, list[str]] = Field(default_factory=dict)

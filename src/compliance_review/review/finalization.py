@@ -215,9 +215,7 @@ class ResultValidator:
                         )
                 if selected_row.unsupported_inferences:
                     issue_factory = (
-                        _error
-                        if selected_row.recommended_control_status == "pass"
-                        else _flag
+                        _error if selected_row.recommended_control_status == "pass" else _flag
                     )
                     issues.append(
                         issue_factory(
@@ -227,9 +225,7 @@ class ResultValidator:
                     )
                 if selected_row.confidence == "low":
                     issue_factory = (
-                        _error
-                        if selected_row.recommended_control_status == "pass"
-                        else _flag
+                        _error if selected_row.recommended_control_status == "pass" else _flag
                     )
                     issues.append(issue_factory("low_confidence", "Reviewer confidence is low."))
                 if selected_row.recommended_control_status == "pass" and control is not None:
@@ -349,6 +345,11 @@ class ResultValidator:
                     attempt_id=(
                         selected_execution.attempt_id if selected_execution is not None else None
                     ),
+                    execution_status=(
+                        selected_execution.execution_status
+                        if selected_execution is not None
+                        else None
+                    ),
                     row=selected_row,
                     valid=not invalid,
                     flags=flags,
@@ -364,11 +365,7 @@ class ResultValidator:
             validated_row.flags = sorted(
                 {
                     *validated_row.flags,
-                    *[
-                        issue.code
-                        for issue in validated_row.issues
-                        if _is_flag(issue)
-                    ],
+                    *[issue.code for issue in validated_row.issues if _is_flag(issue)],
                 }
             )
             validated_row.suspicious = bool(validated_row.flags)
@@ -522,7 +519,7 @@ class ComplianceResolver:
             reasons: list[str] = []
             if control.control_id in coverage.excluded_control_ids:
                 status: ControlStatus = "not_applicable"
-                reasons.append("Control applicability evaluated false.")
+                reasons.append("Validated semantic applicability decision is not_applicable.")
             elif any(
                 row.valid
                 and row.row is not None
@@ -536,15 +533,25 @@ class ComplianceResolver:
                 unit.coverage_status not in {"planned", "not_applicable"} for unit in units
             ):
                 status = "indeterminate"
-                reasons.append(
-                    "One or more required evidence surfaces are unavailable or unresolved."
+                reasons.extend(
+                    f"Coverage gap: {unit.coverage_unit_id}: {unit.reason}"
+                    for unit in units
+                    if unit.coverage_status not in {"planned", "not_applicable"}
                 )
             elif len(rows) != len(units) or any(
                 not row.valid or row.row is None or row.row.evidence_status != "complete"
                 for row in rows
             ):
                 status = "indeterminate"
-                reasons.append("Validated evidence is incomplete or invalid.")
+                for row in rows:
+                    if not row.valid:
+                        reasons.extend(
+                            f"Validation gap: {issue.code}: {issue.message}" for issue in row.issues
+                        )
+                    elif row.row is not None and row.row.evidence_status != "complete":
+                        reasons.extend(row.row.gap_reasons or ["Reviewer evidence is incomplete."])
+                if not reasons:
+                    reasons.append("Validated evidence is incomplete or invalid.")
             elif all(
                 row.row is not None and row.row.recommended_control_status == "pass" for row in rows
             ):
@@ -630,10 +637,21 @@ class CoverageGate:
                 evidence_status = "complete"
             else:
                 origin = "blocked"
-                execution_status = "failed"
-                evidence_status = (
-                    reviewed_row.evidence_status if reviewed_row is not None else "missing"
+                execution_status = (
+                    validated.execution_status
+                    if validated is not None and validated.execution_status is not None
+                    else "failed"
                 )
+                if reviewed_row is None:
+                    evidence_status = "missing"
+                elif execution_status == "failed":
+                    # A failed worker did not produce usable evidence. Preserve
+                    # its reported absence instead of upgrading it to partial.
+                    evidence_status = reviewed_row.evidence_status
+                else:
+                    # A completed but invalid result is not evidence-complete,
+                    # even if its unvalidated payload claimed completion.
+                    evidence_status = "partial"
             rows.append(
                 CoverageManifestRow(
                     coverage_unit_id=unit.coverage_unit_id,
@@ -644,6 +662,10 @@ class CoverageGate:
                     execution_status=execution_status,
                     evidence_status=evidence_status,
                     result_origin=origin,
+                    coverage_reason=(
+                        f"{unit.reason} Required evidence rationale: "
+                        f"{unit.evidence_requirement_rationale}"
+                    ),
                     previous_run_id=validated.previous_run_id if validated else None,
                     resolution_status=resolution.status,
                 )

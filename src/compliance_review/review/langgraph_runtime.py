@@ -63,7 +63,7 @@ from compliance_review.review.result_parser import parse_review_result
 from compliance_review.review.tools import ScopedToolExecutor, serialize_tool_result
 
 ProviderFactory = Callable[[WorkItem], ModelProvider]
-_DEFAULT_REVIEW_TOKEN_BUDGET = 32000
+_DEFAULT_REVIEW_TOKEN_BUDGET = 64000
 
 
 class ParentState(TypedDict, total=False):
@@ -334,9 +334,7 @@ class LangGraphReviewRuntime:
                         str(exc),
                         Path(state["output_root"]),
                     )
-                history.extend(
-                    [terminal.attempt] if terminal.attempt is not None else []
-                )
+                history.extend([terminal.attempt] if terminal.attempt is not None else [])
                 if terminal.execution_status == "completed":
                     break
                 if not terminal.retryable or number >= attempt_limit:
@@ -444,10 +442,14 @@ def _build_reviewer_graph(
         instructions = (
             "Review only the assigned Work Item. Use read-only tools, cite observed "
             "evidence, and return one JSON review_result.v1 object. Do not claim "
-            "runtime behavior from static evidence. Prefer collector facts and "
-            "code-map navigation before exact reads. Keep search results narrow "
-            "and read at most 120 lines per call; use multiple targeted reads "
-            "instead of listing or reading a whole repository."
+            "runtime behavior from static evidence. Evidence discovery order is: "
+            "use relevant deterministic collector facts first; use code_map_query or "
+            "code_map_path for symbols, call paths, or data flow; use narrow search_code "
+            "only after that; then use targeted read_file calls to form Evidence Anchors. "
+            "A simple exact collector fact or exact search may skip code map navigation. "
+            "Avoid repository-wide searches, prefer multiple small reads, and stop once "
+            "the available evidence supports PASS, FAIL, or INDETERMINATE. Read at most "
+            "200 lines per call."
         )
         context = context_manager.create(work_item, instructions)
         messages = context_manager.render_messages(context)
@@ -482,7 +484,7 @@ def _build_reviewer_graph(
             "tool_rounds": 0,
             "tokens_used": tokens,
             "tool_calls_used": 0,
-                "read_paths": [],
+            "read_paths": [],
             "output_root": output_root.as_posix(),
             "attempt_number": state.get("attempt_number", 1),
             "predecessor_attempt_id": state.get("predecessor_attempt_id"),
@@ -534,23 +536,23 @@ def _build_reviewer_graph(
                 compression_response = call_with_timeout(
                     lambda: resolve_provider(work_item).complete(
                         ModelRequest(
-                        work_item=work_item,
-                        attempt_id=state["attempt_id"],
-                        agent_id=state["agent_id"],
-                        request_kind="compression",
-                        messages=[
-                            {
-                                "role": "system",
-                                "content": (
-                                    "Compress only the supplied retired reviewer rounds into "
-                                    "the requested CompressedReviewMemory JSON object. "
-                                    "Do not invent evidence and do not include immutable "
-                                    "context, the evidence ledger, or active rounds."
-                                ),
-                            },
-                            {"role": "user", "content": json.dumps(payload, sort_keys=True)},
-                        ],
-                        tools=[],
+                            work_item=work_item,
+                            attempt_id=state["attempt_id"],
+                            agent_id=state["agent_id"],
+                            request_kind="compression",
+                            messages=[
+                                {
+                                    "role": "system",
+                                    "content": (
+                                        "Compress only the supplied retired reviewer rounds into "
+                                        "the requested CompressedReviewMemory JSON object. "
+                                        "Do not invent evidence and do not include immutable "
+                                        "context, the evidence ledger, or active rounds."
+                                    ),
+                                },
+                                {"role": "user", "content": json.dumps(payload, sort_keys=True)},
+                            ],
+                            tools=[],
                             token_budget=remaining_for_compression,
                         )
                     ),
@@ -589,11 +591,11 @@ def _build_reviewer_graph(
             response = call_with_timeout(
                 lambda: resolve_provider(work_item).complete(
                     ModelRequest(
-                    work_item=work_item,
-                    attempt_id=state["attempt_id"],
-                    agent_id=state["agent_id"],
-                    messages=prepared_messages,
-                    tools=tool_schemas(),
+                        work_item=work_item,
+                        attempt_id=state["attempt_id"],
+                        agent_id=state["agent_id"],
+                        messages=prepared_messages,
+                        tools=tool_schemas(),
                         token_budget=remaining,
                     )
                 ),
@@ -696,6 +698,7 @@ def _build_reviewer_graph(
             used = state.get("tokens_used", 0)
             tool_results: list[ScopedToolResult] = []
             for call in response.tool_calls:
+
                 def execute_call(tool_call: ToolCall = call) -> ScopedToolResult:
                     return executor.execute(tool_call)
 
@@ -778,6 +781,7 @@ def _build_reviewer_graph(
         error = state.get("error")
         error_code = state.get("error_code")
         retryable = state.get("retryable", False)
+        finalization_tokens = 0
         try:
             if error:
                 context = ReviewerContextState.model_validate(state["context"])
@@ -798,9 +802,23 @@ def _build_reviewer_graph(
                 response = ModelResponse.model_validate(state.get("response", {}))
                 if not response.content:
                     raise RuntimeError("model provider returned neither content nor tool calls")
-                result = _parse_review_result(
-                    response.content, work_item, attempt_id, state["agent_id"]
-                )
+                provider_for_finalization = resolve_provider(work_item)
+                if getattr(provider_for_finalization, "supports_strict_finalization", False):
+                    result, finalization_tokens = _finalize_terminal_result(
+                        provider=provider_for_finalization,
+                        work_item=work_item,
+                        attempt_id=attempt_id,
+                        agent_id=state["agent_id"],
+                        candidate_content=response.content,
+                        evidence_ledger=ReviewerContextState.model_validate(
+                            state["context"]
+                        ).evidence_ledger,
+                        timeout_seconds=min(model_timeout_seconds, _ensure_attempt_time(state)),
+                    )
+                else:
+                    result = _parse_review_result(
+                        response.content, work_item, attempt_id, state["agent_id"]
+                    )
                 context = ReviewerContextState.model_validate(state["context"])
                 result = _attach_evidence_ledger(result, context.evidence_ledger)
         except Exception as exc:
@@ -845,7 +863,7 @@ def _build_reviewer_graph(
             result_path=result_path.as_posix(),
             result=result,
             tool_rounds=state.get("tool_rounds", 0),
-            tokens_used=state.get("tokens_used", 0),
+            tokens_used=state.get("tokens_used", 0) + finalization_tokens,
             context_fingerprint=state["context_fingerprint"],
             error=redact_sensitive_text(error) if error else None,
             error_code=error_code,
@@ -900,6 +918,86 @@ def _parse_review_result(
     content: str, work_item: WorkItem, attempt_id: str, agent_id: str
 ) -> ReviewResult:
     return parse_review_result(redact_sensitive_text(content), work_item, attempt_id, agent_id)
+
+
+def _finalize_terminal_result(
+    *,
+    provider: ModelProvider,
+    work_item: WorkItem,
+    attempt_id: str,
+    agent_id: str,
+    candidate_content: str,
+    evidence_ledger: list[EvidenceAnchor],
+    timeout_seconds: float,
+) -> tuple[ReviewResult, int]:
+    """Request a strict terminal result without repeating the investigation.
+
+    Some compatible relays still occasionally ignore a response schema. The two
+    bounded retries are finalization-only; known legacy shapes remain a fallback
+    for the original candidate, while arbitrary prose is never guessed.
+    """
+    ledger = [
+        anchor.model_dump(mode="json", exclude={"exact_snippet"}) for anchor in evidence_ledger
+    ]
+    request_payload = json.dumps(
+        {
+            "work_item": work_item.model_dump(mode="json"),
+            "runtime_identifiers": {
+                "work_item_id": work_item.work_item_id,
+                "attempt_id": attempt_id,
+                "agent_id": agent_id,
+            },
+            "evidence_ledger": ledger,
+            "candidate_assessment": candidate_content,
+        },
+        ensure_ascii=False,
+    )
+    tokens = 0
+    for retry in range(3):
+        try:
+            response = call_with_timeout(
+                lambda: provider.complete(
+                    ModelRequest(
+                        work_item=work_item,
+                        attempt_id=attempt_id,
+                        agent_id=agent_id,
+                        request_kind="review_finalization",
+                        token_budget=4_000,
+                        tools=[],
+                        response_schema=ReviewResult.model_json_schema(),
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": (
+                                    "Return one strict review_result.v1 JSON object. "
+                                    "Cover the assigned controls and surface only. "
+                                    "Copy runtime_identifiers.work_item_id, "
+                                    "runtime_identifiers.attempt_id, and "
+                                    "runtime_identifiers.agent_id exactly into the result. "
+                                    "Cite only ledger anchor IDs. "
+                                    "Never claim runtime proof from static evidence. "
+                                    "Do not call tools or begin a new investigation."
+                                ),
+                            },
+                            {"role": "user", "content": request_payload},
+                        ],
+                    )
+                ),
+                timeout_seconds,
+                ModelTimeoutError("terminal review finalization timed out"),
+            )
+            tokens += (
+                response.input_tokens + response.output_tokens + _approx_tokens(response.content)
+            )
+            if response.tool_calls or not response.content:
+                continue
+            return _parse_review_result(response.content, work_item, attempt_id, agent_id), tokens
+        except (TypeError, ValueError, ModelTimeoutError):
+            if retry == 2:
+                break
+    # The initial model answer can still be accepted only through the strict
+    # local parser. Unknown text fails and becomes a retryable worker error.
+    return _parse_review_result(candidate_content, work_item, attempt_id, agent_id), tokens
 
 
 def _parse_compressed_memory(content: str, generation: int) -> CompressedReviewMemory:
@@ -1186,7 +1284,9 @@ def _load_attempt_history(output_root: Path, work_item_id: str) -> list[WorkerAt
     history: list[WorkerAttempt] = []
     for path in sorted(attempts_dir.glob("attempt-*/attempt.json")):
         try:
-            history.append(WorkerAttempt.model_validate(json.loads(path.read_text(encoding="utf-8"))))
+            history.append(
+                WorkerAttempt.model_validate(json.loads(path.read_text(encoding="utf-8")))
+            )
         except (OSError, ValueError, json.JSONDecodeError):
             continue
     return sorted(history, key=lambda item: item.attempt_number)
@@ -1271,9 +1371,7 @@ def _load_resume_execution(
         result_path = _resolve_attempt_ref(output_root, latest.result_ref)
         if result_path is None:
             return None, history
-        result = ReviewResult.model_validate(
-            json.loads(result_path.read_text(encoding="utf-8"))
-        )
+        result = ReviewResult.model_validate(json.loads(result_path.read_text(encoding="utf-8")))
     except (OSError, ValueError, json.JSONDecodeError):
         return None, history
     if (

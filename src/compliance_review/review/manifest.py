@@ -10,8 +10,7 @@ from compliance_review.domain.models import (
     Surface,
     WorkItem,
 )
-from compliance_review.review.applicability import control_applicability
-from compliance_review.review.models import ExcludedControl, ReviewManifest
+from compliance_review.review.models import ReviewManifest
 
 
 class ReviewManifestBuilder:
@@ -26,17 +25,7 @@ class ReviewManifestBuilder:
         max_concurrency: int = 3,
     ) -> ReviewManifest:
         grouped: dict[tuple[str, Surface], list[Control]] = defaultdict(list)
-        excluded: list[ExcludedControl] = []
         for control in controls.controls:
-            decision = control_applicability(control, profile)
-            if decision is False:
-                excluded.append(
-                    ExcludedControl(
-                        control_id=control.control_id,
-                        reason="control applicability expression evaluated false",
-                    )
-                )
-                continue
             for surface in control.required_surfaces:
                 grouped[(control.module_id, surface)].append(control)
 
@@ -51,7 +40,9 @@ class ReviewManifestBuilder:
             default_max_concurrency=max_concurrency,
             surface_roots={surface: root for surface, root in profile.roots.items()},
             work_items=work_items,
-            excluded_controls=excluded,
+            # This legacy direct-manifest path has no semantic applicability
+            # provider, so it must retain all controls conservatively.
+            excluded_controls=[],
             source_profile_version=profile.version,
             source_control_version=controls.version,
         )

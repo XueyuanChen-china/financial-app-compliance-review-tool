@@ -12,6 +12,7 @@ from compliance_review.collectors.base import CollectorResult
 from compliance_review.compilation.models import ControlValidationResult
 from compliance_review.domain.models import (
     ApplicabilityProfile,
+    ApplicabilityProfileFact,
     ApplicabilitySet,
     ControlSet,
     CoverageSet,
@@ -75,10 +76,16 @@ class ReviewSetupError(ValueError):
 class ReviewSetupService:
     """Build the deterministic Phase 1 setup artifacts for a Workspace."""
 
-    def __init__(self, workspace_root: Path, profile_provider: ModelProvider | None = None) -> None:
+    def __init__(
+        self,
+        workspace_root: Path,
+        profile_provider: ModelProvider | None = None,
+        applicability_provider: ModelProvider | None = None,
+    ) -> None:
         self.workspace_root = workspace_root.expanduser().resolve()
         self.store = ArtifactStore(self.workspace_root)
         self.profile_provider = profile_provider
+        self.applicability_provider = applicability_provider
 
     def initialize(
         self,
@@ -287,7 +294,9 @@ class ReviewSetupService:
 
         controls, control_validation = self._load_validated_controls()
         applicability_profile = _to_applicability_profile(profile, inventories)
-        applicability = ApplicabilityEngine().evaluate(applicability_profile, controls)
+        applicability = ApplicabilityEngine(self.applicability_provider).evaluate(
+            applicability_profile, controls
+        )
         coverage = CoverageUnitBuilder().build(applicability_profile, controls, applicability)
         selected_run_id = run_id or _new_run_id()
         run_paths = self.store.prepare_run_artifacts(selected_run_id)
@@ -312,7 +321,7 @@ class ReviewSetupService:
             excluded_controls=[
                 ExcludedControl(
                     control_id=control_id,
-                    reason="applicability expression evaluated false",
+                    reason="validated semantic applicability decision is not_applicable",
                 )
                 for control_id in plan.coverage.excluded_control_ids
             ],
@@ -484,6 +493,10 @@ def _to_applicability_profile(
     if review_scope not in {"full_release_package", "multi_surface_static_review", "partial"}:
         review_scope = "partial"
     try:
+        confirmed_facts = {
+            name: ApplicabilityProfileFact(value=field.value, source=field.source)
+            for name, field in profile.fields.items()
+        }
         return ApplicabilityProfile(
             contract="applicability_profile.v1",
             version=profile.version,
@@ -495,6 +508,7 @@ def _to_applicability_profile(
             evidence_surfaces=surfaces,
             review_scope=review_scope,
             roots=roots,
+            confirmed_facts=confirmed_facts,
         )
     except ValueError as exc:
         raise ReviewSetupError(

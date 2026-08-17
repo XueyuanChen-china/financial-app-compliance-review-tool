@@ -126,9 +126,7 @@ def test_review_result_parser_accepts_wrapped_and_single_control_shapes() -> Non
             "summary": "A finding was observed.",
         }
     )
-    implicit_result = parse_review_result(
-        implicit_assignment, work_item, "attempt-3", "reviewer-3"
-    )
+    implicit_result = parse_review_result(implicit_assignment, work_item, "attempt-3", "reviewer-3")
     assert implicit_result.rows[0].recommended_control_status == "fail"
 
 
@@ -220,6 +218,51 @@ def test_scheduler_runs_three_work_items_in_parallel_and_isolates_outputs(tmp_pa
     assert [event["sequence"] for event in events] == list(range(1, len(events) + 1))
     assert sum(event["event_type"] == "worker_started" for event in events) == 3
     assert sum(event["event_type"] == "worker_completed" for event in events) == 3
+
+
+def test_openai_compatible_provider_uses_tools_then_strict_terminal_finalization(
+    tmp_path: Path,
+) -> None:
+    item = _work_item("wi.strict-finalization")
+    calls: list[ModelRequest] = []
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        calls.append(request)
+        if request.request_kind == "review":
+            if len([call for call in calls if call.request_kind == "review"]) == 1:
+                return ModelResponse(
+                    tool_calls=[
+                        ToolCall(
+                            call_id="read-app",
+                            name="read_file",
+                            arguments={"path": "backend/app.py", "start_line": 1, "line_count": 4},
+                        )
+                    ]
+                )
+            # The candidate need not itself be schema-valid; finalization owns the
+            # one strict result and must not re-enter the tool loop.
+            return ModelResponse(content="Candidate: the endpoint needs review.")
+        assert request.request_kind == "review_finalization"
+        assert request.tools == []
+        assert request.response_schema is not None
+        return ModelResponse(content=_review_json(request, request.work_item, request.agent_id))
+
+    provider = StaticModelProvider(response_factory)
+    provider.supports_strict_finalization = True
+    summary = LangGraphReviewRuntime(provider=provider, max_concurrency=1).run(
+        manifest_run_id="run-strict-finalization",
+        work_items=[item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+    )
+
+    assert summary.completed == 1
+    assert [request.request_kind for request in calls] == [
+        "review",
+        "review",
+        "review_finalization",
+    ]
+    assert calls[-1].tools == []
 
 
 def test_model_failure_retries_without_overwriting_attempt_history(tmp_path: Path) -> None:
@@ -356,8 +399,7 @@ def test_completed_attempt_is_reused_after_resume(tmp_path: Path) -> None:
     assert first.completed == second.completed == 1
     assert calls == 1
     events = [
-        json.loads(line)
-        for line in (tmp_path / "worker-events.jsonl").read_text().splitlines()
+        json.loads(line) for line in (tmp_path / "worker-events.jsonl").read_text().splitlines()
     ]
     assert any(event["event_type"] == "worker_resume_skipped" for event in events)
 
@@ -405,9 +447,7 @@ def test_stale_running_attempt_is_interrupted_before_resume(tmp_path: Path) -> N
     )
     attempt_dir = output_root / item.work_item_id / "attempts" / "attempt-001"
     attempt_dir.mkdir(parents=True)
-    (attempt_dir / "attempt.json").write_text(
-        stale.model_dump_json(indent=2), encoding="utf-8"
-    )
+    (attempt_dir / "attempt.json").write_text(stale.model_dump_json(indent=2), encoding="utf-8")
 
     summary = LangGraphReviewRuntime(
         provider=StaticModelProvider(
