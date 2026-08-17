@@ -9,7 +9,12 @@ from typing import Literal, Optional, Sequence
 from pydantic import TypeAdapter
 
 from compliance_review.collectors.base import CollectorResult
-from compliance_review.compilation.models import ControlValidationResult
+from compliance_review.compilation.models import (
+    ControlValidationResult,
+    Obligation,
+    ObligationSet,
+    SourceRegistry,
+)
 from compliance_review.domain.models import (
     ApplicabilityProfile,
     ApplicabilityProfileFact,
@@ -293,8 +298,13 @@ class ReviewSetupService:
             )
 
         controls, control_validation = self._load_validated_controls()
+        source_registry, obligations = self._load_policy_artifacts()
         applicability_profile = _to_applicability_profile(profile, inventories)
-        applicability = ApplicabilityEngine(self.applicability_provider).evaluate(
+        applicability = ApplicabilityEngine(
+            self.applicability_provider,
+            source_registry=source_registry,
+            obligations=obligations,
+        ).evaluate(
             applicability_profile, controls
         )
         coverage = CoverageUnitBuilder().build(applicability_profile, controls, applicability)
@@ -400,6 +410,33 @@ class ReviewSetupService:
         if validation.validated_control_count != len(controls.controls):
             raise ReviewSetupError("control_validation count does not match setup/controls.json")
         return controls, validation
+
+    def _load_policy_artifacts(
+        self,
+    ) -> tuple[SourceRegistry | None, list[Obligation]]:
+        sources_path = self.workspace_root / "setup" / "sources.json"
+        obligations_path = self.workspace_root / "setup" / "obligations.json"
+        if not sources_path.is_file() and not obligations_path.is_file():
+            return None, []
+        if not sources_path.is_file() or not obligations_path.is_file():
+            raise ReviewSetupError(
+                "setup/sources.json and setup/obligations.json must be provided together"
+            )
+        try:
+            source_registry = (
+                SourceRegistry.model_validate(json.loads(sources_path.read_text(encoding="utf-8")))
+            )
+            obligation_set = (
+                ObligationSet.model_validate(
+                    json.loads(obligations_path.read_text(encoding="utf-8"))
+                )
+            )
+        except (OSError, ValueError, TypeError) as exc:
+            raise ReviewSetupError(f"invalid persisted policy artifacts: {exc}") from exc
+        # Phase 2 keeps the obligation artifact as ``draft`` while its compiled
+        # Control Set is validated. Applicability needs the persisted policy
+        # semantics and provenance, not a second obligation approval state.
+        return source_registry, obligation_set.obligations
 
     @staticmethod
     def _confirm_repository_surfaces(

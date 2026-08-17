@@ -5,15 +5,17 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Sequence
 
 from compliance_review.collectors.base import CollectorResult
+from compliance_review.compilation.models import Obligation, SourceRegistry
 from compliance_review.domain.models import (
     ApplicabilityProfile,
     ApplicabilitySet,
     ControlSet,
     CoverageSet,
     CoverageUnit,
+    CoverageUnitStatus,
     Surface,
     WorkItem,
 )
@@ -45,8 +47,15 @@ class WorkItemPlan:
 class ApplicabilityEngine:
     """Build a complete, validated applicability ledger for every Control."""
 
-    def __init__(self, provider: ModelProvider | None = None) -> None:
+    def __init__(
+        self,
+        provider: ModelProvider | None = None,
+        source_registry: SourceRegistry | None = None,
+        obligations: list[Obligation] | None = None,
+    ) -> None:
         self.provider = provider
+        self.source_registry = source_registry
+        self.obligations = obligations or []
 
     def evaluate(self, profile: ApplicabilityProfile, controls: ControlSet) -> ApplicabilitySet:
         if self.provider is None:
@@ -56,7 +65,10 @@ class ApplicabilityEngine:
         else:
             try:
                 decisions = SemanticApplicabilityEvaluator(self.provider).evaluate(
-                    profile, controls
+                    profile,
+                    controls,
+                    source_registry=self.source_registry,
+                    obligations=self.obligations,
                 )
             except (OSError, TypeError, ValueError):
                 # The semantic call is advisory. A transport or schema failure must
@@ -74,7 +86,13 @@ class ApplicabilityEngine:
                     )
                     for control in controls.controls
                 ]
-        decisions = ApplicabilityValidator().validate(profile, controls, decisions)
+        decisions = ApplicabilityValidator().validate(
+            profile,
+            controls,
+            decisions,
+            obligations=self.obligations,
+            source_registry=self.source_registry,
+        )
         excluded = [item.control_id for item in decisions if item.decision == "not_applicable"]
         unknown = [item.control_id for item in decisions if item.decision == "unknown"]
         return ApplicabilitySet(
@@ -100,9 +118,9 @@ class CoverageUnitBuilder:
         missing_surfaces: set[Surface] = set()
         for control in controls.controls:
             decision = decision_by_control[control.control_id]
-            ui_delivery_surfaces: set[Surface] = {"frontend_h5", "android_native"}
-            has_ui_alternative = ui_delivery_surfaces.issubset(set(control.required_surfaces))
-            active_ui_surfaces = ui_delivery_surfaces.intersection(profile.evidence_surfaces)
+            surface_requirements = {
+                item.surface: item for item in decision.surface_requirements
+            }
             for surface in control.required_surfaces:
                 requirement = control.evidence_requirements.get(surface)
                 requirement_rationale = (
@@ -125,12 +143,16 @@ class CoverageUnitBuilder:
                         )
                     )
                     continue
-                if (
-                    has_ui_alternative
-                    and surface in ui_delivery_surfaces
-                    and surface not in active_ui_surfaces
-                    and active_ui_surfaces
+                requirement_decision = surface_requirements.get(surface)
+                coverage_status: CoverageUnitStatus
+                if decision.decision == "unknown" or (
+                    requirement_decision is None or requirement_decision.decision == "unknown"
                 ):
+                    coverage_status = "unknown_applicability"
+                    reason = (
+                        "control or surface applicability is unknown; retained conservatively"
+                    )
+                elif requirement_decision.decision == "not_required":
                     units.append(
                         CoverageUnit(
                             coverage_unit_id=f"cu.{control.control_id}.{surface}",
@@ -140,33 +162,24 @@ class CoverageUnitBuilder:
                             applicability_status=decision.decision,
                             coverage_status="not_applicable",
                             required_evidence_strength=control.minimum_evidence_strength[surface],
-                            reason=(
-                                f"{surface} is not an active delivery surface in the confirmed "
-                                "AppProfile; an in-scope UI surface provides the applicable "
-                                "evidence path"
-                            ),
+                            reason=requirement_decision.reason,
                             evidence_requirement_rationale=requirement_rationale,
                         )
                     )
                     continue
+                else:
+                    coverage_status = "planned"
+                    reason = "semantic surface requirement is required and in scope"
                 surface_available = surface in profile.evidence_surfaces and (
                     surface not in _ROOT_BACKED_SURFACES or surface in profile.roots
                 )
-                if not surface_available:
-                    coverage_status: Literal[
-                        "planned", "missing_surface", "unknown_applicability"
-                    ] = "missing_surface"
+                if coverage_status == "planned" and not surface_available:
+                    coverage_status = "missing_surface"
                     missing_surfaces.add(surface)
                     reason = (
                         f"required surface {surface} is not present in the confirmed "
                         "AppProfile evidence_surfaces"
                     )
-                elif decision.decision == "unknown":
-                    coverage_status = "unknown_applicability"
-                    reason = "control retained because applicability is unknown"
-                else:
-                    coverage_status = "planned"
-                    reason = "applicable control and required surface are in scope"
                 units.append(
                     CoverageUnit(
                         coverage_unit_id=f"cu.{control.control_id}.{surface}",

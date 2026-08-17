@@ -232,3 +232,29 @@ def test_report_distinguishes_completed_work_from_complete_evidence_and_records_
     assert "## 适用性台账" in report
     assert "未知（保守保留）" in report
     assert "## 阻断原因" in report
+
+    missing_report = render_markdown_report(
+        snapshot,
+        gate.model_copy(
+            update={
+                "rows": [
+                    gate.rows[0].model_copy(
+                        update={"evidence_status": "missing"}
+                    )
+                ]
+            }
+        ),
+    )
+    assert "| `cu.control-0007.frontend_h5` | H5 / WebView | 已执行 | 缺失 |" in missing_report
+
+    failed_report = render_markdown_report(
+        snapshot,
+        gate.model_copy(
+            update={
+                "rows": [
+                    gate.rows[0].model_copy(update={"execution_status": "failed"})
+                ]
+            }
+        ),
+    )
+    assert "| `cu.control-0007.frontend_h5` | H5 / WebView | 执行失败 | 部分 |" in failed_report
