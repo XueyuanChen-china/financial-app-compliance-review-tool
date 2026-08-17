@@ -4,6 +4,12 @@ import json
 
 import pytest
 
+from compliance_review.compilation.models import (
+    ComplianceSource,
+    Obligation,
+    SourceRegistry,
+    SourceSection,
+)
 from compliance_review.domain.models import (
     ApplicabilityProfile,
     ApplicabilityProfileFact,
@@ -212,6 +218,103 @@ def test_invalid_profile_reference_is_conservative_unknown_surface() -> None:
         _profile(["android_native"]), [_requirement("android_native"), bad_requirement]
     )
     assert coverage.units[1].coverage_status == "unknown_applicability"
+
+
+@pytest.mark.parametrize("source", ["inferred", "unresolved"])
+def test_untrusted_profile_source_is_conservative_unknown_surface(source: str) -> None:
+    profile = _profile(["android_native"])
+    profile.confirmed_facts["evidence_surfaces"] = ApplicabilityProfileFact(
+        value=["android_native"], source=source  # type: ignore[arg-type]
+    )
+    requirement = _not_required("frontend_h5")
+    _, coverage = _compile(profile, [_requirement("android_native"), requirement])
+    assert coverage.units[1].coverage_status == "unknown_applicability"
+
+
+def test_deterministic_profile_source_is_trusted_for_surface_requirement() -> None:
+    profile = _profile(["android_native"])
+    profile.confirmed_facts["evidence_surfaces"] = ApplicabilityProfileFact(
+        value=["android_native"], source="deterministic"
+    )
+    _, coverage = _compile(
+        profile,
+        [_requirement("android_native"), _not_required("frontend_h5")],
+    )
+    assert coverage.units[1].coverage_status == "not_applicable"
+
+
+def test_semantic_payload_contains_absent_surface_and_policy_context() -> None:
+    captured: dict[str, object] = {}
+    control = _control().model_copy(update={"obligation_ids": ["obl.disclosure"]})
+    controls = ControlSet(contract="control_set.v1", version="1.0", controls=[control])
+    source = ComplianceSource(
+        source_id="policy-1",
+        path="policy.md",
+        title="Disclosure policy",
+        sha256="0" * 64,
+        source_family="country_regulator",
+        media_type="md",
+        extraction_status="ok",
+        sections=[
+            SourceSection(
+                section_id="section-1",
+                title="Disclosure",
+                text="A generic disclosure must be shown before the relevant action.",
+                ordinal=1,
+            )
+        ],
+    )
+    obligation = Obligation(
+        obligation_id="obl.disclosure",
+        source_id="policy-1",
+        source_section="section-1",
+        statement="A generic disclosure must be shown before the relevant action.",
+        concepts=["disclosure"],
+        applicability_expression="business_type includes personal_loan",
+        required_surfaces=["android_native"],
+        source_refs=[SOURCE_REF],
+    )
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        captured.update(json.loads(request.messages[1]["content"]))
+        return ModelResponse(
+            content=json.dumps(
+                {
+                    "decisions": [
+                        {
+                            "control_id": control.control_id,
+                            "decision": "applicable",
+                            "reason": "The obligation applies.",
+                            "source_refs": [SOURCE_REF.model_dump(mode="json")],
+                            "profile_fact_refs": [],
+                            "surface_requirements": [
+                                _requirement("android_native"),
+                                _not_required("frontend_h5"),
+                            ],
+                            "unresolved_conditions": [],
+                            "confidence": "high",
+                        }
+                    ]
+                }
+            )
+        )
+
+    SemanticApplicabilityEvaluator(StaticModelProvider(response_factory)).evaluate(
+        _profile(["android_native"]),
+        controls,
+        source_registry=SourceRegistry(version="1.0", sources=[source]),
+        obligations=[obligation],
+    )
+    surface_facts = {item["surface"]: item for item in captured["delivery_surface_facts"]}
+    assert surface_facts["android_native"]["present"] is True
+    assert surface_facts["frontend_h5"]["present"] is False
+    policy_context = captured["controls"][0]["obligations"][0]
+    assert policy_context["statement"] == obligation.statement
+    assert policy_context["section"]["text"] == source.sections[0].text
+    assert captured["controls"][0]["candidate_surfaces"] == [
+        "android_native",
+        "frontend_h5",
+    ]
 
 
 def test_illegal_surface_is_rejected_by_structured_contract() -> None:

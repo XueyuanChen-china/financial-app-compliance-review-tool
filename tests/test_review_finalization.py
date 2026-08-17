@@ -167,6 +167,9 @@ def test_backend_gap_prevents_reviewer_pass_from_becoming_final_pass(
     assert resolved[0].status == "indeterminate"
     assert gate.ci_status == "block"
     assert gate.complete is False
+    rows = {row.coverage_unit_id: row for row in gate.rows}
+    assert rows["cu.privacy.backend_required.backend_code"].execution_status == "pending"
+    assert rows["cu.privacy.backend_required.backend_code"].evidence_status == "missing"
 
 
 def test_high_severity_minimum_threshold_pass_is_valid_but_flagged(tmp_path: Path) -> None:
