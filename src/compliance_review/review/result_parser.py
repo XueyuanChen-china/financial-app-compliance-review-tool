@@ -6,7 +6,7 @@ from typing import Any, cast
 from compliance_review.domain.models import (
     ControlStatus,
     ControlSurfaceResult,
-    EvidenceStatus,
+    ReviewerEvidenceStatus,
     ReviewResult,
     Surface,
     WorkItem,
@@ -111,7 +111,7 @@ def _normalize_single_control_result(
     row = ControlSurfaceResult(
         control_id=control_id,
         surface=cast(Surface, surface),
-        evidence_status=cast(EvidenceStatus, evidence_status),
+        evidence_status=cast(ReviewerEvidenceStatus, evidence_status),
         recommended_control_status=cast(ControlStatus, recommended_status),
         confidence="medium",
         gap_reasons=gap_reasons,

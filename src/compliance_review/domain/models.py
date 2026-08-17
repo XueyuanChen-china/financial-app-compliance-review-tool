@@ -22,7 +22,8 @@ EvidenceStrength = Literal[
     "runtime_proof",
 ]
 Severity = Literal["critical", "high", "medium", "low"]
-EvidenceStatus = Literal[
+ReviewerEvidenceStatus = Literal["complete", "partial", "missing", "manual_required"]
+CoverageEvidenceStatus = Literal[
     "complete", "partial", "missing", "manual_required", "not_required", "not_applicable"
 ]
 ControlStatus = Literal["pass", "fail", "indeterminate", "not_applicable", "waived"]
@@ -285,7 +286,7 @@ class WorkItem(ContractModel):
 class ControlSurfaceResult(ContractModel):
     control_id: str = Field(min_length=1)
     surface: Surface
-    evidence_status: EvidenceStatus
+    evidence_status: ReviewerEvidenceStatus
     recommended_control_status: ControlStatus
     evidence_ids: list[str] = Field(default_factory=list)
     observed_evidence_strength: Optional[EvidenceStrength] = None
@@ -325,7 +326,7 @@ class CoverageManifestRow(ContractModel):
     work_item_id: Optional[str] = None
     attempt_id: Optional[str] = None
     execution_status: CoverageExecutionStatus
-    evidence_status: EvidenceStatus
+    evidence_status: CoverageEvidenceStatus
     result_origin: ResultOrigin
     coverage_reason: str = Field(default="coverage reason unavailable", min_length=1)
     previous_run_id: Optional[str] = None
