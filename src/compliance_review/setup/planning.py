@@ -160,7 +160,7 @@ class CoverageUnitBuilder:
                             module_id=control.module_id,
                             surface=surface,
                             applicability_status=decision.decision,
-                            coverage_status="not_applicable",
+                            coverage_status="not_required",
                             required_evidence_strength=control.minimum_evidence_strength[surface],
                             reason=requirement_decision.reason,
                             evidence_requirement_rationale=requirement_rationale,

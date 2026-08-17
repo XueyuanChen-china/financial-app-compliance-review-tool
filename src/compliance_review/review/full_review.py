@@ -360,6 +360,8 @@ _REPORT_EVIDENCE_STATUS = {
     "partial": "部分",
     "missing": "缺失",
     "manual_required": "需人工提供",
+    "not_required": "不要求",
+    "not_applicable": "不适用",
 }
 _REPORT_ORIGIN = {
     "reviewed": "本次审查",
@@ -367,6 +369,7 @@ _REPORT_ORIGIN = {
     "manual_required": "人工材料",
     "blocked": "未形成有效自动化证据",
     "not_applicable": "不适用",
+    "not_required": "法规不要求",
     "waived": "已豁免",
 }
 _REPORT_EXECUTION_STATUS = {
@@ -374,6 +377,7 @@ _REPORT_EXECUTION_STATUS = {
     "running": "执行中",
     "completed": "已执行",
     "failed": "执行失败",
+    "not_required": "无需执行",
 }
 _REPORT_APPLICABILITY = {
     "applicable": "适用",

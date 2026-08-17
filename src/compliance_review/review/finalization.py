@@ -11,13 +11,13 @@ from compliance_review.domain.models import (
     ControlSet,
     ControlStatus,
     ControlSurfaceResult,
+    CoverageExecutionStatus,
     CoverageGateResult,
     CoverageManifestRow,
     CoverageSet,
     EvidenceAnchor,
     EvidenceStatus,
     EvidenceStrength,
-    ExecutionStatus,
     Fact,
     ResolvedControlResult,
     Surface,
@@ -136,7 +136,7 @@ class ResultValidator:
             control = control_by_id.get(unit.control_id)
             if control is None:
                 issues.append(_error("unknown_control", "Coverage references an unknown control."))
-            if unit.coverage_status == "not_applicable":
+            if unit.coverage_status in {"not_applicable", "not_required"}:
                 selected_execution = None
                 selected_row = None
             elif unit.coverage_status == "missing_surface":
@@ -515,7 +515,16 @@ class ComplianceResolver:
         resolved: list[ResolvedControlResult] = []
         for control in controls.controls:
             units = units_by_control[control.control_id]
-            rows = rows_by_control.get(control.control_id, [])
+            reviewable_row_ids = {
+                f"{unit.control_id}:{unit.surface}"
+                for unit in units
+                if unit.coverage_status == "planned"
+            }
+            rows = [
+                row
+                for row in rows_by_control.get(control.control_id, [])
+                if row.row_id in reviewable_row_ids
+            ]
             reasons: list[str] = []
             if control.control_id in coverage.excluded_control_ids:
                 status: ControlStatus = "not_applicable"
@@ -530,38 +539,47 @@ class ComplianceResolver:
                 status = "fail"
                 reasons.append("Validated reviewer evidence explicitly supports failure.")
             elif not units or any(
-                unit.coverage_status not in {"planned", "not_applicable"} for unit in units
+                unit.coverage_status not in {"planned", "not_applicable", "not_required"}
+                for unit in units
             ):
                 status = "indeterminate"
                 reasons.extend(
                     f"Coverage gap: {unit.coverage_unit_id}: {unit.reason}"
                     for unit in units
-                    if unit.coverage_status not in {"planned", "not_applicable"}
+                    if unit.coverage_status not in {"planned", "not_applicable", "not_required"}
                 )
-            elif len(rows) != len(units) or any(
-                not row.valid or row.row is None or row.row.evidence_status != "complete"
-                for row in rows
-            ):
-                status = "indeterminate"
-                for row in rows:
-                    if not row.valid:
-                        reasons.extend(
-                            f"Validation gap: {issue.code}: {issue.message}" for issue in row.issues
-                        )
-                    elif row.row is not None and row.row.evidence_status != "complete":
-                        reasons.extend(row.row.gap_reasons or ["Reviewer evidence is incomplete."])
-                if not reasons:
-                    reasons.append("Validated evidence is incomplete or invalid.")
-            elif all(
-                row.row is not None and row.row.recommended_control_status == "pass" for row in rows
-            ):
-                status = "pass"
-                reasons.append("All required surfaces have validated complete evidence.")
             else:
-                status = "indeterminate"
-                reasons.append(
-                    "Reviewer recommendations do not support a deterministic terminal result."
-                )
+                reviewable_units = [unit for unit in units if unit.coverage_status == "planned"]
+                if len(rows) != len(reviewable_units) or any(
+                    not row.valid or row.row is None or row.row.evidence_status != "complete"
+                    for row in rows
+                ):
+                    status = "indeterminate"
+                    for row in rows:
+                        if not row.valid:
+                            reasons.extend(
+                                f"Validation gap: {issue.code}: {issue.message}"
+                                for issue in row.issues
+                            )
+                        elif row.row is not None and row.row.evidence_status != "complete":
+                            reasons.extend(
+                                row.row.gap_reasons or ["Reviewer evidence is incomplete."]
+                            )
+                    if not reasons:
+                        reasons.append("Validated evidence is incomplete or invalid.")
+                elif all(
+                    row.row is not None and row.row.recommended_control_status == "pass"
+                    for row in rows
+                ):
+                    status = "pass"
+                    reasons.append(
+                        "All applicable required surfaces have validated complete evidence."
+                    )
+                else:
+                    status = "indeterminate"
+                    reasons.append(
+                        "Reviewer recommendations do not support a deterministic terminal result."
+                    )
             resolved.append(
                 ResolvedControlResult(
                     control_id=control.control_id,
@@ -603,14 +621,19 @@ class CoverageGate:
                 "manual_required",
                 "blocked",
                 "not_applicable",
+                "not_required",
                 "waived",
             ]
-            execution_status: ExecutionStatus
+            execution_status: CoverageExecutionStatus
             evidence_status: EvidenceStatus
             if unit.coverage_status == "not_applicable":
                 origin = "not_applicable"
-                execution_status = "completed"
-                evidence_status = "complete"
+                execution_status = "not_required"
+                evidence_status = "not_applicable"
+            elif unit.coverage_status == "not_required":
+                origin = "not_required"
+                execution_status = "not_required"
+                evidence_status = "not_required"
             elif (
                 unit.coverage_status in {"missing_surface", "unknown_applicability"}
                 and is_automatable_surface(unit.surface)
@@ -709,7 +732,14 @@ class CoverageGate:
             and set(coverage_ids) == set(expected_ids)
             and all(
                 row.result_origin
-                in {"reviewed", "reused", "manual_required", "not_applicable", "waived"}
+                in {
+                    "reviewed",
+                    "reused",
+                    "manual_required",
+                    "not_applicable",
+                    "not_required",
+                    "waived",
+                }
                 for row in rows
             )
         )

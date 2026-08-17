@@ -931,6 +931,57 @@ def test_not_applicable_units_are_terminal_and_ci_neutral() -> None:
     assert gate.ci_status == "pass"
     assert gate.complete is True
     assert gate.rows[0].result_origin == "not_applicable"
+    assert gate.rows[0].execution_status == "not_required"
+    assert gate.rows[0].evidence_status == "not_applicable"
+
+
+def test_not_required_surface_is_terminal_without_fake_execution() -> None:
+    control = _control().model_copy(
+        update={
+            "required_surfaces": ["frontend_h5"],
+            "minimum_evidence_strength": {"frontend_h5": "static_proof"},
+        }
+    )
+    controls = ControlSet(contract="control_set.v1", version="1.0", controls=[control])
+    coverage = CoverageSet(
+        profile_version="1.0",
+        control_version="1.0",
+        units=[
+            CoverageUnit(
+                coverage_unit_id="cu.privacy.backend_required.frontend_h5",
+                control_id=control.control_id,
+                module_id="privacy",
+                surface="frontend_h5",
+                applicability_status="applicable",
+                coverage_status="not_required",
+                required_evidence_strength="static_proof",
+                reason="The obligation does not require an H5 delivery surface.",
+            )
+        ],
+    )
+    validation = ResultValidator().validate(
+        ReviewRunSummary(
+            run_id="run-not-required",
+            executions=[],
+            max_concurrency=1,
+            completed=0,
+            failed=0,
+            event_log_path="events.jsonl",
+        ),
+        coverage,
+        controls,
+        {},
+    )
+    resolved = ComplianceResolver().resolve(controls, coverage, validation, None)
+    gate = CoverageGate().evaluate(controls, coverage, validation, resolved)
+
+    assert validation.valid is True
+    assert resolved[0].status == "pass"
+    assert gate.ci_status == "pass"
+    assert gate.complete is True
+    assert gate.rows[0].result_origin == "not_required"
+    assert gate.rows[0].execution_status == "not_required"
+    assert gate.rows[0].evidence_status == "not_required"
 
 
 def test_explicit_fail_precedes_missing_other_surface(tmp_path: Path) -> None:

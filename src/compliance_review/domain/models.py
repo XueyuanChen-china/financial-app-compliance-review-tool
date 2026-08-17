@@ -22,9 +22,12 @@ EvidenceStrength = Literal[
     "runtime_proof",
 ]
 Severity = Literal["critical", "high", "medium", "low"]
-EvidenceStatus = Literal["complete", "partial", "missing", "manual_required"]
+EvidenceStatus = Literal[
+    "complete", "partial", "missing", "manual_required", "not_required", "not_applicable"
+]
 ControlStatus = Literal["pass", "fail", "indeterminate", "not_applicable", "waived"]
 ExecutionStatus = Literal["pending", "running", "completed", "failed"]
+CoverageExecutionStatus = Literal["pending", "running", "completed", "failed", "not_required"]
 ParserStatus = Literal["ok", "fallback", "failed"]
 CoverageStatus = Literal["complete", "partial", "unknown"]
 Confidence = Literal["high", "medium", "low"]
@@ -39,6 +42,7 @@ ResultOrigin = Literal[
     "manual_required",
     "blocked",
     "not_applicable",
+    "not_required",
     "waived",
 ]
 ApplicabilityDecisionStatus = Literal["applicable", "not_applicable", "unknown"]
@@ -48,6 +52,7 @@ CoverageUnitStatus = Literal[
     "missing_surface",
     "unknown_applicability",
     "not_applicable",
+    "not_required",
 ]
 
 
@@ -319,7 +324,7 @@ class CoverageManifestRow(ContractModel):
     surface: Surface
     work_item_id: Optional[str] = None
     attempt_id: Optional[str] = None
-    execution_status: ExecutionStatus
+    execution_status: CoverageExecutionStatus
     evidence_status: EvidenceStatus
     result_origin: ResultOrigin
     coverage_reason: str = Field(default="coverage reason unavailable", min_length=1)
