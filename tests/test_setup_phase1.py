@@ -65,9 +65,9 @@ def test_setup_service_persists_conservative_profile_draft(tmp_path: Path) -> No
         [WorkspaceRepository(repo_id="web", path=(FIXTURES / "frontend").as_posix())]
     )
 
-    assert result.profile.status == "awaiting_confirmation"
+    assert result.profile.status == "draft"
     assert result.profile.value_for("self_lending") == "unknown"
-    assert result.confirmation.status == "awaiting_confirmation"
+    assert result.confirmation.status == "deferred_to_applicability"
     assert "jurisdiction" in result.confirmation.required_fields
     assert (tmp_path / "workspace" / "workspace.json").is_file()
     profile = json.loads((tmp_path / "workspace" / "setup" / "app_profile_draft.json").read_text())

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from dataclasses import dataclass, field
@@ -16,8 +17,12 @@ from compliance_review.compilation.models import (
     SourceRegistry,
 )
 from compliance_review.domain.models import (
+    ApplicabilityAnswerSet,
+    ApplicabilityDecision,
     ApplicabilityProfile,
     ApplicabilityProfileFact,
+    ApplicabilityResolution,
+    ApplicabilityResolutionCheckpoint,
     ApplicabilitySet,
     ControlSet,
     CoverageSet,
@@ -27,9 +32,11 @@ from compliance_review.domain.models import (
 )
 from compliance_review.persistence import ArtifactStore
 from compliance_review.repository import RepositorySandbox
+from compliance_review.review.applicability import ApplicabilityResolutionLoop
 from compliance_review.review.models import ExcludedControl, ReviewManifest
 from compliance_review.review.provider import ModelProvider
 from compliance_review.setup.app_facts import collect_app_facts
+from compliance_review.setup.migration import adapt_control_set
 from compliance_review.setup.models import (
     AppFactSet,
     AppProfile,
@@ -43,7 +50,6 @@ from compliance_review.setup.models import (
     WorkspaceRepository,
 )
 from compliance_review.setup.planning import (
-    ApplicabilityEngine,
     CoverageUnitBuilder,
     WorkItemPlanner,
 )
@@ -72,6 +78,7 @@ class ReviewSetupResult:
     work_items: list[WorkItem] = field(default_factory=list)
     sandboxes: dict[str, RepositorySandbox] = field(default_factory=dict)
     collector_results: dict[str, CollectorResult] = field(default_factory=dict)
+    applicability_resolution: Optional[ApplicabilityResolution] = None
 
 
 class ReviewSetupError(ValueError):
@@ -105,8 +112,8 @@ class ReviewSetupService:
             materials=list(materials),
         )
         inventories = [build_repository_inventory(repository) for repository in repositories]
-        app_facts = collect_app_facts(inventories)
-        profile = build_profile_draft(inventories, app_facts)
+        app_facts = collect_app_facts(inventories, list(materials))
+        profile = build_profile_draft(inventories, app_facts, list(materials))
         if self.profile_provider is not None:
             sandboxes = {
                 inventory.repo_id: RepositorySandbox(Path(inventory.path))
@@ -122,8 +129,17 @@ class ReviewSetupService:
             for field_name, field in profile.fields.items()
             if field.source == "unresolved"
         ]
+        confirmation_status: Literal[
+            "awaiting_confirmation", "confirmed", "deferred_to_applicability"
+        ] = (
+            "awaiting_confirmation"
+            if validation.conflicts
+            else "deferred_to_applicability"
+            if unresolved
+            else "confirmed"
+        )
         confirmation = ProfileConfirmation(
-            status="awaiting_confirmation" if unresolved or validation.conflicts else "confirmed",
+            status=confirmation_status,
             required_fields=unresolved,
             conflicts=validation.conflicts,
             confirmed_fields=[],
@@ -277,6 +293,7 @@ class ReviewSetupService:
         run_id: Optional[str] = None,
         mode: ReviewMode = "full",
         max_concurrency: int = 3,
+        human_answers: Optional[dict[str, object]] = None,
     ) -> ReviewSetupResult:
         """Compile confirmed setup state into Coverage Units and Runtime Work Items."""
         workspace = workspace or self._load_workspace()
@@ -286,11 +303,9 @@ class ReviewSetupService:
             raise ReviewSetupError("max_concurrency must be between 1 and 32")
 
         inventories = [build_repository_inventory(repo) for repo in workspace.repositories]
-        app_facts = collect_app_facts(inventories)
+        app_facts = collect_app_facts(inventories, workspace.materials)
         profile = self._load_confirmed_profile()
         profile_validation = ProfileValidator().validate(profile, inventories, app_facts)
-        if profile.status != "confirmed":
-            raise ReviewSetupError("confirmed AppProfile is required before review setup")
         if not profile_validation.valid:
             raise ReviewSetupError(
                 "confirmed AppProfile failed deterministic validation: "
@@ -299,27 +314,94 @@ class ReviewSetupService:
 
         controls, control_validation = self._load_validated_controls()
         source_registry, obligations = self._load_policy_artifacts()
-        applicability_profile = _to_applicability_profile(profile, inventories)
-        applicability = ApplicabilityEngine(
+        applicability_profile = _to_applicability_profile(profile, inventories, workspace.materials)
+        applicability_loop = ApplicabilityResolutionLoop(
             self.applicability_provider,
             source_registry=source_registry,
             obligations=obligations,
-        ).evaluate(
-            applicability_profile, controls
+            max_concurrency=min(
+                max_concurrency, ApplicabilityResolutionLoop.MAX_CONCURRENCY
+            ),
         )
-        coverage = CoverageUnitBuilder().build(applicability_profile, controls, applicability)
+        profile_fingerprint = _fingerprint(profile.model_dump(mode="json"))
+        control_fingerprint = _fingerprint(controls.model_dump(mode="json"))
+        stored_answers = self._load_applicability_answers(
+            profile_fingerprint, control_fingerprint
+        )
+        effective_answers = {**stored_answers, **(human_answers or {})}
+        if human_answers:
+            self.store.write_applicability_answers(
+                ApplicabilityAnswerSet(
+                    profile_fingerprint=profile_fingerprint,
+                    control_fingerprint=control_fingerprint,
+                    answers=effective_answers,
+                )
+            )
+        resolution_profile_fingerprint = _fingerprint(
+            {
+                "profile": applicability_profile.model_dump(mode="json"),
+                "answers": effective_answers,
+            }
+        )
+        checkpoint = self._load_applicability_checkpoint(
+            resolution_profile_fingerprint, control_fingerprint
+        )
+
+        def write_checkpoint(
+            decisions: list[ApplicabilityDecision], attempts: int, tool_calls: int
+        ) -> None:
+            self.store.write_applicability_checkpoint(
+                ApplicabilityResolutionCheckpoint(
+                    profile_fingerprint=resolution_profile_fingerprint,
+                    control_fingerprint=control_fingerprint,
+                    decisions=decisions,
+                    attempts=attempts,
+                    tool_calls=tool_calls,
+                )
+            )
+
+        effective_profile, applicability, applicability_resolution = applicability_loop.resolve(
+            applicability_profile,
+            controls,
+            inventories,
+            app_facts,
+            human_answers=effective_answers,
+            initial_decisions=checkpoint.decisions if checkpoint else (),
+            checkpoint_callback=write_checkpoint,
+            initial_attempts=checkpoint.attempts if checkpoint else 0,
+            initial_tool_calls=checkpoint.tool_calls if checkpoint else 0,
+        )
+        available_surfaces = {
+            surface
+            for inventory in inventories
+            for surface in [(inventory.detected_surface or inventory.declared_surface)]
+            if surface is not None
+        }
+        available_surfaces.update(
+            material.surface
+            for material in workspace.materials
+            if material.surface is not None and Path(material.path).expanduser().exists()
+        )
+        coverage = CoverageUnitBuilder().build(
+            effective_profile,
+            controls,
+            applicability,
+            available_surfaces=available_surfaces,
+        )
         selected_run_id = run_id or _new_run_id()
         run_paths = self.store.prepare_run_artifacts(selected_run_id)
         plan = WorkItemPlanner().plan(
-            applicability_profile,
+            effective_profile,
             controls,
             coverage,
             app_facts,
             inventories,
             run_paths["run_root"],
+            materials=workspace.materials,
+            external_evidence_policy=workspace.external_evidence_policy,
         )
         manifest = ReviewManifest(
-            contract="review_manifest.v1",
+            contract="review_manifest.v2",
             run_id=selected_run_id,
             mode=mode,
             default_max_concurrency=max_concurrency,
@@ -338,14 +420,17 @@ class ReviewSetupService:
             coverage_unit_ids=[unit.coverage_unit_id for unit in plan.coverage.units],
             unknown_control_ids=plan.coverage.unknown_control_ids,
             missing_surfaces=plan.coverage.missing_surfaces,
-            source_profile_version=applicability_profile.version,
+            source_profile_version=effective_profile.version,
             source_control_version=controls.version,
         )
         self.store.write_workspace(workspace)
         self.store.write_repository_inventory(inventories)
         self.store.write_app_facts(app_facts)
         self.store.write_applicability(applicability)
+        self.store.write_applicability_profile(effective_profile)
         self.store.write_coverage_units(plan.coverage)
+        self.store.write_applicability_resolution(applicability_resolution)
+        self.store.remove_legacy_applicability_discovery_artifacts()
         self.store.write_review_manifest(selected_run_id, manifest)
         return ReviewSetupResult(
             workspace=workspace,
@@ -354,11 +439,104 @@ class ReviewSetupService:
             profile=profile,
             profile_validation=profile_validation,
             confirmation=ProfileConfirmation(
-                status="confirmed", required_fields=[], conflicts=[], confirmed_fields=[]
+                status=(
+                    "deferred_to_applicability"
+                    if applicability_resolution.pending_questions
+                    else "confirmed"
+                ),
+                required_fields=[
+                    question.fact_key for question in applicability_resolution.pending_questions
+                ],
+                conflicts=[],
+                confirmed_fields=[],
             ),
-            applicability_profile=applicability_profile,
+            applicability_profile=effective_profile,
             applicability=applicability,
             coverage=plan.coverage,
+            manifest=manifest,
+            run_id=selected_run_id,
+            work_items=plan.work_items,
+            sandboxes=plan.sandboxes,
+            collector_results=plan.collector_results,
+            applicability_resolution=applicability_resolution,
+        )
+
+    def compile_diff_from_baseline(
+        self,
+        semantic_baseline_run_id: str,
+        *,
+        run_id: Optional[str] = None,
+        max_concurrency: int = 3,
+    ) -> ReviewSetupResult:
+        """Rebuild only code/runtime inputs while preserving frozen review semantics."""
+        try:
+            frozen = self.store.read_run_json(semantic_baseline_run_id, "semantic-setup.json")
+            workspace = ComplianceWorkspace.model_validate(frozen["workspace"])
+            profile = AppProfile.model_validate(frozen["profile"])
+            applicability_profile = ApplicabilityProfile.model_validate(
+                frozen["applicability_profile"]
+            )
+            applicability = ApplicabilitySet.model_validate(frozen["applicability"])
+            coverage = CoverageSet.model_validate(frozen["coverage"])
+        except (KeyError, OSError, TypeError, ValueError) as exc:
+            raise ReviewSetupError(
+                "baseline lacks frozen semantic setup; run a new Full Review"
+            ) from exc
+        baseline_inventories = [
+            RepositoryInventory.model_validate(item) for item in frozen.get("inventories", [])
+        ]
+        inventories = [build_repository_inventory(repo) for repo in workspace.repositories]
+        if _inventory_mapping(baseline_inventories) != _inventory_mapping(inventories):
+            raise ReviewSetupError("repository or surface mapping changed; run a Full Review")
+        try:
+            controls = ControlSet.model_validate(frozen["controls"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ReviewSetupError(
+                "baseline lacks frozen Control Set; run a new Full Review"
+            ) from exc
+        if controls.version != frozen.get("control_version"):
+            raise ReviewSetupError("frozen Control Set version is invalid; run a Full Review")
+        app_facts = collect_app_facts(inventories, workspace.materials)
+        selected_run_id = run_id or _new_run_id()
+        run_paths = self.store.prepare_run_artifacts(selected_run_id)
+        plan = WorkItemPlanner().plan(
+            applicability_profile,
+            controls,
+            coverage,
+            app_facts,
+            inventories,
+            run_paths["run_root"],
+            materials=workspace.materials,
+            external_evidence_policy=workspace.external_evidence_policy,
+        )
+        manifest = ReviewManifest(
+            contract="review_manifest.v2",
+            run_id=selected_run_id,
+            mode="diff",
+            default_max_concurrency=max_concurrency,
+            surface_roots={
+                item.work_item_id: plan.sandboxes[item.work_item_id].root.as_posix()
+                for item in plan.work_items
+            },
+            work_items=plan.work_items,
+            coverage_unit_ids=[unit.coverage_unit_id for unit in coverage.units],
+            excluded_controls=[],
+            unknown_control_ids=coverage.unknown_control_ids,
+            missing_surfaces=coverage.missing_surfaces,
+            source_profile_version=applicability_profile.version,
+            source_control_version=controls.version,
+        )
+        self.store.write_review_manifest(selected_run_id, manifest)
+        return ReviewSetupResult(
+            workspace=workspace,
+            inventories=inventories,
+            app_facts=app_facts,
+            profile=profile,
+            profile_validation=ProfileValidationResult(valid=True),
+            confirmation=ProfileConfirmation(status="confirmed"),
+            applicability_profile=applicability_profile,
+            applicability=applicability,
+            coverage=coverage,
             manifest=manifest,
             run_id=selected_run_id,
             work_items=plan.work_items,
@@ -378,14 +556,60 @@ class ReviewSetupService:
     def _load_confirmed_profile(self) -> AppProfile:
         path = self.workspace_root / "setup" / "app_profile.json"
         if not path.is_file():
-            raise ReviewSetupError(
-                "confirmed AppProfile is missing at setup/app_profile.json; "
-                "confirm the AppProfile first"
-            )
+            path = self.workspace_root / "setup" / "app_profile_draft.json"
+            if not path.is_file():
+                raise ReviewSetupError(
+                    "AppProfile is missing at setup/app_profile.json or "
+                    "setup/app_profile_draft.json"
+                )
         try:
             return AppProfile.model_validate(json.loads(path.read_text(encoding="utf-8")))
         except (OSError, ValueError, TypeError) as exc:
             raise ReviewSetupError(f"invalid confirmed AppProfile: {exc}") from exc
+
+    def _load_applicability_answers(
+        self, profile_fingerprint: str, control_fingerprint: str
+    ) -> dict[str, object]:
+        path = self.workspace_root / "setup" / "applicability_answers.json"
+        if not path.is_file():
+            return {}
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ReviewSetupError(f"invalid applicability_answers.json: {exc}") from exc
+        try:
+            answer_set = ApplicabilityAnswerSet.model_validate(value)
+        except ValueError:
+            # Plain dictionaries are the pre-versioned format. They cannot be
+            # safely associated with the current profile/control snapshot.
+            return {}
+        if (
+            answer_set.profile_fingerprint != profile_fingerprint
+            or answer_set.control_fingerprint != control_fingerprint
+        ):
+            return {}
+        return answer_set.answers
+
+    def _load_applicability_checkpoint(
+        self, profile_fingerprint: str, control_fingerprint: str
+    ) -> ApplicabilityResolutionCheckpoint | None:
+        path = self.workspace_root / "setup" / "applicability_resolution_checkpoint.json"
+        if not path.is_file():
+            return None
+        try:
+            checkpoint = ApplicabilityResolutionCheckpoint.model_validate(
+                json.loads(path.read_text(encoding="utf-8"))
+            )
+        except (OSError, ValueError, TypeError) as exc:
+            raise ReviewSetupError(
+                f"invalid applicability_resolution_checkpoint.json: {exc}"
+            ) from exc
+        if (
+            checkpoint.profile_fingerprint != profile_fingerprint
+            or checkpoint.control_fingerprint != control_fingerprint
+        ):
+            return None
+        return checkpoint
 
     def _load_validated_controls(self) -> tuple[ControlSet, ControlValidationResult]:
         controls_path = self.workspace_root / "setup" / "controls.json"
@@ -395,9 +619,7 @@ class ReviewSetupService:
                 "validated controls and control_validation.json are required before review setup"
             )
         try:
-            controls = ControlSet.model_validate(
-                json.loads(controls_path.read_text(encoding="utf-8"))
-            )
+            controls = adapt_control_set(json.loads(controls_path.read_text(encoding="utf-8")))
             validation = ControlValidationResult.model_validate(
                 json.loads(validation_path.read_text(encoding="utf-8"))
             )
@@ -472,16 +694,34 @@ def _new_run_id() -> str:
     return f"run-{uuid.uuid4().hex[:16]}"
 
 
-def _to_applicability_profile(
-    profile: AppProfile, inventories: Sequence[RepositoryInventory]
-) -> ApplicabilityProfile:
-    def required_value(name: str) -> object:
-        field = profile.fields.get(name)
-        if field is None or field.value is None or field.value == "unknown":
-            raise ReviewSetupError(f"confirmed AppProfile field is unresolved: {name}")
-        return field.value
+def _fingerprint(value: object) -> str:
+    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-    raw_business_type = required_value("business_type")
+
+def _inventory_mapping(
+    inventories: Sequence[RepositoryInventory],
+) -> dict[str, tuple[str, Surface | None]]:
+    """Compare only stable repository/surface topology, never mutable Git state."""
+    return {
+        item.repo_id: (
+            Path(item.path).expanduser().resolve().as_posix(),
+            item.detected_surface or item.declared_surface,
+        )
+        for item in inventories
+    }
+
+
+def _to_applicability_profile(
+    profile: AppProfile,
+    inventories: Sequence[RepositoryInventory],
+    materials: Sequence[WorkspaceMaterial] = (),
+) -> ApplicabilityProfile:
+    def optional_value(name: str, default: object = "unknown") -> object:
+        field = profile.fields.get(name)
+        return default if field is None or field.value is None else field.value
+
+    raw_business_type = optional_value("business_type", ["unknown"])
     business_type = (
         [raw_business_type]
         if isinstance(raw_business_type, str)
@@ -490,10 +730,19 @@ def _to_applicability_profile(
         else None
     )
     if not business_type or not all(isinstance(item, str) and item for item in business_type):
-        raise ReviewSetupError("AppProfile business_type must be a non-empty string list")
-    raw_surfaces = required_value("evidence_surfaces")
+        business_type = ["unknown"]
+    raw_surfaces = optional_value("evidence_surfaces", [])
     if not isinstance(raw_surfaces, list) or not raw_surfaces:
-        raise ReviewSetupError("AppProfile evidence_surfaces must be a non-empty list")
+        raw_surfaces = [
+            inventory.detected_surface or inventory.declared_surface
+            for inventory in inventories
+            if inventory.detected_surface or inventory.declared_surface
+        ]
+    material_surfaces = [material.surface for material in materials if material.surface is not None]
+    if isinstance(raw_surfaces, list):
+        raw_surfaces = list(dict.fromkeys([*raw_surfaces, *material_surfaces]))
+    if not raw_surfaces:
+        raise ReviewSetupError("at least one repository evidence surface is required")
     try:
         surfaces = TypeAdapter(list[Surface]).validate_python(raw_surfaces)
     except (TypeError, ValueError) as exc:
@@ -517,7 +766,10 @@ def _to_applicability_profile(
         inventory_surface = inventory.detected_surface or inventory.declared_surface
         if inventory_surface is not None:
             roots.setdefault(inventory_surface, inventory.path)
-    raw_self_lending = required_value("self_lending")
+    for material in materials:
+        if material.surface is not None:
+            roots.setdefault(material.surface, material.path)
+    raw_self_lending = optional_value("self_lending", "unknown")
     if isinstance(raw_self_lending, bool):
         self_lending: bool | Literal["unknown"] = raw_self_lending
     elif raw_self_lending == "unknown":
@@ -535,11 +787,11 @@ def _to_applicability_profile(
             for name, field in profile.fields.items()
         }
         return ApplicabilityProfile(
-            contract="applicability_profile.v1",
-            version=profile.version,
-            app_name=str(required_value("app_name")),
-            package_name=str(required_value("package_name")),
-            jurisdiction=str(required_value("jurisdiction")),
+            contract="applicability_profile.v2",
+            version="2.0",
+            app_name=str(optional_value("app_name")),
+            package_name=str(optional_value("package_name")),
+            jurisdiction=str(optional_value("jurisdiction")),
             business_type=business_type,
             self_lending=self_lending,
             evidence_surfaces=surfaces,

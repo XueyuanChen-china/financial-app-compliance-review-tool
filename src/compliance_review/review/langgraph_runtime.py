@@ -36,7 +36,9 @@ from compliance_review.review.context import (
 )
 from compliance_review.review.events import AppendOnlyEventLog
 from compliance_review.review.evidence import (
+    build_verified_anchor,
     file_content_revision,
+    is_generic_anchor_snippet,
     normalize_snippet,
     strongest_evidence_strength,
 )
@@ -49,6 +51,7 @@ from compliance_review.review.models import (
     WorkerAttempt,
     WorkerExecution,
 )
+from compliance_review.review.prompt_policy import trusted_external_evidence_instructions
 from compliance_review.review.provider import ModelProvider, tool_schemas
 from compliance_review.review.redaction import redact_sensitive_text
 from compliance_review.review.reliability import (
@@ -64,6 +67,12 @@ from compliance_review.review.tools import ScopedToolExecutor, serialize_tool_re
 
 ProviderFactory = Callable[[WorkItem], ModelProvider]
 _DEFAULT_REVIEW_TOKEN_BUDGET = 64000
+_DEFAULT_FINALIZATION_RESERVE_TOKENS = 10000
+_FORCED_CONCLUSION_INSTRUCTION = (
+    "Stop using tools now. Return the most conservative terminal review_result.v1 "
+    "conclusion supported by the existing evidence ledger. Missing evidence must remain "
+    "missing or indeterminate."
+)
 
 
 class ParentState(TypedDict, total=False):
@@ -75,6 +84,7 @@ class ParentState(TypedDict, total=False):
     event_log_path: str
     max_concurrency: int
     token_budget: int
+    finalization_reserve_tokens: int
     executions: Annotated[list[dict[str, Any]], operator.add]
     attempts: Annotated[list[dict[str, Any]], operator.add]
     summary: dict[str, Any]
@@ -97,6 +107,7 @@ class ReviewerState(TypedDict, total=False):
     tool_rounds: int
     tokens_used: int
     token_budget: int
+    finalization_reserve_tokens: int
     tool_calls_used: int
     read_paths: list[str]
     error: str
@@ -108,6 +119,11 @@ class ReviewerState(TypedDict, total=False):
     deadline_monotonic: float
     error_code: str
     retryable: bool
+    force_conclusion: bool
+    direct_conclusion: bool
+    navigation_performed: bool
+    capture_pass_pending: bool
+    capture_pass_attempted: bool
 
 
 class LangGraphReviewRuntime:
@@ -124,14 +140,15 @@ class LangGraphReviewRuntime:
         provider_factory: ProviderFactory | None = None,
         max_concurrency: int = 3,
         token_budget: int = _DEFAULT_REVIEW_TOKEN_BUDGET,
+        finalization_reserve_tokens: int | None = None,
         checkpointer: Any | None = None,
         code_map_providers: Mapping[Surface, CodeMapProvider] | None = None,
         collector_results: Mapping[str, CollectorResult] | None = None,
         context_config: ReviewerRuntimeConfig | None = None,
         max_attempts: int = 2,
-        model_timeout_seconds: float = 30.0,
-        tool_timeout_seconds: float = 5.0,
-        attempt_timeout_seconds: float = 90.0,
+        model_timeout_seconds: float = 180.0,
+        tool_timeout_seconds: float = 20.0,
+        attempt_timeout_seconds: float = 300.0,
     ) -> None:
         if (provider is None) == (provider_factory is None):
             raise ValueError("provide exactly one provider or provider_factory")
@@ -139,12 +156,22 @@ class LangGraphReviewRuntime:
             raise ValueError("max_concurrency must be between 1 and 32")
         if max_attempts < 1:
             raise ValueError("max_attempts must be at least 1")
+        effective_reserve = (
+            finalization_reserve_tokens
+            if finalization_reserve_tokens is not None
+            else min(_DEFAULT_FINALIZATION_RESERVE_TOKENS, max(100, token_budget // 4))
+        )
+        if effective_reserve < 100 or effective_reserve >= token_budget:
+            raise ValueError(
+                "finalization_reserve_tokens must be at least 100 and below token_budget"
+            )
         if min(model_timeout_seconds, tool_timeout_seconds, attempt_timeout_seconds) <= 0:
             raise ValueError("runtime timeouts must be positive")
         self.provider = provider
         self.provider_factory = provider_factory
         self.max_concurrency = max_concurrency
         self.token_budget = token_budget
+        self.finalization_reserve_tokens = effective_reserve
         self.context_config = context_config or ReviewerRuntimeConfig(
             max_concurrency=max_concurrency
         )
@@ -196,6 +223,7 @@ class LangGraphReviewRuntime:
                 "event_log_path": log_path.as_posix(),
                 "max_concurrency": self.max_concurrency,
                 "token_budget": self.token_budget,
+                "finalization_reserve_tokens": self.finalization_reserve_tokens,
                 "executions": [],
                 "attempts": [],
             },
@@ -222,6 +250,7 @@ class LangGraphReviewRuntime:
             model_timeout_seconds=self.model_timeout_seconds,
             tool_timeout_seconds=self.tool_timeout_seconds,
             attempt_timeout_seconds=self.attempt_timeout_seconds,
+            finalization_reserve_tokens=self.finalization_reserve_tokens,
         )
 
         def reviewer_node(state: ParentState) -> dict[str, Any]:
@@ -315,7 +344,10 @@ class LangGraphReviewRuntime:
                             "attempt_number": number,
                             "predecessor_attempt_id": predecessor,
                             "output_root": state["output_root"],
-                            "token_budget": state.get("token_budget", self.token_budget),
+                "token_budget": state.get("token_budget", self.token_budget),
+                "finalization_reserve_tokens": state.get(
+                    "finalization_reserve_tokens", self.finalization_reserve_tokens
+                ),
                         },
                         config={"max_concurrency": 1},
                     )
@@ -403,6 +435,9 @@ def _fan_out(state: ParentState) -> list[Send] | list[str]:
                 "work_item": deepcopy(work_item),
                 "agent_index": index,
                 "token_budget": state.get("token_budget", _DEFAULT_REVIEW_TOKEN_BUDGET),
+                "finalization_reserve_tokens": state.get(
+                    "finalization_reserve_tokens", _DEFAULT_FINALIZATION_RESERVE_TOKENS
+                ),
                 "output_root": state["output_root"],
             },
         )
@@ -422,6 +457,7 @@ def _build_reviewer_graph(
     model_timeout_seconds: float,
     tool_timeout_seconds: float,
     attempt_timeout_seconds: float,
+    finalization_reserve_tokens: int,
 ) -> Any:
     context_manager = ReviewerContextManager(context_config)
 
@@ -443,17 +479,38 @@ def _build_reviewer_graph(
             "Review only the assigned Work Item. Use read-only tools, cite observed "
             "evidence, and return one JSON review_result.v1 object. Do not claim "
             "runtime behavior from static evidence. Evidence discovery order is: "
-            "use relevant deterministic collector facts first; use code_map_query or "
-            "code_map_path for symbols, call paths, or data flow; use narrow search_code "
-            "only after that; then use targeted read_file calls to form Evidence Anchors. "
-            "A simple exact collector fact or exact search may skip code map navigation. "
+            "use relevant deterministic collector facts first; for any cross-file "
+            "call, caller/callee, data-flow, WebView/bridge, permission propagation, "
+            "API-to-service, or impact question, you MUST first use the Graphify "
+            "code_map_query/path/explain/callers/callees/impact tools. Use narrow "
+            "search_code only for exact fallback verification after Graphify, then "
+            "use targeted read_file calls. Search results and Graphify results are "
+            "navigation candidates, never evidence. To cite code, call capture_anchor "
+            "with the exact verified line range; cite only its returned anchor_id. "
+            "Before returning the final JSON, perform an evidence-capture pass: every "
+            "code-derived observation that you intend to cite must have a successful "
+            "capture_anchor result. If you read or searched relevant code but capture_anchor "
+            "did not succeed, do not cite that location; mark evidence partial or missing "
+            "and explain the gap instead. Never treat read_file, search_code, or code-map "
+            "responses as formal anchors. "
+            "A simple exact collector fact may skip code map navigation only when it "
+            "fully answers the fact without a relationship claim. "
             "Avoid repository-wide searches, prefer multiple small reads, and stop once "
             "the available evidence supports PASS, FAIL, or INDETERMINATE. Read at most "
             "200 lines per call."
         )
+        instructions += trusted_external_evidence_instructions(work_item)
+        if "bounded_applicability_investigation" in work_item.target_hints.get(
+            "review_purpose", []
+        ):
+            instructions += (
+                " This Work Item has unresolved Control applicability. Investigate and cite "
+                "only bounded technical facts visible on the assigned surface. Do not decide "
+                "that the Control is applicable or not applicable, and do not recommend PASS; "
+                "return INDETERMINATE with explicit discovered facts and remaining gaps."
+            )
         context = context_manager.create(work_item, instructions)
         messages = context_manager.render_messages(context)
-        tokens = sum(_approx_tokens(str(message.get("content", ""))) for message in messages)
         event_log.append(
             "worker_attempt_started",
             {
@@ -482,7 +539,9 @@ def _build_reviewer_graph(
             "messages": messages,
             "context": context.model_dump(),
             "tool_rounds": 0,
-            "tokens_used": tokens,
+            # Provider usage is the authoritative cost.  Do not charge the
+            # initial prompt here and then charge it again on the first model call.
+            "tokens_used": 0,
             "tool_calls_used": 0,
             "read_paths": [],
             "output_root": output_root.as_posix(),
@@ -490,6 +549,9 @@ def _build_reviewer_graph(
             "predecessor_attempt_id": state.get("predecessor_attempt_id"),
             "started_at": started_at,
             "deadline_monotonic": time.monotonic() + attempt_timeout_seconds,
+            "finalization_reserve_tokens": state.get(
+                "finalization_reserve_tokens", finalization_reserve_tokens
+            ),
         }
 
     def _ensure_attempt_time(state: ReviewerState) -> float:
@@ -559,10 +621,39 @@ def _build_reviewer_graph(
                     min(model_timeout_seconds, _ensure_attempt_time(state)),
                     ModelTimeoutError("compression model call timed out"),
                 )
-                compression_tokens += (
-                    compression_response.input_tokens
-                    + compression_response.output_tokens
-                    + _approx_tokens(compression_response.content)
+                compression_cost = _response_token_cost(
+                    compression_response,
+                    [
+                        {
+                            "role": "system",
+                            "content": "Compress the supplied reviewer rounds.",
+                        },
+                        {"role": "user", "content": json.dumps(payload, sort_keys=True)},
+                    ],
+                    [],
+                )
+                compression_tokens += compression_cost
+                event_log.append(
+                    "review_model_round",
+                    {
+                        "run_id": state["run_id"],
+                        "work_item_id": work_item.work_item_id,
+                        "attempt_id": state["attempt_id"],
+                        "agent_id": state["agent_id"],
+                        "round_number": _next_round_number(context),
+                        "request_kind": "compression",
+                        "tool_names": [],
+                        "input_tokens": compression_response.input_tokens,
+                        "output_tokens": compression_response.output_tokens,
+                        "usage_available": bool(
+                            compression_response.provider_metadata.get(
+                                "usage_available", False
+                            )
+                        ),
+                        "estimated_or_billed_tokens": compression_cost,
+                        "tokens_used_after": state.get("tokens_used", 0) + compression_tokens,
+                        "forced_conclusion": False,
+                    },
                 )
                 if compression_response.tool_calls or not compression_response.content:
                     raise ValueError("compression response must be structured JSON content")
@@ -588,48 +679,161 @@ def _build_reviewer_graph(
                     "context": prepared_context.model_dump(),
                     "tokens_used": state.get("tokens_used", 0) + compression_tokens,
                 }
+            token_budget = state.get("token_budget", _DEFAULT_REVIEW_TOKEN_BUDGET)
+            finalization_reserve = state.get(
+                "finalization_reserve_tokens", finalization_reserve_tokens
+            )
+            # Tiny unit-test budgets cannot realistically fit the structured final
+            # request. Keep their tool-loop behavior; production budgets get the
+            # dynamic input reservation that prevents the final call overshooting.
+            finalization_input_reserve = (
+                _finalization_input_reserve(prepared_messages)
+                if token_budget >= 16000
+                else 0
+            )
+            capture_only = state.get("capture_pass_pending", False)
+            force_conclusion = state.get("force_conclusion", False) or (
+                remaining
+                <= finalization_reserve
+                + finalization_input_reserve
+            )
+            model_messages = list(prepared_messages)
+            model_tools = tool_schemas()
+            request_kind: Literal["review", "review_finalization"] = "review"
+            response_schema: dict[str, Any] | None = None
+            reasoning_override: Literal[
+                "none", "minimal", "low", "medium", "high", "xhigh"
+            ] | None = "medium"
+            if capture_only:
+                model_messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Evidence capture pass: code navigation already occurred, but no "
+                            "verified Anchor exists. Use only capture_anchor now, selecting one "
+                            "or more narrow exact ranges from the already inspected files. Do "
+                            "not conclude yet and do not call any other tool."
+                        ),
+                    }
+                )
+                model_tools = [
+                    schema
+                    for schema in model_tools
+                    if schema.get("function", {}).get("name") == "capture_anchor"
+                ]
+                force_conclusion = False
+                reasoning_override = "low"
+            elif force_conclusion:
+                model_messages.append(
+                    {
+                        "role": "user",
+                        "content": _FORCED_CONCLUSION_INSTRUCTION,
+                    }
+                )
+                model_tools = []
+                request_kind = "review_finalization"
+                response_schema = ReviewResult.model_json_schema()
+                reasoning_override = None
             response = call_with_timeout(
                 lambda: resolve_provider(work_item).complete(
                     ModelRequest(
                         work_item=work_item,
                         attempt_id=state["attempt_id"],
                         agent_id=state["agent_id"],
-                        messages=prepared_messages,
-                        tools=tool_schemas(),
+                        messages=model_messages,
+                        tools=model_tools,
                         token_budget=remaining,
+                        request_kind=request_kind,
+                        response_schema=response_schema,
+                        reasoning_effort_override=reasoning_override,
                     )
                 ),
                 min(model_timeout_seconds, _ensure_attempt_time(state)),
                 ModelTimeoutError("model call timed out"),
             )
-            used = (
-                state.get("tokens_used", 0)
-                + compression_tokens
-                + response.input_tokens
-                + response.output_tokens
+            response_cost = _response_token_cost(response, model_messages, model_tools)
+            used = state.get("tokens_used", 0) + compression_tokens + response_cost
+            round_number = _next_round_number(prepared_context)
+            event_log.append(
+                "review_model_round",
+                {
+                    "run_id": state["run_id"],
+                    "work_item_id": work_item.work_item_id,
+                    "attempt_id": state["attempt_id"],
+                    "agent_id": state["agent_id"],
+                    "round_number": round_number,
+                    "request_kind": request_kind,
+                    "tool_names": [call.name for call in response.tool_calls],
+                    "input_tokens": response.input_tokens,
+                    "output_tokens": response.output_tokens,
+                    "usage_available": bool(
+                        response.provider_metadata.get("usage_available", False)
+                    ),
+                    "estimated_or_billed_tokens": response_cost,
+                    "tokens_used_after": used,
+                    "forced_conclusion": force_conclusion,
+                    "finalization_input_reserve": finalization_input_reserve,
+                },
             )
-            used += _approx_tokens(response.content)
-            # A response that finishes the Work Item is still useful even when the
-            # provider reports a higher-than-estimated cumulative token count. Do
-            # not start another tool round once the budget is exhausted.
-            if response.tool_calls and used > state.get(
-                "token_budget", _DEFAULT_REVIEW_TOKEN_BUDGET
-            ):
+            navigation_limit = (
+                token_budget
+                - finalization_reserve
+                - finalization_input_reserve
+            )
+            needs_capture = False
+            if response.tool_calls and not force_conclusion and used >= navigation_limit:
+                current_has_navigation = any(
+                    call.name
+                    in {
+                        "code_map_query",
+                        "code_map_path",
+                        "code_map_explain",
+                        "code_map_callers",
+                        "code_map_callees",
+                        "code_map_impact",
+                        "read_file",
+                        "search_code",
+                    }
+                    for call in response.tool_calls
+                )
+                needs_capture = (
+                    not capture_only
+                    and current_has_navigation
+                    and not prepared_context.evidence_ledger
+                    and not state.get("capture_pass_attempted", False)
+                )
                 return {
-                    "error": "review budget exhausted before model conclusion",
-                    "error_code": "review_budget_exhausted",
-                    "retryable": False,
-                    "response": {},
+                    # Execute the tool calls that triggered the budget gate before
+                    # finalization. Dropping them here would lose the last read or
+                    # capture_anchor opportunity and falsely report no evidence.
+                    "response": response.model_dump(),
                     "context": prepared_context.model_dump(),
-                    "messages": prepared_messages,
+                    "messages": model_messages,
                     "tokens_used": used,
+                    "force_conclusion": True,
+                    "capture_pass_pending": needs_capture,
+                    "capture_pass_attempted": state.get("capture_pass_attempted", False),
                 }
             updates: dict[str, Any] = {
                 "context": prepared_context.model_dump(),
-                "messages": prepared_messages,
+                "messages": model_messages,
                 "response": response.model_dump(),
                 "tokens_used": used,
+                "force_conclusion": force_conclusion,
+                "direct_conclusion": force_conclusion,
+                "capture_pass_pending": (
+                    not capture_only
+                    and not response.tool_calls
+                    and state.get("navigation_performed", False)
+                    and not prepared_context.evidence_ledger
+                    and not state.get("capture_pass_attempted", False)
+                ),
+                "capture_pass_attempted": (
+                    state.get("capture_pass_attempted", False) or capture_only
+                ),
             }
+            if updates["capture_pass_pending"]:
+                updates["force_conclusion"] = True
             if not response.tool_calls:
                 round_item = AgentRound(
                     round_number=_next_round_number(prepared_context),
@@ -682,6 +886,7 @@ def _build_reviewer_graph(
             messages.append(
                 {
                     "role": "assistant",
+                    "content": None,
                     "tool_calls": [
                         {
                             "id": call.call_id,
@@ -702,14 +907,41 @@ def _build_reviewer_graph(
                 def execute_call(tool_call: ToolCall = call) -> ScopedToolResult:
                     return executor.execute(tool_call)
 
-                tool_result = call_with_timeout(
-                    execute_call,
-                    min(tool_timeout_seconds, _ensure_attempt_time(state)),
-                    ToolTimeoutError(f"tool execution timed out: {call.name}"),
-                )
+                try:
+                    tool_result = call_with_timeout(
+                        execute_call,
+                        min(tool_timeout_seconds, _ensure_attempt_time(state)),
+                        ToolTimeoutError(f"tool execution timed out: {call.name}"),
+                    )
+                except Exception as exc:
+                    classification = classify_error(exc)
+                    event_log.append(
+                        "review_tool_call",
+                        {
+                            "run_id": state["run_id"],
+                            "work_item_id": work_item.work_item_id,
+                            "attempt_id": state["attempt_id"],
+                            "agent_id": state["agent_id"],
+                            "round_number": tool_rounds,
+                            "tool_name": call.name,
+                            "call_id": call.call_id,
+                            "ok": False,
+                            "error_code": classification.error_code,
+                            "result_size_chars": 0,
+                            "result_estimated_tokens": 0,
+                        },
+                    )
+                    raise
                 if not tool_result.ok and tool_result.error_code == "path_escape":
                     raise ValueError("path escape security policy violation")
-                if not tool_result.ok and tool_result.retryable:
+                # Capability, path, and anchor validation errors are structured
+                # feedback for the model. Only a transient provider failure
+                # should restart the whole Worker Attempt.
+                if (
+                    not tool_result.ok
+                    and tool_result.retryable
+                    and tool_result.error_code == "transient_provider_error"
+                ):
                     raise ClassifiedWorkerError(
                         tool_result.error_code or "tool_retryable_failure",
                         tool_result.error or "retryable tool failure",
@@ -717,10 +949,25 @@ def _build_reviewer_graph(
                     )
                 tool_results.append(tool_result)
                 serialized = serialize_tool_result(tool_result)
+                event_log.append(
+                    "review_tool_call",
+                    {
+                        "run_id": state["run_id"],
+                        "work_item_id": work_item.work_item_id,
+                        "attempt_id": state["attempt_id"],
+                        "agent_id": state["agent_id"],
+                        "round_number": tool_rounds,
+                        "tool_name": call.name,
+                        "call_id": call.call_id,
+                        "ok": tool_result.ok,
+                        "error_code": tool_result.error_code,
+                        "result_size_chars": len(serialized),
+                        "result_estimated_tokens": _approx_tokens(serialized),
+                    },
+                )
                 messages.append(
                     {"role": "tool", "tool_call_id": call.call_id, "content": serialized}
                 )
-                used += _approx_tokens(serialized)
             round_item = AgentRound(
                 round_number=_next_round_number(context),
                 model_response=response.model_dump(),
@@ -738,19 +985,6 @@ def _build_reviewer_graph(
                 context,
                 _anchors_from_tool_results(work_item, response.tool_calls, tool_results, sandbox),
             )
-            if used > state.get("token_budget", _DEFAULT_REVIEW_TOKEN_BUDGET):
-                return {
-                    "messages": messages,
-                    "context": context.model_dump(),
-                    "tool_rounds": tool_rounds,
-                    "tokens_used": used,
-                    "tool_calls_used": executor.tool_calls,
-                    "read_paths": sorted(executor.read_paths),
-                    "error": "review budget exhausted before model conclusion",
-                    "error_code": "review_budget_exhausted",
-                    "retryable": False,
-                    "response": {},
-                }
             return {
                 "messages": messages,
                 "context": context.model_dump(),
@@ -758,6 +992,21 @@ def _build_reviewer_graph(
                 "tokens_used": used,
                 "tool_calls_used": executor.tool_calls,
                 "read_paths": sorted(executor.read_paths),
+                "navigation_performed": state.get("navigation_performed", False)
+                or any(
+                    call.name
+                    in {
+                        "code_map_query",
+                        "code_map_path",
+                        "code_map_explain",
+                        "code_map_callers",
+                        "code_map_callees",
+                        "code_map_impact",
+                        "read_file",
+                        "search_code",
+                    }
+                    for call in response.tool_calls
+                ),
             }
         except ContextBudgetExceeded:
             return {
@@ -772,6 +1021,10 @@ def _build_reviewer_graph(
     def route_after_model(state: ReviewerState) -> str:
         if state.get("error"):
             return "finalize"
+        if state.get("capture_pass_pending"):
+            return "call_model"
+        if state.get("force_conclusion") and not state.get("response"):
+            return "call_model"
         response = ModelResponse.model_validate(state.get("response", {}))
         return "execute_tools" if response.tool_calls else "finalize"
 
@@ -803,7 +1056,11 @@ def _build_reviewer_graph(
                 if not response.content:
                     raise RuntimeError("model provider returned neither content nor tool calls")
                 provider_for_finalization = resolve_provider(work_item)
-                if getattr(provider_for_finalization, "supports_strict_finalization", False):
+                if state.get("direct_conclusion"):
+                    result = _parse_review_result(
+                        response.content, work_item, attempt_id, state["agent_id"]
+                    )
+                elif getattr(provider_for_finalization, "supports_strict_finalization", False):
                     result, finalization_tokens = _finalize_terminal_result(
                         provider=provider_for_finalization,
                         work_item=work_item,
@@ -814,6 +1071,13 @@ def _build_reviewer_graph(
                             state["context"]
                         ).evidence_ledger,
                         timeout_seconds=min(model_timeout_seconds, _ensure_attempt_time(state)),
+                        token_budget=max(
+                            100,
+                            state.get("token_budget", _DEFAULT_REVIEW_TOKEN_BUDGET)
+                            - state.get("tokens_used", 0),
+                        ),
+                        event_log=event_log,
+                        run_id=state["run_id"],
                     )
                 else:
                     result = _parse_review_result(
@@ -920,6 +1184,39 @@ def _parse_review_result(
     return parse_review_result(redact_sensitive_text(content), work_item, attempt_id, agent_id)
 
 
+def _response_token_cost(
+    response: ModelResponse,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+) -> int:
+    """Return one model call's cost without charging prompt content twice.
+
+    Provider usage is authoritative when present. The local estimate is only a
+    fallback for providers that omit usage metadata.
+    """
+    if response.provider_metadata.get("usage_available"):
+        return response.input_tokens + response.output_tokens
+    request_text = json.dumps(
+        {"messages": messages, "tools": tools}, ensure_ascii=False, sort_keys=True
+    )
+    response_text = json.dumps(response.model_dump(), ensure_ascii=False, sort_keys=True)
+    return max(1, _approx_tokens(request_text) + _approx_tokens(response_text))
+
+
+def _finalization_input_reserve(messages: list[dict[str, Any]]) -> int:
+    """Estimate input tokens needed by the no-tools structured conclusion call."""
+    final_messages = [
+        *messages,
+        {"role": "user", "content": _FORCED_CONCLUSION_INSTRUCTION},
+    ]
+    return max(
+        1,
+        _approx_tokens(json.dumps(final_messages, ensure_ascii=False, sort_keys=True))
+        + _approx_tokens(json.dumps(ReviewResult.model_json_schema(), sort_keys=True))
+        + 512,
+    )
+
+
 def _finalize_terminal_result(
     *,
     provider: ModelProvider,
@@ -929,6 +1226,9 @@ def _finalize_terminal_result(
     candidate_content: str,
     evidence_ledger: list[EvidenceAnchor],
     timeout_seconds: float,
+    token_budget: int,
+    event_log: AppendOnlyEventLog,
+    run_id: str,
 ) -> tuple[ReviewResult, int]:
     """Request a strict terminal result without repeating the investigation.
 
@@ -936,9 +1236,13 @@ def _finalize_terminal_result(
     bounded retries are finalization-only; known legacy shapes remain a fallback
     for the original candidate, while arbitrary prose is never guessed.
     """
-    ledger = [
-        anchor.model_dump(mode="json", exclude={"exact_snippet"}) for anchor in evidence_ledger
-    ]
+    ledger = []
+    for anchor in evidence_ledger:
+        payload = anchor.model_dump(mode="json")
+        snippet = payload.get("exact_snippet")
+        if isinstance(snippet, str) and len(snippet) > 4000:
+            payload["exact_snippet"] = snippet[:4000] + "\n[TRUNCATED]"
+        ledger.append(payload)
     request_payload = json.dumps(
         {
             "work_item": work_item.model_dump(mode="json"),
@@ -962,7 +1266,7 @@ def _finalize_terminal_result(
                         attempt_id=attempt_id,
                         agent_id=agent_id,
                         request_kind="review_finalization",
-                        token_budget=4_000,
+                        token_budget=max(100, token_budget),
                         tools=[],
                         response_schema=ReviewResult.model_json_schema(),
                         messages=[
@@ -975,6 +1279,9 @@ def _finalize_terminal_result(
                                     "runtime_identifiers.attempt_id, and "
                                     "runtime_identifiers.agent_id exactly into the result. "
                                     "Cite only ledger anchor IDs. "
+                                    "If validation rejects an anchor, choose another existing "
+                                    "ledger ID. Never rewrite its path, line range, snippet, "
+                                    "hash, or revision. "
                                     "Never claim runtime proof from static evidence. "
                                     "Do not call tools or begin a new investigation."
                                 ),
@@ -986,8 +1293,34 @@ def _finalize_terminal_result(
                 timeout_seconds,
                 ModelTimeoutError("terminal review finalization timed out"),
             )
-            tokens += (
-                response.input_tokens + response.output_tokens + _approx_tokens(response.content)
+            response_cost = _response_token_cost(
+                response,
+                [
+                    {"role": "system", "content": "Return one review_result.v1 object."},
+                    {"role": "user", "content": request_payload},
+                ],
+                [],
+            )
+            tokens += response_cost
+            event_log.append(
+                "review_model_round",
+                {
+                    "run_id": run_id,
+                    "work_item_id": work_item.work_item_id,
+                    "attempt_id": attempt_id,
+                    "agent_id": agent_id,
+                    "round_number": "finalization",
+                    "request_kind": "review_finalization",
+                    "tool_names": [],
+                    "input_tokens": response.input_tokens,
+                    "output_tokens": response.output_tokens,
+                    "usage_available": bool(
+                        response.provider_metadata.get("usage_available", False)
+                    ),
+                    "estimated_or_billed_tokens": response_cost,
+                    "tokens_used_after": tokens,
+                    "forced_conclusion": False,
+                },
             )
             if response.tool_calls or not response.content:
                 continue
@@ -1028,37 +1361,45 @@ def _anchors_from_tool_results(
     for call, result in zip(calls, results):
         if not result.ok:
             continue
+        if call.name == "capture_anchor":
+            verified_anchor = getattr(result, "verified_anchor", None)
+            if verified_anchor is not None:
+                anchors.append(verified_anchor)
+            continue
         output = result.output
         references: list[dict[str, Any]] = []
-        if call.name == "read_file":
-            start_line = int(call.arguments.get("start_line", 1))
-            actual_line_count = len(output.splitlines()) if isinstance(output, str) else 0
-            references.append(
-                {
-                    "path": call.arguments.get("path"),
-                    "start_line": start_line,
-                    "end_line": start_line + max(actual_line_count, 1) - 1,
-                }
-            )
-        elif call.name in {"code_map_query", "code_map_path"} and isinstance(output, dict):
-            entries = output.get("candidates", []) + output.get("nodes", [])
-            references.extend(entry for entry in entries if isinstance(entry, dict))
-            references.extend(
-                entry
-                for entry in output.get("relations", [])
-                if isinstance(entry, dict) and entry.get("source_path")
-            )
-        elif call.name == "search_code" and isinstance(output, list):
-            references.extend(entry for entry in output if isinstance(entry, dict))
+        if call.name in {
+            "code_map_query",
+            "code_map_path",
+            "code_map_explain",
+            "code_map_callers",
+            "code_map_callees",
+            "code_map_impact",
+            "read_file",
+            "search_code",
+        }:
+            # Graphify is navigation only.  Its candidates are not evidence
+            # anchors until capture_anchor reads and hashes an exact range.
+            continue
         elif call.name == "get_collector_facts" and isinstance(output, dict):
             for fact in output.get("facts", []):
                 if not isinstance(fact, dict):
                     continue
                 for source_ref in fact.get("source_refs", []):
                     if isinstance(source_ref, dict):
+                        exact_snippet = (
+                            source_ref.get("exact_snippet")
+                            or source_ref.get("snippet")
+                            or source_ref.get("text")
+                        )
+                        if not isinstance(exact_snippet, str) or not exact_snippet.strip():
+                            # A path-only Collector fact is useful metadata,
+                            # not a verified code anchor.
+                            continue
                         references.append(
                             {
                                 **source_ref,
+                                "exact_snippet": exact_snippet,
                                 "_fact_id": fact.get("fact_id"),
                                 "_evidence_strength": fact.get("evidence_strength"),
                             }
@@ -1066,58 +1407,90 @@ def _anchors_from_tool_results(
         for reference in references:
             path = reference.get("path") or reference.get("source_path")
             symbol = reference.get("symbol")
-            if not path and not symbol:
+            if not path:
                 continue
+            raw_start_line = (
+                reference.get("start_line")
+                or reference.get("line_number")
+                or reference.get("source_line")
+            )
+            raw_end_line = reference.get("end_line") or reference.get("line_number")
+            start_line = raw_start_line if isinstance(raw_start_line, int) else None
+            end_line = raw_end_line if isinstance(raw_end_line, int) else None
             exact_snippet = _reference_snippet(call.name, output, reference)
-            normalized_hash = (
-                hashlib.sha256(normalize_snippet(exact_snippet).encode("utf-8")).hexdigest()
-                if exact_snippet
-                else None
+            verified_reference = _verify_source_reference(
+                sandbox,
+                str(path),
+                start_line,
+                end_line,
+                exact_snippet,
             )
-            anchor_payload = json.dumps(
-                {
-                    "work_item_id": work_item.work_item_id,
-                    "call_id": call.call_id,
-                    "path": path,
-                    "symbol": symbol,
-                    "start_line": reference.get("start_line") or reference.get("source_line"),
-                    "snippet_hash": normalized_hash,
-                },
-                sort_keys=True,
+            if verified_reference is None:
+                # Collector references are metadata until the current source
+                # location and snippet are re-read and matched exactly.
+                continue
+            canonical_path, start_line, end_line, exact_snippet, file_revision = (
+                verified_reference
             )
-            file_revision = None
-            if path:
-                try:
-                    file_revision = file_content_revision(sandbox.read_bytes(str(path)))
-                except (OSError, ValueError):
-                    file_revision = None
             anchors.append(
-                EvidenceAnchor(
-                    anchor_id="anchor."
-                    + hashlib.sha256(anchor_payload.encode("utf-8")).hexdigest()[:20],
-                    control_ids=list(work_item.control_ids),
+                build_verified_anchor(
+                    repository_id=work_item.repository_id,
                     source_surface=work_item.surface,
                     source_tool=call.name,
-                    path=path,
+                    path=canonical_path,
                     symbol=symbol,
-                    start_line=(
-                        reference.get("start_line")
-                        or reference.get("line_number")
-                        or reference.get("source_line")
-                    ),
-                    end_line=(reference.get("end_line") or reference.get("line_number")),
+                    start_line=start_line,
+                    end_line=end_line,
                     exact_snippet=exact_snippet,
-                    normalized_snippet_hash=normalized_hash,
                     file_revision=file_revision,
                     evidence_strength=(
                         reference.get("_evidence_strength")
                         or _tool_evidence_strength(call.name, work_item.surface)
                     ),
-                    fact_ids=([str(reference["_fact_id"])] if reference.get("_fact_id") else []),
+                    fact_ids=(
+                        [str(reference["_fact_id"])] if reference.get("_fact_id") else []
+                    ),
                     summary=f"Observed bounded result from {call.name}.",
                 )
             )
-    return anchors
+    # A repeated query/read for the same repository location is one fact, not
+    # one fact per tool call.  Canonical anchor IDs make this deterministic.
+    return list({anchor.anchor_id: anchor for anchor in anchors}.values())
+
+
+def _verify_source_reference(
+    sandbox: RepositorySandbox,
+    path: str,
+    start_line: int | None,
+    end_line: int | None,
+    exact_snippet: str | None,
+) -> tuple[str, int, int, str, str] | None:
+    """Turn a Collector source ref into an anchor only after exact re-read."""
+
+    if (
+        start_line is None
+        or end_line is None
+        or start_line < 1
+        or end_line < start_line
+        or not isinstance(exact_snippet, str)
+        or not exact_snippet.strip()
+        or is_generic_anchor_snippet(exact_snippet)
+    ):
+        return None
+    try:
+        resolved = sandbox.resolve(path)
+        canonical_path = resolved.relative_to(sandbox.root).as_posix()
+        content = sandbox.read_text(canonical_path)
+        lines = content.splitlines()
+        if end_line > len(lines):
+            return None
+        source_at_location = "\n".join(lines[start_line - 1 : end_line])
+        if normalize_snippet(source_at_location) != normalize_snippet(exact_snippet):
+            return None
+        revision = file_content_revision(sandbox.read_bytes(canonical_path))
+    except (OSError, ValueError):
+        return None
+    return canonical_path, start_line, end_line, source_at_location, revision
 
 
 def _attach_evidence_ledger(result: ReviewResult, anchors: list[EvidenceAnchor]) -> ReviewResult:
@@ -1132,7 +1505,9 @@ def _attach_evidence_ledger(result: ReviewResult, anchors: list[EvidenceAnchor])
         rows.append(
             row.model_copy(
                 update={
-                    "fact_ids": sorted(set([*row.fact_ids, *fact_ids])),
+                    # Fact provenance is derived only from cited anchors.  A
+                    # model-supplied fact id is not evidence provenance.
+                    "fact_ids": fact_ids,
                     "observed_evidence_strength": row.observed_evidence_strength or strongest,
                 }
             )
@@ -1143,7 +1518,7 @@ def _attach_evidence_ledger(result: ReviewResult, anchors: list[EvidenceAnchor])
 def _reference_snippet(tool_name: str, output: Any, reference: dict[str, Any]) -> str | None:
     if tool_name == "read_file" and isinstance(output, str):
         return output
-    for key in ("line_text", "snippet", "text"):
+    for key in ("exact_snippet", "line_text", "snippet", "text"):
         value = reference.get(key)
         if isinstance(value, str) and value.strip():
             return value
@@ -1193,7 +1568,7 @@ def _bounded_inconclusive_result(
     relevant_anchor_ids = [
         anchor.anchor_id
         for anchor in anchors
-        if set(anchor.control_ids).intersection(work_item.control_ids)
+        if anchor.source_surface == work_item.surface
     ]
     evidence_status: ReviewerEvidenceStatus = "partial" if relevant_anchor_ids else "missing"
     return ReviewResult(

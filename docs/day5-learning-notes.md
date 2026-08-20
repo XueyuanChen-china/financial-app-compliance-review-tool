@@ -11,7 +11,7 @@ Previous Snapshot + Current repositories
        repository-level Git diff
               |
               v
-  deterministic CoverageUnit impact analysis
+  parallel bounded CoverageUnit impact analysis
               |
       +-------+--------+
       |                |
@@ -22,7 +22,7 @@ Previous Snapshot + Current repositories
    Resolver + Coverage Gate + Regression + CI
 ```
 
-`CoverageUnit = Control x Required Surface` 仍是完整性和 reuse 的最小单位；`WorkItem` 只负责执行打包。程序而不是 Agent 决定 diff、影响范围、reuse 和 regression。
+`CoverageUnit = Control x Required Surface` 仍是完整性和 reuse 的最小单位；每个 Reviewer WorkItem 只绑定一个 CoverageUnit。Git hunk、输入基线和 Validator 是权威安全边界；Impact Agent 只在候选范围内提供 `affected/unaffected` 的语义判断，最多三项并行。
 
 ## 2. Git Diff 与 Surface 映射
 
@@ -46,11 +46,11 @@ Previous Snapshot + Current repositories
 - 相关 `(repo_id, surface, revision, repository content fingerprint)`。
 - 当前 surface 的 Collector Facts。
 
-不包含时间、run ID 或随机值。MVP 只复用 previous run 中 `valid + complete evidence + PASS + not suspicious` 的行；invalid、partial、indeterminate、blocked、unknown、manual 或未解决 verifier 行都会回到 re-review。
+不包含时间、run ID 或随机值。若输入语义和代码影响均未变化，Diff Review 会继承此前所有已验证的终态，包括 PASS、FAIL、partial 和 indeterminate；继承行带 `result_origin=carried_forward`、直接 `previous_run_id` 及原始 `result_origin_run_id`，不会把旧阻断信息误写成通过。
 
 ## 4. 合并与回归
 
-Diff Review 只对需要重审的 WorkItem 调用 Reviewer Runtime。`merge_validations()` 将新行与可信旧行合成完整当前账本，旧行显式标记 `result_origin=reused` 并记录 `previous_run_id`，之后仍进入原有 Resolver 和 CoverageGate。
+Diff Review 会先校验 Full 基线和当前 `sources / obligations / controls / app profile / applicability / workspace mapping / API 与外部材料` 的输入指纹。非代码输入变化直接要求 Full Review。通过预检后，`merge_validations()` 将新行与继承行合成完整当前账本；之后仍进入同一套 Resolver 和 CoverageGate。
 
 Snapshot 和报告分别记录 Reviewed / Reused 数量。Regression 比较完全确定性：
 
@@ -63,9 +63,15 @@ Snapshot 和报告分别记录 Reviewed / Reused 数量。Regression 比较完�
 `compliance-review diff-review` 除普通 review 产物外还会持久化：
 
 ```text
-runs/<run-id>/diff.json
-runs/<run-id>/impact.json
-runs/<run-id>/reuse-plan.json
+runs/<run-id>/diff/preflight.json
+runs/<run-id>/diff/diff.json
+runs/<run-id>/diff/code-states.json
+runs/<run-id>/diff/graphify-indexes.json
+runs/<run-id>/diff/impact-work-items.json
+runs/<run-id>/diff/impact-decisions.json
+runs/<run-id>/diff/impact-validation.json
+runs/<run-id>/diff/execution-plan.json
+runs/<run-id>/diff/carried-forward-lineage.json
 runs/<run-id>/regressions.json
 ```
 
@@ -75,6 +81,6 @@ runs/<run-id>/regressions.json
 
 ## 7. 当前限制
 
-- 当前 MVP 采用 repository/surface 的保守失效：一个仓库 surface 有变更，会重审该 surface 的相关 CoverageUnit；不做 AST/dataflow 精细化影响分析。
-- MVP 仅复用可信 PASS（以及确定性 not-applicable 终态），不复用 FAIL。
-- 需要已有 completed baseline Snapshot 以及其 `result_validation.json`；缺失时会 fail closed，而不会默认 reuse。
+- Impact Agent 的 `unaffected` 只是候选结论；缺少唯一结果、工具失败、响应不合法或与基线 Anchor 的 Git hunk 直接重叠时，Validator 一律改为 `affected`。
+- Graphify 是导航缓存。若已有索引过期，Diff 会先尝试不安装地重建；重建失败时仍可使用受限 search/read fallback，但不能把 Graphify 的旧结果当作依据。
+- 需要已有 completed baseline Snapshot、`result_validation.json` 和 `review-input-baseline.json`；缺少任一项都会要求新的 Full Review。

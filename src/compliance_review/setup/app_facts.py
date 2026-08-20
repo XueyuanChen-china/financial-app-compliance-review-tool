@@ -10,7 +10,7 @@ from compliance_review.collectors import (
 from compliance_review.collectors.base import CollectorResult
 from compliance_review.domain.models import Fact, SourceRef, Surface
 from compliance_review.repository import RepositorySandbox
-from compliance_review.setup.models import AppFactSet, RepositoryInventory
+from compliance_review.setup.models import AppFactSet, RepositoryInventory, WorkspaceMaterial
 
 _SIGNAL_SURFACES: dict[str, Surface] = {
     "android_manifest": "android_native",
@@ -22,7 +22,10 @@ _SIGNAL_SURFACES: dict[str, Surface] = {
 }
 
 
-def collect_app_facts(inventories: list[RepositoryInventory]) -> AppFactSet:
+def collect_app_facts(
+    inventories: list[RepositoryInventory],
+    materials: list[WorkspaceMaterial] | tuple[WorkspaceMaterial, ...] = (),
+) -> AppFactSet:
     facts: list[Fact] = []
     collector_results: list[dict[str, object]] = []
     for inventory in inventories:
@@ -107,6 +110,63 @@ def collect_app_facts(inventories: list[RepositoryInventory]) -> AppFactSet:
             result, namespaced = _namespace_result(result, inventory)
             collector_results.append(result.model_dump(mode="json"))
             facts.extend(namespaced)
+    for material_index, material in enumerate(materials, start=1):
+        if material.surface != "backend_api_doc":
+            continue
+        material_path = Path(material.path).expanduser().resolve()
+        if not material_path.exists():
+            continue
+        sandbox_root = material_path.parent if material_path.is_file() else material_path
+        roots = (".",)
+        file_globs = (
+            (material_path.name,)
+            if material_path.is_file()
+            else ("*.json", "*.yaml", "*.yml")
+        )
+        result = ApiDocumentCollector().collect(
+            RepositorySandbox(sandbox_root), roots=roots, file_globs=file_globs
+        )
+        local_facts: list[Fact] = []
+        for fact in result.facts:
+            source_refs = [
+                ref.model_copy(
+                    update={
+                        "path": (
+                            (sandbox_root / ref.path).resolve().as_posix()
+                            if ref.path and not ref.path.startswith("/")
+                            else ref.path
+                        )
+                    }
+                )
+                for ref in fact.source_refs
+            ]
+            local_facts.append(
+                fact.model_copy(
+                    update={
+                        "fact_id": (
+                            f"fact.workspace.material_api_document.{material_index}."
+                            f"{fact.fact_id.removeprefix('fact.')}"
+                        ),
+                        "repo_id": "workspace",
+                        "source_refs": source_refs,
+                        "limitations": [*fact.limitations, *material.limitations],
+                    }
+                )
+            )
+        result = result.model_copy(
+            update={
+                "repo_id": "workspace",
+                "facts": local_facts,
+                "limitations": [*result.limitations, *material.limitations],
+                "metadata": {
+                    **result.metadata,
+                    "material_path": material_path.as_posix(),
+                    "provenance": material.provenance,
+                },
+            }
+        )
+        collector_results.append(result.model_dump(mode="json"))
+        facts.extend(local_facts)
     return AppFactSet(
         facts=facts,
         inventory_ids=[inventory.repo_id for inventory in inventories],

@@ -86,6 +86,19 @@ runs/<run_id>/snapshot.json
 runs/<run_id>/report.md
 ```
 
+增量运行还会保存输入基线与影响决策，便于审计“为什么重审或继承”：
+
+```text
+runs/<run_id>/review-input-baseline.json       # Full Review 的非代码输入指纹
+runs/<run_id>/diff/preflight.json              # Diff 输入一致性检查
+runs/<run_id>/diff/diff.json                   # Git 文件和 hunk 差异
+runs/<run_id>/diff/impact-work-items.json      # 候选 CoverageUnit
+runs/<run_id>/diff/impact-decisions.json       # Agent + Validator 影响结论
+runs/<run_id>/diff/carried-forward-lineage.json
+```
+
+Diff Review 只接受同一套法规、Control、画像、Applicability、仓库映射和外部材料的 Full 基线；任一非代码输入变化会输出 `FULL_REVIEW_REQUIRED=true` 并退出，不会静默扩大重审范围。代码变化时，最多三个 Impact Agent 并行判断候选 `CoverageUnit`，未受影响的 Unit 原样继承此前的状态、证据覆盖和阻断信息；受影响 Unit 才重新生成 Reviewer WorkItem。
+
 报告使用中文固定结构，包含控制项结论、证据覆盖台账、人工复核变化、自动化证据退化、校验标记、阻断原因和机器产物路径。
 
 ## 架构摘要
@@ -125,21 +138,39 @@ Control x Required Evidence Surface
 Reviewer 只能通过受控工具读取当前 Work Item：
 
 - `code_map_query`、`code_map_path`：通过 `CodeMapProvider` 调用本地 Graphify
+- `code_map_explain`、`code_map_callers`、`code_map_callees`：解释节点并查询有向调用关系
+- `code_map_impact`：通过 Graphify `affected` 做受限影响分析
 - `search_code`、`read_file`、`list_files`：精确检索和验证源码
+- `capture_anchor`：由程序读取精确行范围并生成不可变 Verified Anchor
 - `get_collector_facts`：读取 Manifest、Dependency、API 文档等确定性事实
 
-Reviewer 不拥有 unrestricted shell，也不能修改源码、Controls、Snapshot 或最终报告。Graphify 负责代码导航，不代表代码已经满足某个合规控制项。
+Reviewer 不拥有 unrestricted shell，也不能修改源码、Controls、Snapshot 或最终报告。Graphify/search 只负责代码导航，不能直接形成 Evidence；Reviewer 必须先 `read_file` 验证，再调用 `capture_anchor`，最终只引用 `anchor_id`。Graphify 负责代码导航，不代表代码已经满足某个合规控制项。
 
-## GitHub Actions
+## 本地质量检查
 
-每次 Pull Request 和 `main` push 会执行：
+当前仓库不绑定目标项目的 CI，也没有内置 GitHub Actions workflow。提交前在本地执行：
 
-1. `pytest`
-2. `ruff check .`
-3. `mypy`
-4. Phase 1-5 compliance integration tests
+```bash
+pytest
+ruff check src tests
+mypy src
+git diff --check
+```
 
-Workflow 位于 `.github/workflows/ci.yml`。CI 质量检查和合规集成检查都必须通过，才算进入可测试状态。
+如果将工具接入被审查项目的 CI，应由目标项目自己的 workflow 调用这些命令；审查工具只负责返回 `PASS`、`WARN` 或 `BLOCK` 及退出码。
+
+## 模型中转配置
+
+项目使用 OpenAI-compatible Chat Completions 适配器。将 `.env.example` 复制为项目本地 `.env` 后配置模型和中转地址，不要提交真实密钥：
+
+```dotenv
+COMPLIANCE_REVIEW_MODEL=gpt-5.6-luna
+COMPLIANCE_REVIEW_BASE_URL=https://api.openai.com/v1/chat/completions
+COMPLIANCE_REVIEW_REASONING_EFFORT=high
+COMPLIANCE_REVIEW_TIMEOUT_SECONDS=180
+```
+
+`gpt-5.6-luna` 支持的 reasoning effort 是 `none`、`low`、`medium`、`high`、`xhigh` 和 `max`，不支持 `minimal`。如果使用中转服务，应以该服务实际支持的枚举为准。Reviewer 的工具回合会保留完整的 assistant function call 和对应 tool result，并在发送时使用 `content: null`，以兼容 Chat Completions 到 Responses 的中转层。
 
 ## 测试阶段验收
 

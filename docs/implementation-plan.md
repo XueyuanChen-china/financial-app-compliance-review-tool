@@ -164,7 +164,7 @@ module_id: data_privacy_and_permissions
 surface: android_native
 control_ids:
   - CTRL-DPP-001
-  - CTRL-DPP-003
+  - CTRL-DPP-003 
 allowed_roots:
   - app/src/main
 collector_fact_refs:
@@ -291,9 +291,20 @@ class CodeMapProvider:
 
     def path(self, request: CodeMapPath) -> CodeMapPathResult:
         ...
+
+    def explain(self, request: CodeMapExplain) -> CodeMapExplainResult:
+        ...
+
+    def neighbors(self, request: CodeMapNeighbors) -> CodeMapNeighborsResult:
+        ...
+
+    def impact(self, request: CodeMapImpact) -> CodeMapImpactResult:
+        ...
 ```
 
-第一阶段实现 `code_map_query` 和 `code_map_path`，但两者都只通过项目自己的 Provider 暴露给 Reviewer。
+Reviewer 可通过项目自己的 Provider 使用 `code_map_query`、`code_map_path`、`code_map_explain`、
+`code_map_callers`、`code_map_callees` 和 `code_map_impact`。这些返回值统一标记为
+`navigation_only=true`，只能帮助定位代码关系，不能直接成为证据。
 
 Reviewer 的目标工具集合如下：
 
@@ -306,7 +317,8 @@ read_file(path, start_line, line_count)
 get_collector_facts(collector_id, fact_ids, fact_type, limit)
 ```
 
-Reviewer 不直接调用 `graphify` CLI。`code_map_query` 和 `code_map_path` 由 `ScopedToolExecutor` 转发到 `GraphifyCodeMapProvider`，并在返回前按当前 Sandbox 和 Work Item 的 allowed roots 过滤候选。
+Reviewer 不直接调用 `graphify` CLI。全部 `code_map_*` 工具由 `ScopedToolExecutor` 转发到
+`GraphifyCodeMapProvider`，并在返回前按当前 Sandbox 和 Work Item 的 allowed roots 过滤候选。
 
 `get_collector_facts` 只读取父流程注入的 `CollectorResult`，不重新扫描代码，也不允许 Reviewer 修改 Facts。不能因为 Graphify 没返回候选，就证明代码不存在；关键 absence 判断仍必须 fallback 到 `search_code`、文件搜索和定向读取。
 
@@ -335,6 +347,11 @@ Graphify Wrapper 的返回必须是紧凑结构，不向 Reviewer 传递完整 g
 ```text
 code_map_query(query, max_candidates, budget)
 code_map_path(source, target, max_hops, budget)
+code_map_explain(symbol, max_connections, budget)
+code_map_callers(symbol, max_neighbors, budget)
+code_map_callees(symbol, max_neighbors, budget)
+code_map_impact(symbol, depth, max_nodes)
+capture_anchor(path, start_line, end_line)
 get_collector_facts(collector_id, fact_ids, fact_type, limit)
 list_files(root, pattern, limit)
 search_code(query, roots, file_globs, limit)
@@ -348,6 +365,8 @@ read_file(path, start_line, line_count)
 - 单次读取行数限制。
 - 搜索结果数量限制。
 - Graphify 候选、关系、路径 hop 和查询 budget 限制。
+- Graphify 的 explain、callers/callees 和 impact 结果也只作为导航候选，不能直接提升为 Anchor。
+- 只有 `capture_anchor` 重新读取当前文件并校验精确行区间后，才会创建 Verified Anchor。
 - Collector Facts 只能从已注入的结果集中读取。
 - Work Item 总 tool call 数量限制。
 - Work Item 级工具轮次限制。
@@ -773,17 +792,17 @@ Git Diff
 
 ## 20. 风险与缓解措施
 
-| 风险 | 影响 | 缓解措施 |
-|---|---|---|
-| Reviewer 选择性漏读 | 漏报 | 确定性 Work Items、Control-Surface receipt、Coverage Gate |
-| Agent 返回错误位置 | 证据不可追溯 | snippet hash、revision、anchor relocation |
-| 多 Agent 结论不一致 | 状态漂移 | 统一 schema、flags、确定性 Resolver |
-| 旧 PASS 被错误复用 | 严重回归漏报 | 完整 reuse fingerprint，默认保守失效 |
-| Collector 正则漏检 | 错误宣称完整 | parser/coverage status 和 limitations |
-| 上下文过大 | Agent 偷懒或超限 | Work Item 隔离、读取限制、独立 Context |
-| 多 Agent 成本高 | 延迟和预算增加 | Reviewer 并行、Work Item 限额和 checkpoint |
-| 敏感源码或密钥泄露 | 安全风险 | 只读 sandbox、redaction、provider policy |
-| 一周范围过满 | 质量下降 | 每日纵向验收，优先守住核心闭环 |
+| 风险                | 影响             | 缓解措施                                                  |
+| ------------------- | ---------------- | --------------------------------------------------------- |
+| Reviewer 选择性漏读 | 漏报             | 确定性 Work Items、Control-Surface receipt、Coverage Gate |
+| Agent 返回错误位置  | 证据不可追溯     | snippet hash、revision、anchor relocation                 |
+| 多 Agent 结论不一致 | 状态漂移         | 统一 schema、flags、确定性 Resolver                       |
+| 旧 PASS 被错误复用  | 严重回归漏报     | 完整 reuse fingerprint，默认保守失效                      |
+| Collector 正则漏检  | 错误宣称完整     | parser/coverage status 和 limitations                     |
+| 上下文过大          | Agent 偷懒或超限 | Work Item 隔离、读取限制、独立 Context                    |
+| 多 Agent 成本高     | 延迟和预算增加   | Reviewer 并行、Work Item 限额和 checkpoint                |
+| 敏感源码或密钥泄露  | 安全风险         | 只读 sandbox、redaction、provider policy                  |
+| 一周范围过满        | 质量下降         | 每日纵向验收，优先守住核心闭环                            |
 
 ## 21. 第一阶段明确不做
 

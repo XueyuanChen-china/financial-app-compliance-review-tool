@@ -25,7 +25,7 @@ def test_phase1_phase2_phase3_runtime_handoff(tmp_path: Path) -> None:
     phase1 = phase1_service.initialize(
         [WorkspaceRepository(repo_id="web", path=(FIXTURES / "frontend").as_posix())]
     )
-    assert phase1.confirmation.status == "awaiting_confirmation"
+    assert phase1.confirmation.status == "deferred_to_applicability"
     phase1_service.confirm_profile(
         {
             "app_name": "Example Loan",

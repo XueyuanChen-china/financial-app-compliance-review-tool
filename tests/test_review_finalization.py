@@ -269,7 +269,7 @@ def test_full_external_manual_requirement_is_reported_without_ci_warning() -> No
                 module_id="privacy",
                 surface="play_console",
                 applicability_status="applicable",
-                coverage_status="planned",
+                coverage_status="manual_required",
                 required_evidence_strength="declared",
                 reason="manual store evidence",
             )
@@ -309,7 +309,7 @@ def test_mixed_automated_and_external_gap_does_not_block_complete_automation(
         module_id="privacy",
         surface="play_console",
         applicability_status="applicable",
-        coverage_status="planned",
+        coverage_status="manual_required",
         required_evidence_strength="declared",
         reason="manual store evidence",
     )
@@ -327,7 +327,7 @@ def test_mixed_automated_and_external_gap_does_not_block_complete_automation(
     resolved = ComplianceResolver().resolve(controls, coverage, validation)
     gate = CoverageGate().evaluate(controls, coverage, validation, resolved, mode="full")
 
-    assert resolved[0].status == "indeterminate"
+    assert resolved[0].status == "pass"
     assert gate.complete is True
     assert gate.ci_status == "pass"
     assert gate.manual_review_existing_ids == [play_unit.coverage_unit_id]
@@ -351,7 +351,7 @@ def test_diff_manual_delta_and_automated_regression_policy() -> None:
                 module_id="privacy",
                 surface="play_console",
                 applicability_status="applicable",
-                coverage_status="planned",
+                coverage_status="manual_required",
                 required_evidence_strength="declared",
                 reason="manual store evidence",
             )
@@ -987,6 +987,66 @@ def test_not_required_surface_is_terminal_without_fake_execution() -> None:
     assert gate.rows[0].result_origin == "not_required"
     assert gate.rows[0].execution_status == "not_required"
     assert gate.rows[0].evidence_status == "not_required"
+
+
+def test_unknown_applicability_review_is_recorded_but_cannot_resolve_control(
+    tmp_path: Path,
+) -> None:
+    frontend = tmp_path / "frontend"
+    (frontend / "src").mkdir(parents=True)
+    (frontend / "src" / "consent.js").write_text(
+        "const consent = true;\n", encoding="utf-8"
+    )
+    control = _control().model_copy(
+        update={
+            "required_surfaces": ["frontend_h5"],
+            "minimum_evidence_strength": {"frontend_h5": "static_proof"},
+        }
+    )
+    controls = ControlSet(contract="control_set.v1", version="1.0", controls=[control])
+    coverage = CoverageSet(
+        profile_version="1.0",
+        control_version="1.0",
+        unknown_control_ids=[control.control_id],
+        units=[
+            _coverage().units[0].model_copy(
+                update={
+                    "applicability_status": "unknown",
+                    "coverage_status": "unknown_applicability",
+                    "reason": "Applicability remains unresolved after bounded discovery.",
+                }
+            )
+        ],
+    )
+
+    summary = _frontend_summary(frontend)
+    execution = summary.executions[0]
+    assert execution.result is not None
+    investigation_row = execution.result.rows[0].model_copy(
+        update={"recommended_control_status": "indeterminate"}
+    )
+    summary.executions[0] = execution.model_copy(
+        update={
+            "result": execution.result.model_copy(update={"rows": [investigation_row]})
+        }
+    )
+    validation = ResultValidator().validate(
+        summary,
+        coverage,
+        controls,
+        {"frontend_h5": RepositorySandbox(frontend)},
+    )
+    resolved = ComplianceResolver().resolve(controls, coverage, validation, None)
+    gate = CoverageGate().evaluate(controls, coverage, validation, resolved)
+
+    assert validation.valid is False
+    assert "unknown_applicability" in [
+        issue.code for issue in validation.rows[0].issues
+    ]
+    assert resolved[0].status == "indeterminate"
+    assert gate.ci_status == "block"
+    assert gate.rows[0].execution_status == "completed"
+    assert gate.rows[0].evidence_status == "complete"
 
 
 def test_reviewer_evidence_status_cannot_change_surface_applicability() -> None:

@@ -3,6 +3,12 @@
 from compliance_review.code_map.lifecycle import GraphifyLifecycle
 from compliance_review.code_map.models import (
     CodeMapCandidate,
+    CodeMapExplain,
+    CodeMapExplainResult,
+    CodeMapImpact,
+    CodeMapImpactResult,
+    CodeMapNeighbors,
+    CodeMapNeighborsResult,
     CodeMapPath,
     CodeMapPathResult,
     CodeMapQuery,
@@ -15,6 +21,12 @@ from compliance_review.code_map.provider import CodeMapProvider, GraphifyCodeMap
 
 __all__ = [
     "CodeMapCandidate",
+    "CodeMapExplain",
+    "CodeMapExplainResult",
+    "CodeMapImpact",
+    "CodeMapImpactResult",
+    "CodeMapNeighbors",
+    "CodeMapNeighborsResult",
     "CodeMapPath",
     "CodeMapPathResult",
     "CodeMapProvider",

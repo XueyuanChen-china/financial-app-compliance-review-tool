@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Sequence
 
 from compliance_review.code_map.models import GraphifyInitResult
+from compliance_review.repository.git import GitRepository
 
 
 class GraphifyLifecycle:
@@ -90,6 +92,7 @@ class GraphifyLifecycle:
                 "graph_output_missing",
                 message="Graphify completed without a recognized graphify-out or graph.json output",
             )
+        self._write_index_state(repo)
         return GraphifyInitResult(
             repo_path=repo.as_posix(),
             status="initialized",
@@ -130,6 +133,40 @@ class GraphifyLifecycle:
             repo / "graph.json",
         )
         return [path for path in candidates if path.is_file()]
+
+    @staticmethod
+    def index_is_fresh(repo: Path) -> bool:
+        """Require an index to describe the exact current code state.
+
+        A Graphify map is a navigation cache.  Once code changes, returning
+        results from the old cache would be misleading, so callers must rebuild
+        or fall back to bounded search/read tools.
+        """
+        state_path = repo / "graphify-out" / "index-state.json"
+        if not state_path.is_file():
+            return False
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            return False
+        state_id = state.get("code_state_id")
+        return isinstance(state_id, (str, type(None))) and state_id == GitRepository(
+            repo
+        ).code_state_id()
+
+    @staticmethod
+    def _write_index_state(repo: Path) -> None:
+        target = repo / "graphify-out" / "index-state.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps(
+                {"code_state_id": GitRepository(repo).code_state_id()},
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
     @staticmethod
     def _degraded(

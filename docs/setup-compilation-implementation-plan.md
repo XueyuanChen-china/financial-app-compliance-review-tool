@@ -293,12 +293,13 @@ setup/controls.json
    - 必须存在 confirmed AppProfile。
    - 必须存在 validated Control Set。
    - Profile 未确认或 Control 校验失败时，不进入 Review Runtime。
-2. 复用并完善 deterministic Applicability Engine。
+2. 复用并完善 structured Applicability Engine。
 
    - `TRUE`：生成 applicable Control。
    - `FALSE`：记录 excluded Control 和原因。
    - `UNKNOWN`：保守保留，不因无法判断而漏审。
-   - 禁止 Python `eval()`，继续使用有限 declarative DSL。
+   - 禁止 Python `eval()`，使用有限的 typed condition tree。
+   - 旧版字符串条件仅由 migration adapter 读取；无法无损转换时保留为 `unknown`。
 3. 新增 deterministic `CoverageUnitBuilder`。
 
    - 每个 applicable Control 与其 required surfaces 做笛卡尔展开。
@@ -307,9 +308,9 @@ setup/controls.json
    - 明确记录 excluded、unknown、missing surface。
 4. 新增或收敛 `WorkItemPlanner`。
 
-   - 按 `Module × Surface × Related Controls` 分组。
+   - 按 `Control × Surface` 建立正式 Reviewer WorkItem。
    - WorkItem 负责执行上下文和调度，不改变 Coverage 分母。
-   - 一个 WorkItem 可以包含多个 Controls，但每个 Coverage Unit 仍需单独存在。
+   - 一个正式 WorkItem 只包含一个 Control 和一个 Coverage Unit。
    - 为每个 WorkItem 写入 allowed roots、collector fact refs、target hints 和 limits。
 5. 新增 `ReviewSetupService.compile()`。
 

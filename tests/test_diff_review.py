@@ -30,9 +30,11 @@ from compliance_review.review.diff_review import (
     DiffReviewService,
     compare_regression,
     coverage_unit_fingerprint,
+    repository_input_fingerprint,
 )
 from compliance_review.review.evidence import file_content_revision, normalize_snippet
 from compliance_review.review.models import ReviewManifest, ReviewRunSummary, WorkerExecution
+from compliance_review.review.provider import StaticModelProvider
 from compliance_review.setup.models import (
     AppFactSet,
     AppProfile,
@@ -148,6 +150,7 @@ def test_manifest_read_contacts_diff_review_reruns_only_affected_unit(tmp_path: 
     baseline = FullReviewService(workspace_root, runtime).run(baseline_setup, controls)
     assert {item.status for item in baseline.snapshot.control_results} == {"pass"}
     assert baseline.snapshot.reuse_fingerprints
+    assert baseline.snapshot.semantic_baseline_run_id == "baseline"
 
     (android_root / "AndroidManifest.xml").write_text(
         '<manifest package="example">\n'
@@ -165,9 +168,13 @@ def test_manifest_read_contacts_diff_review_reruns_only_affected_unit(tmp_path: 
     assert runtime.calls == ["wi.android.permissions.android_native"]
     assert result.snapshot.reviewed_rows == ["cu.permission.contacts.android_native"]
     assert result.snapshot.reused_rows == ["cu.frontend.notice.frontend_h5"]
+    assert result.snapshot.reviewer_work_items_completed == 1
+    assert result.snapshot.reviewer_work_items_failed == 0
+    assert result.snapshot.baseline_run_id == "baseline"
+    assert result.snapshot.semantic_baseline_run_id == "baseline"
     origins = {row.coverage_unit_id: row.result_origin for row in result.coverage_gate.rows}
     assert origins["cu.permission.contacts.android_native"] == "reviewed"
-    assert origins["cu.frontend.notice.frontend_h5"] == "reused"
+    assert origins["cu.frontend.notice.frontend_h5"] == "carried_forward"
     assert result.snapshot.ci_status == "block"
     assert any(
         item["control_id"] == "permission.contacts" and item["classification"] == "regression"
@@ -176,6 +183,72 @@ def test_manifest_read_contacts_diff_review_reruns_only_affected_unit(tmp_path: 
     assert Path(result.diff_path).is_file()
     assert Path(result.impact_path).is_file()
     assert Path(result.reuse_plan_path).is_file()
+
+
+def test_same_surface_unaffected_unit_is_carried_after_unrelated_code_change(
+    tmp_path: Path,
+) -> None:
+    setup, controls, baseline = _baseline(tmp_path)
+    android_root = Path(setup.inventories[0].path)
+    (android_root / "res").mkdir()
+    (android_root / "res" / "colors.xml").write_text("<color name=\"brand\">red</color>\n")
+    current = _setup(
+        tmp_path / "workspace",
+        android_root,
+        Path(setup.inventories[1].path),
+        "diff-unaffected",
+        "diff",
+    )
+    provider = StaticModelProvider(
+        lambda request: {
+            "content": json.dumps(
+                {
+                    "coverage_unit_id": _impact_coverage_unit_id(request.messages[1]["content"]),
+                    "status": "unaffected",
+                    "reasons": ["New color resource does not affect manifest permission evidence."],
+                    "changed_file_refs": ["res/colors.xml"],
+                }
+            )
+        }
+    )
+
+    result = DiffReviewService(
+        tmp_path / "workspace", ManifestRuntime(), impact_provider=provider
+    ).run(
+        current, controls, baseline.snapshot, baseline.validation
+    )
+
+    assert result.snapshot.reviewer_work_items_completed == 0
+    assert "cu.permission.contacts.android_native" in result.snapshot.reused_rows
+
+    chained_setup = _setup(
+        tmp_path / "workspace",
+        android_root,
+        Path(setup.inventories[1].path),
+        "diff-chain",
+        "diff",
+    )
+    chained_runtime = ManifestRuntime()
+    chained = DiffReviewService(tmp_path / "workspace", chained_runtime).run(
+        chained_setup, controls, result.snapshot, result.validation
+    )
+
+    assert chained_runtime.calls == []
+    carried_row = next(
+        row
+        for row in chained.validation.rows
+        if row.control_id == "permission.contacts" and row.surface == "android_native"
+    )
+    assert carried_row.result_origin == "carried_forward"
+    assert carried_row.previous_run_id == "diff-unaffected"
+    assert chained.snapshot.baseline_run_id == "diff-unaffected"
+    assert chained.snapshot.semantic_baseline_run_id == "baseline"
+    assert carried_row.result_origin_run_id == "baseline"
+
+
+def _impact_coverage_unit_id(payload: object) -> str:
+    assert isinstance(payload, str)
+    return json.loads(payload)["coverage_unit_id"]
 
 
 def test_git_diff_keeps_repo_identity_for_same_surface_repositories(tmp_path: Path) -> None:
@@ -191,6 +264,83 @@ def test_git_diff_keeps_repo_identity_for_same_surface_repositories(tmp_path: Pa
     assert first_diff.files[0].repo_id == "backend-a"
     assert first_diff.files[0].path == "service.py"
     assert second_diff.files == []
+
+
+def test_graphify_output_does_not_invalidate_incremental_review(tmp_path: Path) -> None:
+    repository = _git_repository(tmp_path / "repository", "service.py", "one\n")
+    metadata_before = GitRepository(repository).metadata()
+    fingerprint_before = repository_input_fingerprint(
+        RepositoryInventory(
+            repo_id="repository",
+            path=repository.as_posix(),
+            detected_surface="backend_code",
+            surface_status="confirmed",
+        ),
+        {},
+    )
+
+    (repository / "graphify-out" / "cache").mkdir(parents=True)
+    (repository / "graphify-out" / "cache" / "graph.json").write_text(
+        "{}\n", encoding="utf-8"
+    )
+
+    metadata_after = GitRepository(repository).metadata()
+    diff = GitRepository(repository).diff("repository", metadata_before.revision)
+    fingerprint_after = repository_input_fingerprint(
+        RepositoryInventory(
+            repo_id="repository",
+            path=repository.as_posix(),
+            detected_surface="backend_code",
+            surface_status="confirmed",
+        ),
+        {},
+    )
+
+    assert metadata_after.is_dirty is False
+    assert metadata_after.changed_files == ()
+    assert diff.files == []
+    assert fingerprint_after == fingerprint_before
+
+
+def test_git_metadata_does_not_invalidate_incremental_review(tmp_path: Path) -> None:
+    repository = _git_repository(tmp_path / "repository", "service.py", "one\n")
+    worktree = tmp_path / "worktree"
+    subprocess.run(
+        ("git", "worktree", "add", "--detach", worktree.as_posix(), "HEAD"),
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    try:
+        original = repository_input_fingerprint(
+            RepositoryInventory(
+                repo_id="repository",
+                path=repository.as_posix(),
+                detected_surface="backend_code",
+                surface_status="confirmed",
+            ),
+            {},
+        )
+        detached = repository_input_fingerprint(
+            RepositoryInventory(
+                repo_id="worktree",
+                path=worktree.as_posix(),
+                detected_surface="backend_code",
+                surface_status="confirmed",
+            ),
+            {},
+        )
+        assert detached == original
+    finally:
+        subprocess.run(
+            ("git", "worktree", "remove", "--force", worktree.as_posix()),
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
 
 
 def test_reuse_fingerprint_changes_for_control_profile_and_evidence_inputs(tmp_path: Path) -> None:
@@ -335,7 +485,7 @@ def test_profile_or_collector_fact_change_disables_reuse(tmp_path: Path) -> None
     assert "cu.permission.contacts.android_native" in fact_plan.reuse.review_unit_ids
 
 
-def test_invalid_or_incomplete_previous_row_is_never_reused(tmp_path: Path) -> None:
+def test_invalid_previous_row_is_carried_forward_when_code_is_unchanged(tmp_path: Path) -> None:
     setup, controls, baseline = _baseline(tmp_path)
     current = _setup(
         tmp_path / "workspace",
@@ -354,7 +504,7 @@ def test_invalid_or_incomplete_previous_row_is_never_reused(tmp_path: Path) -> N
 
     plan = DiffReviewPlanner().plan(current, controls, baseline.snapshot, invalid_validation)
 
-    assert "cu.permission.contacts.android_native" in plan.reuse.review_unit_ids
+    assert "cu.permission.contacts.android_native" in plan.reuse.reused_unit_ids
 
 
 def test_regression_rules_are_deterministic() -> None:
@@ -597,3 +747,26 @@ def _git_repository(root: Path, relative_path: str, content: str) -> Path:
     ):
         subprocess.run(args, cwd=root, check=True, capture_output=True)
     return root
+
+
+def test_git_diff_records_old_and_new_hunk_ranges(tmp_path: Path) -> None:
+    repository = _git_repository(
+        tmp_path / "android-hunks",
+        "AndroidManifest.xml",
+        "<manifest>\n  <uses-permission android:name=\"OLD\" />\n</manifest>\n",
+    )
+    baseline = GitRepository(repository).metadata().revision
+    assert baseline is not None
+    (repository / "AndroidManifest.xml").write_text(
+        "<manifest>\n  <uses-permission android:name=\"NEW\" />\n</manifest>\n",
+        encoding="utf-8",
+    )
+
+    diff = GitRepository(repository).diff("android", baseline)
+
+    assert diff.comparable is True
+    assert len(diff.files) == 1
+    assert diff.files[0].old_hunks[0].start_line == 2
+    assert diff.files[0].old_hunks[0].line_count == 1
+    assert diff.files[0].new_hunks[0].start_line == 2
+    assert diff.files[0].new_hunks[0].line_count == 1

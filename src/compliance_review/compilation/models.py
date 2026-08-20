@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from compliance_review.domain.models import (
+    ApplicabilityCondition,
     ContractModel,
     ControlSet,
     EvidenceRequirement,
@@ -12,6 +13,8 @@ from compliance_review.domain.models import (
     Severity,
     SourceRef,
     Surface,
+    parse_legacy_applicability_expression,
+    render_legacy_applicability_condition,
 )
 
 SourceMediaType = Literal["md", "txt", "pdf", "docx"]
@@ -85,11 +88,23 @@ class Obligation(ContractModel):
     source_section: str = Field(min_length=1)
     statement: str = Field(min_length=1)
     concepts: list[str] = Field(min_length=1)
-    applicability_expression: str = Field(
-        min_length=1, pattern=APPLICABILITY_EXPRESSION_PATTERN
-    )
+    applicability_condition: ApplicabilityCondition
     required_surfaces: list[Surface] = Field(min_length=1)
     source_refs: list[SourceRef] = Field(min_length=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_condition(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "applicability_condition" not in value:
+            value = dict(value)
+            expression = value.pop("applicability_expression", None)
+            if expression is not None:
+                value["applicability_condition"] = parse_legacy_applicability_expression(expression)
+        return value
+
+    @property
+    def applicability_expression(self) -> str:
+        return render_legacy_applicability_condition(self.applicability_condition)
 
 
 class ObligationExtractionBatchResult(ContractModel):
@@ -115,13 +130,43 @@ class ControlDraft(ContractModel):
     severity: Severity
     obligation_ids: list[str] = Field(min_length=1)
     source_refs: list[SourceRef] = Field(min_length=1)
-    applicability_expression: str = Field(
-        min_length=1, pattern=APPLICABILITY_EXPRESSION_PATTERN
-    )
-    required_surfaces: list[Surface] = Field(min_length=1)
+    applicability_condition: ApplicabilityCondition
+    candidate_surfaces: list[Surface] = Field(default_factory=list)
+    required_surfaces: list[Surface] = Field(default_factory=list)
     evidence_requirements: dict[Surface, EvidenceRequirement] = Field(min_length=1)
     missing_evidence_policy: Literal["warn", "block"]
     reuse_invalidation_keys: list[str] = Field(min_length=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_condition(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            value = dict(value)
+            if not value.get("candidate_surfaces") and value.get("required_surfaces"):
+                value["candidate_surfaces"] = list(value["required_surfaces"])
+            if not value.get("required_surfaces") and value.get("candidate_surfaces"):
+                value["required_surfaces"] = list(value["candidate_surfaces"])
+        if isinstance(value, dict) and "applicability_condition" not in value:
+            expression = value.pop("applicability_expression", None)
+            if expression is not None:
+                value["applicability_condition"] = parse_legacy_applicability_expression(expression)
+        return value
+
+    @model_validator(mode="after")
+    def validate_surface_contract(self) -> "ControlDraft":
+        if not self.candidate_surfaces:
+            raise ValueError("ControlDraft must declare at least one candidate surface")
+        return self
+
+    @property
+    def surface_candidates(self) -> list[Surface]:
+        if self.required_surfaces and self.required_surfaces != self.candidate_surfaces:
+            return list(self.required_surfaces)
+        return list(self.candidate_surfaces or self.required_surfaces)
+
+    @property
+    def applicability_expression(self) -> str:
+        return render_legacy_applicability_condition(self.applicability_condition)
 
 
 class ControlDraftSet(ContractModel):
@@ -137,6 +182,7 @@ class ControlEvidenceRequirementItem(ContractModel):
     surface: Surface
     minimum_strength: EvidenceStrength
     rationale: str = Field(min_length=1)
+    condition: Optional[ApplicabilityCondition] = None
 
 
 class ControlDraftTransport(ContractModel):

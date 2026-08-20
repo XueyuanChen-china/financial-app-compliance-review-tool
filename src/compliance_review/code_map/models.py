@@ -27,6 +27,28 @@ class CodeMapPath(CodeMapModel):
     budget: int = Field(default=2000, ge=100, le=10000)
 
 
+class CodeMapExplain(CodeMapModel):
+    symbol: str = Field(min_length=1)
+    surface: Optional[Surface] = None
+    max_connections: int = Field(default=8, ge=1, le=20)
+    budget: int = Field(default=2000, ge=100, le=10000)
+
+
+class CodeMapNeighbors(CodeMapModel):
+    symbol: str = Field(min_length=1)
+    direction: Literal["callers", "callees"]
+    surface: Optional[Surface] = None
+    max_neighbors: int = Field(default=10, ge=1, le=20)
+    budget: int = Field(default=2000, ge=100, le=10000)
+
+
+class CodeMapImpact(CodeMapModel):
+    symbol: str = Field(min_length=1)
+    surface: Optional[Surface] = None
+    max_nodes: int = Field(default=20, ge=1, le=40)
+    depth: int = Field(default=2, ge=1, le=6)
+
+
 class CodeMapCandidate(CodeMapModel):
     symbol: str = Field(min_length=1)
     path: Optional[str] = None
@@ -39,6 +61,7 @@ class CodeMapRelation(CodeMapModel):
     source: str = Field(min_length=1)
     relation: str = Field(min_length=1)
     target: str = Field(min_length=1)
+    direction: Literal["outgoing", "incoming"] = "outgoing"
     confidence: Optional[str] = None
     source_path: Optional[str] = None
     source_line: Optional[int] = Field(default=None, ge=1)
@@ -49,6 +72,7 @@ class CodeMapQueryResult(CodeMapModel):
     surface: Optional[Surface] = None
     status: CodeMapStatus
     provider: str = "graphify"
+    navigation_only: Literal[True] = True
     candidates: list[CodeMapCandidate] = Field(default_factory=list)
     relations: list[CodeMapRelation] = Field(default_factory=list)
     error_code: Optional[str] = None
@@ -61,6 +85,44 @@ class CodeMapPathResult(CodeMapModel):
     surface: Optional[Surface] = None
     status: CodeMapStatus
     provider: str = "graphify"
+    navigation_only: Literal[True] = True
+    nodes: list[CodeMapCandidate] = Field(default_factory=list)
+    relations: list[CodeMapRelation] = Field(default_factory=list)
+    error_code: Optional[str] = None
+    truncated: bool = False
+
+
+class CodeMapExplainResult(CodeMapModel):
+    symbol: str
+    surface: Optional[Surface] = None
+    status: CodeMapStatus
+    provider: str = "graphify"
+    navigation_only: Literal[True] = True
+    node: Optional[CodeMapCandidate] = None
+    relations: list[CodeMapRelation] = Field(default_factory=list)
+    error_code: Optional[str] = None
+    truncated: bool = False
+
+
+class CodeMapNeighborsResult(CodeMapModel):
+    symbol: str
+    direction: Literal["callers", "callees"]
+    surface: Optional[Surface] = None
+    status: CodeMapStatus
+    provider: str = "graphify"
+    navigation_only: Literal[True] = True
+    nodes: list[CodeMapCandidate] = Field(default_factory=list)
+    relations: list[CodeMapRelation] = Field(default_factory=list)
+    error_code: Optional[str] = None
+    truncated: bool = False
+
+
+class CodeMapImpactResult(CodeMapModel):
+    symbol: str
+    surface: Optional[Surface] = None
+    status: CodeMapStatus
+    provider: str = "graphify"
+    navigation_only: Literal[True] = True
     nodes: list[CodeMapCandidate] = Field(default_factory=list)
     relations: list[CodeMapRelation] = Field(default_factory=list)
     error_code: Optional[str] = None

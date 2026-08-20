@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import Any, cast
 
 from compliance_review.code_map import (
+    CodeMapExplain,
+    CodeMapImpact,
+    CodeMapNeighbors,
     CodeMapPath,
     CodeMapPathResult,
     CodeMapProvider,
@@ -13,9 +16,13 @@ from compliance_review.code_map import (
     GraphifyCodeMapProvider,
 )
 from compliance_review.collectors.base import CollectorResult
-from compliance_review.domain.models import WorkItem
+from compliance_review.domain.models import EvidenceAnchor, WorkItem
 from compliance_review.repository import ReadOnlyRepositoryTools, RepositorySandbox
-from compliance_review.review.models import ScopedToolResult, ToolCall
+from compliance_review.review.evidence import (
+    build_verified_anchor,
+    file_content_revision,
+)
+from compliance_review.review.models import CandidateLocation, ScopedToolResult, ToolCall
 from compliance_review.review.redaction import redact_value
 from compliance_review.review.reliability import classify_error
 
@@ -56,11 +63,20 @@ class ScopedToolExecutor:
             self.tool_calls += 1
             if self.tool_calls > self.max_tool_calls:
                 raise ValueError("work item max_tool_calls exceeded")
+            verified_anchor: EvidenceAnchor | None = None
             output: Any
             if call.name == "code_map_query":
                 output = self._code_map_query(call.arguments)
             elif call.name == "code_map_path":
                 output = self._code_map_path(call.arguments)
+            elif call.name == "code_map_explain":
+                output = self._code_map_explain(call.arguments)
+            elif call.name in {"code_map_callers", "code_map_callees"}:
+                output = self._code_map_neighbors(call.name, call.arguments)
+            elif call.name == "code_map_impact":
+                output = self._code_map_impact(call.arguments)
+            elif call.name == "capture_anchor":
+                output, verified_anchor = self._capture_anchor(call.arguments)
             elif call.name == "get_collector_facts":
                 output = self._get_collector_facts(call.arguments)
             elif call.name == "list_files":
@@ -76,6 +92,7 @@ class ScopedToolExecutor:
                 name=call.name,
                 ok=True,
                 output=redact_value(output),
+                verified_anchor=verified_anchor if call.name == "capture_anchor" else None,
             )
         except (OSError, TypeError, ValueError) as exc:
             classification = classify_error(exc)
@@ -121,6 +138,140 @@ class ScopedToolExecutor:
         )
         result = self.code_map_provider.path(request)
         return self._bounded_code_map_path(result).model_dump()
+
+    def _code_map_explain(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        symbol = _string_argument(arguments, "symbol")
+        surface = arguments.get("surface", self.work_item.surface)
+        if surface != self.work_item.surface:
+            raise ValueError("code map surface must match the Work Item surface")
+        request = CodeMapExplain.model_validate(
+            {
+                "symbol": symbol,
+                "surface": surface,
+                "max_connections": arguments.get("max_connections", 8),
+                "budget": arguments.get("budget", 2000),
+            }
+        )
+        explain = getattr(self.code_map_provider, "explain", None)
+        if explain is None:
+            return self._unsupported_graphify_capability("code_map_explain")
+        result = explain(request)
+        if result.node is not None and not self._is_allowed_code_map_candidate(result.node.path):
+            result = result.model_copy(
+                update={
+                    "node": None,
+                    "relations": [],
+                    "status": "degraded",
+                    "error_code": "code_map_scope_filtered",
+                }
+            )
+        return cast(dict[str, Any], result.model_dump())
+
+    def _code_map_neighbors(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        symbol = _string_argument(arguments, "symbol")
+        surface = arguments.get("surface", self.work_item.surface)
+        if surface != self.work_item.surface:
+            raise ValueError("code map surface must match the Work Item surface")
+        request = CodeMapNeighbors.model_validate(
+            {
+                "symbol": symbol,
+                "direction": "callers" if name == "code_map_callers" else "callees",
+                "surface": surface,
+                "max_neighbors": arguments.get("max_neighbors", 10),
+                "budget": arguments.get("budget", 2000),
+            }
+        )
+        neighbors = getattr(self.code_map_provider, "neighbors", None)
+        if neighbors is None:
+            return self._unsupported_graphify_capability(name)
+        result = neighbors(request)
+        nodes = [node for node in result.nodes if self._is_allowed_code_map_candidate(node.path)]
+        return cast(dict[str, Any], result.model_copy(update={"nodes": nodes}).model_dump())
+
+    def _code_map_impact(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        symbol = _string_argument(arguments, "symbol")
+        surface = arguments.get("surface", self.work_item.surface)
+        if surface != self.work_item.surface:
+            raise ValueError("code map surface must match the Work Item surface")
+        request = CodeMapImpact.model_validate(
+            {
+                "symbol": symbol,
+                "surface": surface,
+                "max_nodes": arguments.get("max_nodes", 20),
+                "depth": arguments.get("depth", 2),
+            }
+        )
+        impact = getattr(self.code_map_provider, "impact", None)
+        if impact is None:
+            return self._unsupported_graphify_capability("code_map_impact")
+        result = impact(request)
+        nodes = [node for node in result.nodes if self._is_allowed_code_map_candidate(node.path)]
+        return cast(dict[str, Any], result.model_copy(update={"nodes": nodes}).model_dump())
+
+    @staticmethod
+    def _unsupported_graphify_capability(name: str) -> dict[str, Any]:
+        return {
+            "status": "unavailable",
+            "provider": "graphify",
+            "capability": name,
+            "error_code": "graphify_capability_unavailable",
+            "limitations": [
+                "The configured Graphify CLI does not expose this capability directly.",
+                "Do not treat this response as evidence that the relation is absent.",
+            ],
+        }
+
+    def _capture_anchor(
+        self, arguments: dict[str, Any]
+    ) -> tuple[dict[str, Any], EvidenceAnchor]:
+        path = _string_argument(arguments, "path")
+        canonical_path = self._allowed_path(path)
+        start_line = _bounded_int(arguments, "start_line", 1, 1, 1_000_000)
+        end_line = _bounded_int(arguments, "end_line", start_line, start_line, 1_000_000)
+        if end_line - start_line + 1 > min(self.work_item.max_lines_per_read, _MAX_READ_LINES):
+            raise ValueError("capture_anchor line range exceeds work item limit")
+        if (
+            canonical_path not in self.read_paths
+            and len(self.read_paths) >= self.work_item.max_files_read
+        ):
+            raise ValueError("work item max_files_read exceeded")
+        total_lines = len(self.sandbox.read_text(canonical_path).splitlines())
+        if start_line > total_lines or end_line > total_lines:
+            raise ValueError("capture_anchor line range is outside the current file")
+        self.read_paths.add(canonical_path)
+        exact_snippet = self.tools.read_file(
+            canonical_path,
+            start_line=start_line,
+            line_count=end_line - start_line + 1,
+        )
+        if not exact_snippet.strip():
+            raise ValueError("capture_anchor range is empty")
+        revision = file_content_revision(self.sandbox.read_bytes(canonical_path))
+        anchor = build_verified_anchor(
+            repository_id=self.work_item.repository_id,
+            source_surface=self.work_item.surface,
+            source_tool="capture_anchor",
+            path=canonical_path,
+            start_line=start_line,
+            end_line=end_line,
+            exact_snippet=exact_snippet,
+            file_revision=revision,
+            evidence_strength="static_proof",
+            summary="Programmatically captured exact source range.",
+        )
+        return (
+            {
+                "anchor_id": anchor.anchor_id,
+                "repository_id": anchor.repository_id,
+                "path": canonical_path,
+                "start_line": start_line,
+                "end_line": end_line,
+                "exact_snippet": exact_snippet,
+                "file_revision": revision,
+                "status": "verified",
+            },
+            anchor,
+        )
 
     def _get_collector_facts(self, arguments: dict[str, Any]) -> dict[str, Any]:
         collector_id = arguments.get("collector_id")
@@ -244,7 +395,20 @@ class ScopedToolExecutor:
             file_globs=tuple(str(glob) for glob in file_globs),
             limit=limit,
         )
-        return [match.__dict__ for match in matches]
+        return [
+            CandidateLocation(
+                source_tool="search_code",
+                path=match.path,
+                start_line=match.line_number,
+                end_line=match.line_number,
+                confidence="search_match",
+            ).model_dump()
+            | {
+                "line_number": match.line_number,
+                "line_text": match.line_text,
+            }
+            for match in matches
+        ]
 
     def _read_file(self, arguments: dict[str, Any]) -> str:
         path = _string_argument(arguments, "path")

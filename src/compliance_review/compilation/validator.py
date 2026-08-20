@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from collections import Counter
 
@@ -10,14 +11,13 @@ from compliance_review.compilation.models import (
     ObligationSet,
     SourceRegistry,
 )
-from compliance_review.domain.models import Control, ControlSet, SourceRef
-
-_CLAUSE_RE = re.compile(
-    r"^(?:(?P<field>[A-Za-z_][A-Za-z0-9_]*)\s*==\s*(?P<equals>[^\s]+)|"
-    r"(?P<include_field>[A-Za-z_][A-Za-z0-9_]*)\s+includes\s+(?P<include>[^\s]+)|"
-    r"(?P<value>[A-Za-z0-9_.-]+)\s+in\s+(?P<in_field>[A-Za-z_][A-Za-z0-9_]*))$"
+from compliance_review.domain.models import (
+    ApplicabilityCondition,
+    Control,
+    ControlSet,
+    SourceRef,
+    parse_legacy_applicability_expression,
 )
-_ALLOWED_FIELDS = {"business_type", "evidence_surfaces", "self_lending", "jurisdiction"}
 
 
 class ControlValidator:
@@ -75,9 +75,7 @@ class ControlValidator:
                 )
             errors.extend(
                 f"obligation {obligation.obligation_id}: {message}"
-                for message in validate_applicability_expression(
-                    obligation.applicability_expression
-                )
+                for message in validate_applicability_condition(obligation.applicability_condition)
             )
             primary_ref = (obligation.source_id, obligation.source_section)
             obligation_ref_keys = _source_ref_keys(obligation.source_refs)
@@ -114,15 +112,61 @@ class ControlValidator:
                     linked_obligations.append(linked_obligation)
             errors.extend(
                 f"control {draft.control_id}: {message}"
-                for message in validate_applicability_expression(draft.applicability_expression)
+                for message in validate_applicability_condition(draft.applicability_condition)
             )
-            if set(draft.required_surfaces) != set(draft.evidence_requirements):
+            if set(draft.surface_candidates) != set(draft.evidence_requirements):
                 errors.append(
                     f"control {draft.control_id} evidence requirements must cover exactly "
-                    "required surfaces"
+                    "candidate surfaces"
                 )
             if not draft.evidence_requirements:
                 errors.append(f"control {draft.control_id} has no evidence requirements")
+            linked_id_set = set(draft.obligation_ids)
+            for surface in draft.surface_candidates:
+                requirement = draft.evidence_requirements.get(surface)
+                if requirement is None:
+                    continue
+                if not requirement.obligation_ids:
+                    errors.append(
+                        f"control {draft.control_id} surface {surface} has no obligation_ids"
+                    )
+                unknown_requirement_obligations = sorted(
+                    set(requirement.obligation_ids) - linked_id_set
+                )
+                if unknown_requirement_obligations:
+                    errors.append(
+                        f"control {draft.control_id} surface {surface} references obligations "
+                        "outside the control: "
+                        + ", ".join(unknown_requirement_obligations)
+                    )
+                for source_ref in requirement.source_refs:
+                    errors.extend(
+                        _validate_source_ref(
+                            source_ref,
+                            source_map,
+                            f"control {draft.control_id} surface {surface}",
+                            require_section=True,
+                        )
+                    )
+                expected_requirement_refs = {
+                    key
+                    for obligation in linked_obligations
+                    if obligation.obligation_id in requirement.obligation_ids
+                    and surface in obligation.required_surfaces
+                    for key in _source_ref_keys(obligation.source_refs)
+                }
+                actual_requirement_refs = _source_ref_keys(requirement.source_refs)
+                missing_requirement_refs = sorted(
+                    expected_requirement_refs - actual_requirement_refs
+                )
+                if missing_requirement_refs:
+                    errors.append(
+                        f"control {draft.control_id} surface {surface} does not preserve "
+                        "linked obligation provenance: "
+                        + ", ".join(
+                            f"{source}/{section}" for source, section in missing_requirement_refs
+                        )
+                    )
             for source_ref in draft.source_refs:
                 errors.extend(
                     _validate_source_ref(
@@ -146,14 +190,14 @@ class ControlValidator:
                 )
             for obligation in linked_obligations:
                 if not _applicability_is_no_narrower(
-                    obligation.applicability_expression,
-                    draft.applicability_expression,
+                    obligation.applicability_condition,
+                    draft.applicability_condition,
                 ):
                     errors.append(
                         f"control {draft.control_id} narrows applicability of obligation "
                         f"{obligation.obligation_id}"
                     )
-                missing_surfaces = set(obligation.required_surfaces) - set(draft.required_surfaces)
+                missing_surfaces = set(obligation.required_surfaces) - set(draft.surface_candidates)
                 if missing_surfaces:
                     errors.append(
                         f"control {draft.control_id} narrows required surfaces of obligation "
@@ -180,30 +224,51 @@ class ControlValidator:
         controls = []
         for draft in drafts.controls:
             payload = draft.model_dump()
+            payload["candidate_surfaces"] = list(draft.surface_candidates)
+            payload["required_surfaces"] = list(draft.surface_candidates)
             payload["minimum_evidence_strength"] = {
                 surface: requirement.minimum_strength
                 for surface, requirement in draft.evidence_requirements.items()
             }
             controls.append(Control(**payload))
-        return ControlSet(contract="control_set.v1", version="1.0", controls=controls)
+        return ControlSet(contract="control_set.v2", version="2.0", controls=controls)
+
+
+def validate_applicability_condition(condition: ApplicabilityCondition) -> list[str]:
+    if condition.kind == "unknown":
+        return []
+    if condition.kind == "atom":
+        if condition.fact not in {
+            "business_type",
+            "evidence_surfaces",
+            "self_lending",
+            "jurisdiction",
+            "offers_or_facilitates_loans",
+            "loan_application_flow_present",
+            "earned_wage_access",
+            "account_deletion_flow_present",
+            "sensitive_permission_use_present",
+        }:
+            return [f"unsupported applicability fact: {condition.fact}"]
+        return []
+    errors: list[str] = []
+    for child in condition.conditions:
+        errors.extend(validate_applicability_condition(child))
+    return errors
 
 
 def validate_applicability_expression(expression: str) -> list[str]:
-    if not expression.strip():
-        return ["applicability_expression is empty"]
-    if expression.strip().lower() == "unknown":
-        return []
-    errors: list[str] = []
-    clauses = re.split(r"\s+(?:and|&&)\s+", expression.strip(), flags=re.IGNORECASE)
-    for clause in clauses:
-        match = _CLAUSE_RE.match(clause.strip())
-        if match is None:
-            errors.append(f"invalid applicability clause: {clause}")
-            continue
-        field = match.group("field") or match.group("include_field") or match.group("in_field")
-        if field not in _ALLOWED_FIELDS:
-            errors.append(f"unsupported applicability field: {field}")
-    return errors
+    """Compatibility helper for callers that still pass a v1 artifact value."""
+    condition = parse_legacy_applicability_expression(expression)
+    if (
+        condition is not None
+        and condition.kind == "unknown"
+        and expression.strip().lower() != "unknown"
+    ):
+        return ["applicability_expression is not safely representable"]
+    return validate_applicability_condition(condition) if condition is not None else [
+        "applicability_expression is not safely representable"
+    ]
 
 
 def _source_registry_maps(
@@ -264,25 +329,28 @@ def _source_ref_keys(refs: list[SourceRef]) -> set[tuple[str, str]]:
     }
 
 
-def _applicability_is_no_narrower(obligation: str, control: str) -> bool:
-    if obligation.strip().lower() == "unknown":
-        return control.strip().lower() == "unknown"
-    if control.strip().lower() == "unknown":
+def _applicability_is_no_narrower(
+    obligation: ApplicabilityCondition, control: ApplicabilityCondition
+) -> bool:
+    if obligation.kind == "unknown":
+        return control.kind == "unknown"
+    if control.kind == "unknown":
         return True
-    obligation_clauses = _normalized_clauses(obligation)
-    control_clauses = _normalized_clauses(control)
-    if obligation_clauses is None or control_clauses is None:
-        return obligation.strip() == control.strip()
-    return control_clauses.issubset(obligation_clauses)
+    if obligation.model_dump(mode="json") == control.model_dump(mode="json"):
+        return True
+    if obligation.kind == "all_of" and control.kind == "all_of":
+        obligation_clauses = {
+            _condition_key(child) for child in obligation.conditions
+        }
+        control_clauses = {_condition_key(child) for child in control.conditions}
+        return control_clauses.issubset(obligation_clauses)
+    # any_of changes the set of applicable situations; do not make a
+    # semantic claim from a structural comparison unless it is identical.
+    return False
 
 
-def _normalized_clauses(expression: str) -> set[str] | None:
-    if validate_applicability_expression(expression):
-        return None
-    return {
-        re.sub(r"\s+", " ", clause.strip()).lower()
-        for clause in re.split(r"\s+(?:and|&&)\s+", expression.strip(), flags=re.IGNORECASE)
-    }
+def _condition_key(condition: ApplicabilityCondition) -> str:
+    return json.dumps(condition.model_dump(mode="json"), sort_keys=True)
 
 
 def _has_section(source: ComplianceSource, section_id: str) -> bool:

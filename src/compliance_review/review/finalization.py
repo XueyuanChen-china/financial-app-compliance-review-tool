@@ -27,6 +27,7 @@ from compliance_review.repository import RepositorySandbox
 from compliance_review.review.evidence import (
     EVIDENCE_STRENGTH_RANK,
     file_content_revision,
+    is_generic_anchor_snippet,
     normalize_snippet,
     relocate_anchor,
     strongest_evidence_strength,
@@ -42,14 +43,6 @@ from compliance_review.review.models import (
     WorkerExecution,
 )
 from compliance_review.review.provider import ModelProvider
-
-AUTOMATABLE_SURFACES: frozenset[Surface] = frozenset(
-    {"frontend_h5", "android_native", "backend_code", "backend_api_doc"}
-)
-
-
-def is_automatable_surface(surface: Surface) -> bool:
-    return surface in AUTOMATABLE_SURFACES
 
 
 class ResultValidator:
@@ -136,7 +129,30 @@ class ResultValidator:
             control = control_by_id.get(unit.control_id)
             if control is None:
                 issues.append(_error("unknown_control", "Coverage references an unknown control."))
-            if unit.coverage_status in {"not_applicable", "not_required"}:
+            if unit.coverage_status == "unknown_applicability":
+                # Keep the applicability blocker, but still validate any
+                # bounded investigation row so its execution and evidence are
+                # represented truthfully in the coverage ledger.
+                issues.append(
+                    _error("unknown_applicability", "Control applicability is not resolved.")
+                )
+                if (
+                    selected_row is not None
+                    and selected_row.recommended_control_status != "indeterminate"
+                ):
+                    issues.append(
+                        _error(
+                            "reviewer_cannot_resolve_unknown_applicability",
+                            "A bounded investigation cannot recommend PASS or FAIL while "
+                            "Control applicability is unresolved.",
+                        )
+                    )
+            if unit.coverage_status in {
+                "not_applicable",
+                "not_required",
+                "manual_required",
+                "external_collection_required",
+            }:
                 selected_execution = None
                 selected_row = None
             elif unit.coverage_status == "missing_surface":
@@ -145,10 +161,6 @@ class ResultValidator:
                         "missing_required_surface",
                         f"Required surface is unavailable: {unit.surface}.",
                     )
-                )
-            elif unit.coverage_status == "unknown_applicability":
-                issues.append(
-                    _error("unknown_applicability", "Control applicability is not resolved.")
                 )
             elif len(owned_claims) > 1:
                 issues.append(
@@ -173,6 +185,12 @@ class ResultValidator:
                 assert selected_execution is not None
                 issues.extend(execution_issues.get(selected_execution.attempt_id, []))
                 anchor_map = anchors_by_execution.get(selected_execution.attempt_id, {})
+                assigned = work_items_by_id.get(selected_execution.work_item_id)
+                trusted_external = (
+                    assigned is not None
+                    and assigned.external_evidence_policy == "trusted_test_materials"
+                    and selected_row.surface in {"play_console", "regulator_external"}
+                )
                 if selected_row.recommended_control_status in {"waived", "not_applicable"}:
                     issues.append(
                         _error(
@@ -204,6 +222,8 @@ class ResultValidator:
                             _error("missing_evidence_strength", "Observed strength is absent.")
                         )
                     elif (
+                        not trusted_external
+                        and
                         EVIDENCE_STRENGTH_RANK[observed]
                         < EVIDENCE_STRENGTH_RANK[unit.required_evidence_strength]
                     ):
@@ -254,6 +274,19 @@ class ResultValidator:
                             "A complete PASS or FAIL result requires an evidence anchor.",
                         )
                     )
+                if unit.evidence_requirement_ids:
+                    requirement_ids = {
+                        item.requirement_id for item in selected_row.requirement_results
+                    }
+                    expected_requirement_ids = set(unit.evidence_requirement_ids)
+                    if requirement_ids != expected_requirement_ids:
+                        issues.append(
+                            _error(
+                                "requirement_result_coverage_mismatch",
+                                "Reviewer must return exactly one result for every assigned "
+                                "evidence requirement.",
+                            )
+                        )
                 cited_strengths: list[EvidenceStrength] = []
                 for anchor_id in selected_row.anchor_ids:
                     if (selected_execution.attempt_id, anchor_id) in duplicate_anchor_ids:
@@ -298,7 +331,6 @@ class ResultValidator:
                             "Row fact IDs must exactly match facts carried by cited anchors.",
                         )
                     )
-                assigned = work_items_by_id.get(selected_execution.work_item_id)
                 allowed_fact_ids = set(assigned.collector_fact_refs) if assigned else set()
                 for fact_id in sorted(cited_fact_ids):
                     issues.extend(
@@ -332,6 +364,22 @@ class ResultValidator:
 
             invalid = any(issue.severity == "error" for issue in issues)
             flags = [issue.code for issue in issues if _is_flag(issue)]
+            anchor_locations = []
+            if selected_execution is not None and selected_row is not None:
+                selected_anchor_map = anchors_by_execution.get(selected_execution.attempt_id, {})
+                for anchor_id in selected_row.anchor_ids:
+                    candidate_anchor = selected_anchor_map.get(anchor_id)
+                    if candidate_anchor is None:
+                        continue
+                    location = candidate_anchor.path or "unknown"
+                    if (
+                        candidate_anchor.start_line is not None
+                        and candidate_anchor.end_line is not None
+                    ):
+                        location += (
+                            f":{candidate_anchor.start_line}-{candidate_anchor.end_line}"
+                        )
+                    anchor_locations.append(location)
             validated.append(
                 ValidatedReviewRow(
                     row_id=row_id,
@@ -351,6 +399,7 @@ class ResultValidator:
                         else None
                     ),
                     row=selected_row,
+                    anchor_locations=anchor_locations,
                     valid=not invalid,
                     flags=flags,
                     # Deprecated compatibility alias; authoritative code reads flags.
@@ -407,6 +456,7 @@ class TargetedVerifier:
             return VerifierResult(status="not_required")
         first = next(row for row in validation.rows if row.row_id in suspicious.row_ids)
         work_item = WorkItem(
+            work_item_type="verification",
             work_item_id="verification.targeted_qa",
             module_id="verification",
             surface=first.surface,
@@ -539,22 +589,44 @@ class ComplianceResolver:
                 status = "fail"
                 reasons.append("Validated reviewer evidence explicitly supports failure.")
             elif not units or any(
-                unit.coverage_status not in {"planned", "not_applicable", "not_required"}
+                unit.coverage_status
+                not in {
+                    "planned",
+                    "not_applicable",
+                    "not_required",
+                    "manual_required",
+                    "external_collection_required",
+                }
                 for unit in units
             ):
                 status = "indeterminate"
                 reasons.extend(
                     f"Coverage gap: {unit.coverage_unit_id}: {unit.reason}"
                     for unit in units
-                    if unit.coverage_status not in {"planned", "not_applicable", "not_required"}
+                    if unit.coverage_status
+                    not in {
+                        "planned",
+                        "not_applicable",
+                        "not_required",
+                        "manual_required",
+                        "external_collection_required",
+                    }
                 )
             else:
                 reviewable_units = [unit for unit in units if unit.coverage_status == "planned"]
                 if not reviewable_units:
                     status = "indeterminate"
-                    reasons.append(
-                        "Applicable control has no required evidence surface (no_required_surface)."
-                    )
+                    if any(
+                        unit.coverage_status
+                        in {"manual_required", "external_collection_required"}
+                        for unit in units
+                    ):
+                        reasons.append("Required external/manual evidence must be collected.")
+                    else:
+                        reasons.append(
+                            "Applicable control has no required evidence surface "
+                            "(no_required_surface)."
+                        )
                 elif len(rows) != len(reviewable_units) or any(
                     not row.valid or row.row is None or row.row.evidence_status != "complete"
                     for row in rows
@@ -622,6 +694,7 @@ class CoverageGate:
             reviewed_row = validated.row if validated is not None else None
             origin: Literal[
                 "reviewed",
+                "carried_forward",
                 "reused",
                 "manual_required",
                 "blocked",
@@ -639,15 +712,36 @@ class CoverageGate:
                 origin = "not_required"
                 execution_status = "not_required"
                 evidence_status = "not_required"
-            elif (
-                unit.coverage_status in {"missing_surface", "unknown_applicability"}
-                and is_automatable_surface(unit.surface)
-            ):
-                # No automated Worker was scheduled for an unavailable or
-                # unresolved prerequisite; this is not a Worker failure.
+            elif unit.coverage_status in {"manual_required", "external_collection_required"}:
+                origin = "manual_required"
+                execution_status = "manual_required"
+                evidence_status = "manual_required"
+            elif unit.coverage_status == "missing_surface":
+                # No Worker can be scheduled for an unavailable surface.
                 origin = "blocked"
                 execution_status = "pending"
                 evidence_status = "missing"
+            elif unit.coverage_status == "unknown_applicability" and unit.work_item_id is not None:
+                # A bounded investigation may have run, but it cannot resolve
+                # Control applicability. Preserve truthful execution/evidence
+                # state while keeping the coverage row blocked.
+                origin = "blocked"
+                execution_status = (
+                    validated.execution_status
+                    if validated is not None and validated.execution_status is not None
+                    else "pending"
+                )
+                non_applicability_errors = [
+                    issue
+                    for issue in (validated.issues if validated is not None else [])
+                    if issue.severity == "error" and issue.code != "unknown_applicability"
+                ]
+                if reviewed_row is None:
+                    evidence_status = "missing"
+                elif execution_status == "completed" and not non_applicability_errors:
+                    evidence_status = reviewed_row.evidence_status
+                else:
+                    evidence_status = "partial"
             elif (
                 validated is not None
                 and validated.valid
@@ -657,19 +751,29 @@ class CoverageGate:
                 origin = "manual_required"
                 execution_status = "completed"
                 evidence_status = "manual_required"
-            elif not is_automatable_surface(unit.surface):
-                # External/manual surfaces are valid ledger entries even when
-                # no automated Reviewer row exists. They remain manual work.
-                origin = "manual_required"
-                execution_status = "completed"
-                evidence_status = "manual_required"
+            elif (
+                validated is not None
+                and validated.result_origin in {"reused", "carried_forward"}
+            ):
+                # Code-only incremental review preserves the prior result as-is
+                # for an unaffected unit.  A previous partial/failure must stay
+                # visible rather than disappearing because it is not PASS.
+                origin = "carried_forward"
+                execution_status = validated.execution_status or "completed"
+                evidence_status = (
+                    reviewed_row.evidence_status if reviewed_row is not None else "missing"
+                )
             elif (
                 validated is not None
                 and validated.valid
                 and reviewed_row is not None
                 and reviewed_row.evidence_status == "complete"
             ):
-                origin = "reused" if validated.result_origin == "reused" else "reviewed"
+                origin = (
+                    "carried_forward"
+                    if validated.result_origin in {"reused", "carried_forward"}
+                    else "reviewed"
+                )
                 execution_status = "completed"
                 evidence_status = "complete"
             else:
@@ -704,6 +808,9 @@ class CoverageGate:
                         f"{unit.evidence_requirement_rationale}"
                     ),
                     previous_run_id=validated.previous_run_id if validated else None,
+                    result_origin_run_id=(
+                        validated.result_origin_run_id if validated else None
+                    ),
                     resolution_status=resolution.status,
                 )
             )
@@ -715,16 +822,19 @@ class CoverageGate:
             elif result.status == "indeterminate":
                 units = [unit for unit in coverage.units if unit.control_id == result.control_id]
                 rows_by_unit = {row.coverage_unit_id: row for row in rows}
-                has_automated_gap = any(
-                    is_automatable_surface(unit.surface)
-                    and (
-                        rows_by_unit[unit.coverage_unit_id].result_origin == "blocked"
-                        or rows_by_unit[unit.coverage_unit_id].evidence_status != "complete"
+                has_required_gap = any(
+                    unit.coverage_status == "missing_surface"
+                    or (
+                        unit.work_item_id is not None
+                        and (
+                            rows_by_unit[unit.coverage_unit_id].result_origin == "blocked"
+                            or rows_by_unit[unit.coverage_unit_id].evidence_status != "complete"
+                        )
                     )
                     for unit in units
                     if unit.coverage_unit_id in rows_by_unit
                 )
-                if mode in {"full", "diff"} and has_automated_gap:
+                if mode in {"full", "diff"} and has_required_gap:
                     blocking.append(message)
                 elif mode == "standard":
                     (blocking if control.missing_evidence_policy == "block" else warnings).append(
@@ -739,6 +849,7 @@ class CoverageGate:
                 row.result_origin
                 in {
                     "reviewed",
+                    "carried_forward",
                     "reused",
                     "manual_required",
                     "not_applicable",
@@ -864,13 +975,20 @@ def _validate_anchor(
     work_item_id: str,
 ) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
-    if control_id not in anchor.control_ids:
-        issues.append(_error("anchor_control_mismatch", "Anchor does not cite this control."))
     if anchor.source_surface != surface:
         issues.append(_error("anchor_surface_mismatch", "Anchor belongs to another surface."))
     if anchor.path is None:
         issues.append(_error("anchor_without_path", "Anchor has no exact file path."))
         return issues
+    if anchor.start_line is None or anchor.end_line is None:
+        issues.append(
+            _error(
+                "anchor_location_missing",
+                "Code evidence must include an exact start_line and end_line.",
+            )
+        )
+    elif anchor.end_line < anchor.start_line:
+        issues.append(_error("anchor_location_invalid", "Anchor end_line precedes start_line."))
     sandbox = sandboxes.get(work_item_id) or sandboxes.get(surface)
     if sandbox is None:
         issues.append(_error("anchor_surface_unavailable", "No sandbox exists for anchor surface."))
@@ -880,14 +998,23 @@ def _validate_anchor(
     except (OSError, ValueError) as exc:
         issues.append(_error("anchor_path_invalid", str(exc)))
         return issues
-    if not anchor.exact_snippet:
+    exact_snippet = anchor.exact_snippet
+    if not exact_snippet:
         issues.append(_error("anchor_not_exact", "Anchor has no exact snippet."))
+        return issues
+    elif is_generic_anchor_snippet(exact_snippet):
+        issues.append(
+            _error(
+                "anchor_generic_snippet",
+                "A generic tag prefix cannot satisfy exact code evidence.",
+            )
+        )
         return issues
     if anchor.normalized_snippet_hash is None:
         issues.append(_error("anchor_hash_missing", "Anchor has no snippet hash."))
     if anchor.file_revision is None:
         issues.append(_error("anchor_revision_missing", "Anchor has no file revision."))
-    normalized = normalize_snippet(anchor.exact_snippet)
+    normalized = normalize_snippet(exact_snippet)
     expected_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
     if anchor.normalized_snippet_hash != expected_hash:
         issues.append(_error("anchor_hash_mismatch", "Anchor snippet hash is invalid."))

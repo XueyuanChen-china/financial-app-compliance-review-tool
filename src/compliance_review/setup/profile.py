@@ -26,14 +26,25 @@ from compliance_review.setup.models import (
     ProfileStatus,
     ProfileValidationResult,
     RepositoryInventory,
+    WorkspaceMaterial,
 )
 
 
 def build_profile_draft(
-    inventories: list[RepositoryInventory], facts: AppFactSet
+    inventories: list[RepositoryInventory],
+    facts: AppFactSet,
+    materials: list[WorkspaceMaterial] | None = None,
 ) -> AppProfile:
+    materials = materials or []
     surfaces = sorted(
-        {surface for inventory in inventories for surface in inventory.detected_surfaces}
+        {
+            *(
+                surface
+                for inventory in inventories
+                for surface in inventory.detected_surfaces
+            ),
+            *(material.surface for material in materials if material.surface is not None),
+        }
     )
     roots = {
         surface: [
@@ -43,6 +54,9 @@ def build_profile_draft(
         ]
         for surface in surfaces
     }
+    for material in materials:
+        if material.surface is not None:
+            roots.setdefault(material.surface, []).append(material.path)
     evidence = [
         ProfileEvidence(
             repo_id=fact.repo_id,
@@ -75,12 +89,9 @@ def build_profile_draft(
             confidence="high",
         ),
     }
-    required = {"app_name", "package_name", "jurisdiction", "business_type", "self_lending"}
-    unresolved_required = any(
-        fields[field_name].value is None or fields[field_name].value == "unknown"
-        for field_name in required
-    )
-    status: ProfileStatus = "awaiting_confirmation" if unresolved_required else "draft"
+    # Profile is intentionally provisional.  Business/legal questions are
+    # deferred to the policy-aware Applicability Resolution Loop.
+    status: ProfileStatus = "draft"
     return AppProfile(version="1.0", status=status, fields=fields)
 
 
@@ -194,6 +205,7 @@ class ProfileAgent:
             or "other_external"
         )
         work_item = WorkItem(
+            work_item_type="profile_discovery",
             work_item_id="profile.workspace",
             module_id="profile_intake",
             surface=first_surface,
@@ -522,7 +534,17 @@ def _profile_tool_schemas() -> list[dict[str, Any]]:
     for schema in schemas:
         function = schema.get("function", {})
         name = function.get("name")
-        if name in {"code_map_query", "code_map_path", "list_files", "search_code", "read_file"}:
+        if name in {
+            "code_map_query",
+            "code_map_path",
+            "code_map_explain",
+            "code_map_callers",
+            "code_map_callees",
+            "code_map_impact",
+            "list_files",
+            "search_code",
+            "read_file",
+        }:
             properties = function.setdefault("parameters", {}).setdefault("properties", {})
             properties["repo_id"] = {
                 "type": "string",

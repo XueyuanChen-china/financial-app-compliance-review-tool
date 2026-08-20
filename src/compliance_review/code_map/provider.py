@@ -10,6 +10,12 @@ from typing import Optional, Protocol, Sequence, Tuple
 from compliance_review.code_map.lifecycle import GraphifyLifecycle
 from compliance_review.code_map.models import (
     CodeMapCandidate,
+    CodeMapExplain,
+    CodeMapExplainResult,
+    CodeMapImpact,
+    CodeMapImpactResult,
+    CodeMapNeighbors,
+    CodeMapNeighborsResult,
     CodeMapPath,
     CodeMapPathResult,
     CodeMapQuery,
@@ -37,6 +43,15 @@ class CodeMapProvider(Protocol):
     def path(self, request: CodeMapPath) -> CodeMapPathResult:
         """Return a compact path between two graph symbols."""
 
+    def neighbors(self, request: CodeMapNeighbors) -> CodeMapNeighborsResult:
+        """Return callers or callees derived from directed Graphify edges."""
+
+    def impact(self, request: CodeMapImpact) -> CodeMapImpactResult:
+        """Return a bounded reverse-impact traversal when supported."""
+
+    def explain(self, request: CodeMapExplain) -> CodeMapExplainResult:
+        """Return a bounded explanation and immediate relations for one symbol."""
+
 
 class GraphifyCodeMapProvider:
     """Call the local Graphify CLI and normalize its text output.
@@ -50,7 +65,7 @@ class GraphifyCodeMapProvider:
         self,
         repo_path: Path,
         command: Sequence[str] = ("graphify",),
-        timeout_seconds: float = 10.0,
+        timeout_seconds: float = 20.0,
         require_index: bool = True,
     ) -> None:
         self.repo_path = repo_path
@@ -65,6 +80,8 @@ class GraphifyCodeMapProvider:
             return self._status_result(request, "unavailable", "graphify_not_found")
         if self.require_index and not GraphifyLifecycle.graph_paths(self.repo_path):
             return self._status_result(request, "unavailable", "graph_not_initialized")
+        if self.require_index and not GraphifyLifecycle.index_is_fresh(self.repo_path):
+            return self._status_result(request, "unavailable", "graph_index_stale")
 
         command = [
             *self.command,
@@ -115,6 +132,8 @@ class GraphifyCodeMapProvider:
             return self._path_status_result(request, "unavailable", "graphify_not_found")
         if self.require_index and not GraphifyLifecycle.graph_paths(self.repo_path):
             return self._path_status_result(request, "unavailable", "graph_not_initialized")
+        if self.require_index and not GraphifyLifecycle.index_is_fresh(self.repo_path):
+            return self._path_status_result(request, "unavailable", "graph_index_stale")
 
         command = [
             *self.command,
@@ -157,6 +176,123 @@ class GraphifyCodeMapProvider:
             truncated=truncated,
         )
 
+    def neighbors(self, request: CodeMapNeighbors) -> CodeMapNeighborsResult:
+        explained = self.explain(
+            CodeMapExplain(
+                symbol=request.symbol,
+                surface=request.surface,
+                max_connections=request.max_neighbors,
+                budget=request.budget,
+            )
+        )
+        if explained.status != "available":
+            return CodeMapNeighborsResult(
+                symbol=request.symbol,
+                direction=request.direction,
+                surface=request.surface,
+                status=explained.status,
+                error_code=explained.error_code,
+            )
+        wanted = "incoming" if request.direction == "callers" else "outgoing"
+        relations = [
+            relation
+            for relation in explained.relations
+            if relation.direction == wanted and _is_call_relation(relation.relation)
+        ]
+        nodes = [
+            CodeMapCandidate(symbol=relation.source if wanted == "incoming" else relation.target)
+            for relation in relations[: request.max_neighbors]
+        ]
+        return CodeMapNeighborsResult(
+            symbol=request.symbol,
+            direction=request.direction,
+            surface=request.surface,
+            status="available",
+            nodes=nodes,
+            relations=relations[: request.max_neighbors],
+            truncated=len(relations) > request.max_neighbors,
+        )
+
+    def impact(self, request: CodeMapImpact) -> CodeMapImpactResult:
+        if not self.repo_path.is_dir():
+            return self._impact_status_result(request, "unavailable", "repository_not_found")
+        if not Path(self.command[0]).is_file() and shutil.which(self.command[0]) is None:
+            return self._impact_status_result(request, "unavailable", "graphify_not_found")
+        if self.require_index and not GraphifyLifecycle.graph_paths(self.repo_path):
+            return self._impact_status_result(request, "unavailable", "graph_not_initialized")
+        if self.require_index and not GraphifyLifecycle.index_is_fresh(self.repo_path):
+            return self._impact_status_result(request, "unavailable", "graph_index_stale")
+        command = [*self.command, "affected", request.symbol, "--depth", str(request.depth)]
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds,
+                check=False,
+            )
+        except FileNotFoundError:
+            return self._impact_status_result(request, "unavailable", "graphify_not_found")
+        except subprocess.TimeoutExpired:
+            return self._impact_status_result(request, "degraded", "graphify_timeout")
+        except OSError:
+            return self._impact_status_result(request, "unavailable", "graphify_os_error")
+        if completed.returncode != 0:
+            return self._impact_status_result(request, "degraded", "graphify_command_failed")
+        nodes, relations, truncated = self._parse_output(completed.stdout, request.max_nodes)
+        if not nodes and "No affected" not in completed.stdout:
+            return self._impact_status_result(request, "degraded", "graphify_impact_unparseable")
+        return CodeMapImpactResult(
+            symbol=request.symbol,
+            surface=request.surface,
+            status="available",
+            nodes=nodes,
+            relations=relations,
+            truncated=truncated,
+        )
+
+    def explain(self, request: CodeMapExplain) -> CodeMapExplainResult:
+        if not self.repo_path.is_dir():
+            return self._explain_status_result(request, "unavailable", "repository_not_found")
+        if not Path(self.command[0]).is_file() and shutil.which(self.command[0]) is None:
+            return self._explain_status_result(request, "unavailable", "graphify_not_found")
+        if self.require_index and not GraphifyLifecycle.graph_paths(self.repo_path):
+            return self._explain_status_result(request, "unavailable", "graph_not_initialized")
+        if self.require_index and not GraphifyLifecycle.index_is_fresh(self.repo_path):
+            return self._explain_status_result(request, "unavailable", "graph_index_stale")
+        command = [*self.command, "explain", request.symbol, "--budget", str(request.budget)]
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds,
+                check=False,
+            )
+        except FileNotFoundError:
+            return self._explain_status_result(request, "unavailable", "graphify_not_found")
+        except subprocess.TimeoutExpired:
+            return self._explain_status_result(request, "degraded", "graphify_timeout")
+        except OSError:
+            return self._explain_status_result(request, "unavailable", "graphify_os_error")
+        if completed.returncode != 0:
+            return self._explain_status_result(request, "degraded", "graphify_command_failed")
+        node, relations, truncated = self._parse_explain_output(
+            completed.stdout, request.symbol, request.max_connections
+        )
+        if node is None and "No node matching" not in completed.stdout:
+            return self._explain_status_result(request, "degraded", "graphify_explain_unparseable")
+        return CodeMapExplainResult(
+            symbol=request.symbol,
+            surface=request.surface,
+            status="available" if node is not None else "degraded",
+            node=node,
+            relations=relations,
+            truncated=truncated,
+        )
+
     @staticmethod
     def _status_result(
         request: CodeMapQuery, status: CodeMapStatus, error_code: str
@@ -176,6 +312,28 @@ class GraphifyCodeMapProvider:
         return CodeMapPathResult(
             source=request.source,
             target=request.target,
+            surface=request.surface,
+            status=status,
+            error_code=error_code,
+        )
+
+    @staticmethod
+    def _impact_status_result(
+        request: CodeMapImpact, status: CodeMapStatus, error_code: str
+    ) -> CodeMapImpactResult:
+        return CodeMapImpactResult(
+            symbol=request.symbol,
+            surface=request.surface,
+            status=status,
+            error_code=error_code,
+        )
+
+    @staticmethod
+    def _explain_status_result(
+        request: CodeMapExplain, status: CodeMapStatus, error_code: str
+    ) -> CodeMapExplainResult:
+        return CodeMapExplainResult(
+            symbol=request.symbol,
             surface=request.surface,
             status=status,
             error_code=error_code,
@@ -260,6 +418,51 @@ class GraphifyCodeMapProvider:
         ]
         return nodes, relations, truncated
 
+    @staticmethod
+    def _parse_explain_output(
+        output: str, symbol: str, max_connections: int
+    ) -> tuple[CodeMapCandidate | None, list[CodeMapRelation], bool]:
+        label = symbol
+        source_path: str | None = None
+        start_line: int | None = None
+        relations: list[CodeMapRelation] = []
+        in_connections = False
+        for raw_line in output.splitlines():
+            line = raw_line.strip()
+            if line.lower().startswith("node:"):
+                label = line.split(":", 1)[1].strip() or symbol
+            elif line.lower().startswith("source:"):
+                source_value = line.split(":", 1)[1].strip()
+                source_match = re.match(r"(?P<path>.+?)\s+L(?P<line>\d+)$", source_value)
+                source_path = source_match.group("path") if source_match else source_value or None
+                start_line = int(source_match.group("line")) if source_match else None
+            elif line.lower().startswith("connections"):
+                in_connections = True
+            elif in_connections and (line.startswith("-->") or line.startswith("<--")):
+                incoming = line.startswith("<--")
+                body = line[3:].strip()
+                relation_match = re.search(r"\[(?P<relation>[^\]]+)\]", body)
+                target = body[: relation_match.start()].strip() if relation_match else body
+                relation = relation_match.group("relation") if relation_match else "related"
+                confidence_match = re.search(
+                    r"\[(?P<confidence>[^\]]+)\]",
+                    body[relation_match.end() :] if relation_match else "",
+                )
+                confidence = confidence_match.group("confidence") if confidence_match else None
+                relations.append(
+                    CodeMapRelation(
+                        source=target if incoming else label,
+                        relation=relation,
+                        target=label if incoming else target,
+                        confidence=confidence,
+                        direction="incoming" if incoming else "outgoing",
+                    )
+                )
+        if not source_path and label == symbol and not relations:
+            return None, [], False
+        node = CodeMapCandidate(symbol=label, path=source_path, start_line=start_line)
+        truncated = len(relations) > max_connections
+        return node, relations[:max_connections], truncated
 
 def _parse_location(location: str) -> Tuple[Optional[int], Optional[int]]:
     if not location:
@@ -284,6 +487,11 @@ def _source_line(source_ref: Optional[str]) -> Optional[int]:
     location = source_ref.rsplit(":", 1)[1]
     start, _ = _parse_location(location)
     return start
+
+
+def _is_call_relation(relation: str) -> bool:
+    normalized = relation.lower()
+    return any(token in normalized for token in ("call", "invoke", "reference", "uses"))
 
 
 def command_from_string(value: str) -> tuple[str, ...]:
