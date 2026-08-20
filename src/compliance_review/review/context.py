@@ -6,6 +6,7 @@ from typing import Any, Callable, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from compliance_review.domain.models import EvidenceAnchor, Surface, WorkItem
+from compliance_review.review.evidence import canonical_anchor_identity
 
 
 class ReviewerContextError(RuntimeError):
@@ -163,6 +164,9 @@ class ReviewerContextManager:
                 messages.append(
                     {
                         "role": "assistant",
+                        # Some Chat Completions compatibility layers require an
+                        # explicit null content alongside function calls.
+                        "content": None,
                         "tool_calls": [
                             {
                                 "id": call.get("call_id", call.get("id")),
@@ -236,11 +240,4 @@ class ReviewerContextManager:
 
     @staticmethod
     def _anchor_key(anchor: EvidenceAnchor) -> tuple[Any, ...]:
-        return (
-            tuple(anchor.control_ids),
-            anchor.source_tool,
-            anchor.path,
-            anchor.symbol,
-            anchor.start_line,
-            anchor.end_line,
-        )
+        return canonical_anchor_identity(anchor)

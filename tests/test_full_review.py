@@ -17,7 +17,13 @@ from compliance_review.domain.models import (
 from compliance_review.persistence import ArtifactStore
 from compliance_review.review import FullReviewService, LangGraphReviewRuntime
 from compliance_review.review.full_review import render_markdown_report
-from compliance_review.review.models import ModelRequest, ModelResponse, ToolCall
+from compliance_review.review.models import (
+    ModelRequest,
+    ModelResponse,
+    ResultValidationResult,
+    ReviewRunSummary,
+    ToolCall,
+)
 from compliance_review.review.provider import StaticModelProvider
 from compliance_review.setup.models import WorkspaceRepository
 from compliance_review.setup.service import ReviewSetupService
@@ -29,7 +35,26 @@ def test_full_review_writes_snapshot_and_blocks_missing_backend_evidence(
     tmp_path: Path,
 ) -> None:
     workspace_root = tmp_path / "workspace"
-    setup_service = ReviewSetupService(workspace_root)
+    def applicability_response(request: ModelRequest) -> ModelResponse:
+        payload = json.loads(request.messages[1]["content"])
+        return ModelResponse(
+            content=json.dumps(
+                {
+                    "control_id": payload["control"]["control_id"],
+                    "decision": "applicable",
+                    "reason": "Fixture confirms applicability.",
+                    "profile_fact_refs": [
+                        {"field_name": "self_lending", "expected_value": "true"}
+                    ],
+                    "confidence": "high",
+                }
+            )
+        )
+
+    setup_service = ReviewSetupService(
+        workspace_root,
+        applicability_provider=StaticModelProvider(applicability_response),
+    )
     initialized = setup_service.initialize(
         [
             WorkspaceRepository(
@@ -43,11 +68,14 @@ def test_full_review_writes_snapshot_and_blocks_missing_backend_evidence(
         {
             "app_name": "Example Loan",
             "package_name": "com.example.loan",
-            "jurisdiction": "Pakistan",
-            "business_type": ["personal_loan"],
-            "self_lending": True,
-        }
-    )
+                "jurisdiction": "Pakistan",
+                "business_type": ["personal_loan"],
+                "self_lending": True,
+                # A user can declare a required evidence surface even when
+                # its repository root has not been supplied yet.
+                "evidence_surfaces": ["frontend_h5", "backend_code"],
+            }
+        )
     control = Control(
         control_id="privacy.backend_required",
         module_id="privacy",
@@ -85,13 +113,13 @@ def test_full_review_writes_snapshot_and_blocks_missing_backend_evidence(
             return ModelResponse(
                 tool_calls=[
                     ToolCall(
-                        call_id="read-router",
-                        name="read_file",
-                        arguments={
-                            "path": "src/router.js",
-                            "start_line": 1,
-                            "line_count": 2,
-                        },
+                            call_id="capture-router",
+                            name="capture_anchor",
+                            arguments={
+                                "path": "src/router.js",
+                                "start_line": 1,
+                                "end_line": 1,
+                            },
                     )
                 ]
             )
@@ -147,6 +175,12 @@ def test_full_review_writes_snapshot_and_blocks_missing_backend_evidence(
     stored_snapshot = Snapshot.model_validate_json(
         (run_root / "snapshot.json").read_text(encoding="utf-8")
     )
+    stored_validation = ResultValidationResult.model_validate_json(
+        (run_root / "result_validation.json").read_text(encoding="utf-8")
+    )
+    stored_summary = ReviewRunSummary.model_validate_json(
+        (run_root / "review_summary.json").read_text(encoding="utf-8")
+    )
     assert verification_calls == 0
     assert not (run_root / "suspicious_rows.json").exists()
     assert not (run_root / "verifier" / "verifier_result.json").exists()
@@ -154,7 +188,12 @@ def test_full_review_writes_snapshot_and_blocks_missing_backend_evidence(
         (run_root / "coverage_manifest.json").read_text(encoding="utf-8")
     )
     report = (run_root / "report.md").read_text(encoding="utf-8")
-    assert report == render_markdown_report(stored_snapshot, stored_gate)
+    assert report == render_markdown_report(
+        stored_snapshot,
+        stored_gate,
+        validation=stored_validation,
+        summary=stored_summary,
+    )
     assert "# 金融应用合规审查报告" in report
     assert "Reviewer WorkItem 完成 / 失败" in report
     assert "已验证完整证据单元" in report
@@ -163,6 +202,7 @@ def test_full_review_writes_snapshot_and_blocks_missing_backend_evidence(
     assert "backend_code" in report
     assert "Consent setting" not in report
     assert stored_snapshot.reviewed_rows == ["cu.privacy.backend_required.frontend_h5"]
+    assert "## 运行质量与确定性校验" in report
 
 
 def test_report_distinguishes_completed_work_from_complete_evidence_and_records_applicability() -> (
@@ -251,6 +291,26 @@ def test_report_distinguishes_completed_work_from_complete_evidence_and_records_
     )
     assert "| `cu.control-0007.frontend_h5` | H5 / WebView | 无需执行 | 不要求 |" in (
         not_required_report
+    )
+
+    manual_report = render_markdown_report(
+        snapshot,
+        gate.model_copy(
+            update={
+                "rows": [
+                    gate.rows[0].model_copy(
+                        update={
+                            "execution_status": "manual_required",
+                            "evidence_status": "manual_required",
+                            "result_origin": "manual_required",
+                        }
+                    )
+                ]
+            }
+        ),
+    )
+    assert "| `cu.control-0007.frontend_h5` | H5 / WebView | 需人工处理 | 需人工提供 |" in (
+        manual_report
     )
 
     missing_report = render_markdown_report(

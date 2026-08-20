@@ -9,6 +9,8 @@ from compliance_review.collectors.base import CollectorResult, status_for_inputs
 from compliance_review.domain.models import Fact, SourceRef
 from compliance_review.repository.sandbox import RepositorySandbox
 
+_MAX_API_DOCUMENT_BYTES = 10_000_000
+
 
 class ApiDocumentCollector:
     """Extract declared endpoints from OpenAPI/Swagger JSON or YAML documents.
@@ -31,7 +33,11 @@ class ApiDocumentCollector:
         parse_failures = 0
         for path in files:
             try:
-                document = _load_document(path, sandbox.read_text(path))
+                # API exports can be substantially larger than source snippets, but
+                # still receive a bounded collector-specific read budget.
+                document = _load_document(
+                    path, sandbox.read_text(path, max_bytes=_MAX_API_DOCUMENT_BYTES)
+                )
             except (OSError, ValueError, TypeError, json.JSONDecodeError, yaml.YAMLError):
                 parse_failures += 1
                 continue

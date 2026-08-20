@@ -38,7 +38,15 @@ CodeMapProvider
 ```python
 CodeMapProvider.query(CodeMapQuery) -> CodeMapQueryResult
 CodeMapProvider.path(CodeMapPath) -> CodeMapPathResult
+CodeMapProvider.explain(CodeMapExplain) -> CodeMapExplainResult
+CodeMapProvider.neighbors(CodeMapNeighbors) -> CodeMapNeighborsResult
+CodeMapProvider.impact(CodeMapImpact) -> CodeMapImpactResult
 ```
+
+`explain` 使用 Graphify 官方 CLI 的 `explain`；`neighbors` 从 explain 的有向
+`calls`/`references` 边派生 callers/callees；`impact` 使用 Graphify 的
+`affected` 反向影响遍历。若当前 Graphify 版本没有某个命令，Provider 返回
+`unavailable`，不会猜测关系存在或不存在。
 
 输入可以来自独立的前端、Android 或后端代码仓库。`backend_api_doc` 也可以作为查询上下文，但它只代表接口文档，不等于后端实现代码。
 
@@ -187,11 +195,23 @@ Reviewer LLM
 推荐调查顺序：
 
 ```text
-get_collector_facts / code_map_query
+get_collector_facts
+  -> code_map_query / explain / callers / callees / impact / path
   -> 找到候选事实、代码和关系
-  -> read_file 验证源码
-  -> 证据不足时 search_code fallback
+  -> read_file 精确读取候选范围
+  -> search_code 只作精确 fallback 定位
+  -> capture_anchor 读取并铸造 VerifiedEvidenceAnchor
+  -> Reviewer 只能引用 anchor_id
 ```
+
+跨文件调用、权限传播、WebView/Bridge、API-to-service 或影响范围问题，必须
+先使用 Graphify 导航；简单的单文件确定性 Collector fact 可以例外。Graphify
+和 search 返回的都是 `CandidateLocation`，永远不能直接进入最终 Evidence。
+
+`capture_anchor(path, start_line, end_line)` 是唯一的程序化代码证据入口：它在
+Sandbox 内重新读取行范围，记录原文、行号、规范化 hash、文件 revision 和
+`repository_id`。最终 `ReviewResult.anchors` 由父流程从验证后的 Ledger 填充，
+模型不能自行编写 Anchor 内容。
 
 ## 7. 当前不做什么
 

@@ -9,10 +9,16 @@ from typing import Any
 from compliance_review.domain.models import ControlSurfaceResult, ReviewResult, WorkItem
 from compliance_review.repository import RepositorySandbox
 from compliance_review.review.events import AppendOnlyEventLog
+from compliance_review.review.langgraph_runtime import (
+    _anchors_from_tool_results,
+    _attach_evidence_ledger,
+)
 from compliance_review.review.models import (
     ModelRequest,
+    ToolCall,
     WorkerExecution,
 )
+from compliance_review.review.prompt_policy import trusted_external_evidence_instructions
 from compliance_review.review.provider import ModelProvider, tool_schemas
 from compliance_review.review.result_parser import parse_review_result
 from compliance_review.review.tools import ScopedToolExecutor, serialize_tool_result
@@ -133,20 +139,41 @@ class ReviewWorker:
             return execution
 
     def _review(self, attempt_id: str, budget: TokenBudget) -> tuple[ReviewResult, int]:
+        instructions = (
+            "Review only the assigned Work Item. Use read-only tools, cite observed "
+            "evidence, and return one JSON review_result.v1 object. Do not claim "
+            "runtime behavior from static evidence. For every cross-file call, "
+            "caller/callee, data-flow, WebView/bridge, permission propagation, "
+            "API-to-service, or impact question, use Graphify code-map tools first. "
+            "Graphify and search results are navigation candidates only. Read the "
+            "exact source range and call capture_anchor before citing code; output "
+            "only the returned anchor_id, never a model-authored Anchor payload. "
+            "Before final JSON, perform an evidence-capture pass for every code-derived "
+            "observation you intend to cite. If capture_anchor did not succeed, do not "
+            "cite the read/search result; mark evidence partial or missing instead."
+        )
+        instructions += trusted_external_evidence_instructions(self.work_item)
+        if "bounded_applicability_investigation" in self.work_item.target_hints.get(
+            "review_purpose", []
+        ):
+            instructions += (
+                " This Work Item has unresolved Control applicability. Investigate and cite "
+                "only bounded technical facts visible on the assigned surface. Do not decide "
+                "that the Control is applicable or not applicable, and do not recommend PASS; "
+                "return INDETERMINATE with explicit discovered facts and remaining gaps."
+            )
         messages: list[dict[str, Any]] = [
             {
                 "role": "system",
-                "content": (
-                    "Review only the assigned Work Item. Use read-only tools, cite observed "
-                    "evidence, and return one JSON review_result.v1 object. Do not claim "
-                    "runtime behavior from static evidence."
-                ),
+                "content": instructions,
             },
             {"role": "user", "content": json.dumps(self.work_item.model_dump(), sort_keys=True)},
         ]
         for message in messages:
             budget.charge_text(str(message.get("content", "")))
         executor = ScopedToolExecutor(self.sandbox, self.work_item)
+        observed_calls: list[ToolCall] = []
+        observed_results: list[Any] = []
         tool_rounds = 0
         while tool_rounds <= self.work_item.max_tool_rounds:
             response = self.provider.complete(
@@ -168,6 +195,7 @@ class ReviewWorker:
                 messages.append(
                     {
                         "role": "assistant",
+                        "content": None,
                         "tool_calls": [
                             {
                                 "id": call.call_id,
@@ -182,8 +210,10 @@ class ReviewWorker:
                     }
                 )
                 for call in response.tool_calls:
-                    result = executor.execute(call)
-                    serialized = serialize_tool_result(result)
+                    tool_result = executor.execute(call)
+                    observed_calls.append(call)
+                    observed_results.append(tool_result)
+                    serialized = serialize_tool_result(tool_result)
                     budget.charge_text(serialized)
                     messages.append(
                         {"role": "tool", "tool_call_id": call.call_id, "content": serialized}
@@ -191,10 +221,13 @@ class ReviewWorker:
                 continue
             if not response.content:
                 raise RuntimeError("model provider returned neither content nor tool calls")
-            return (
-                _parse_review_result(response.content, self.work_item, attempt_id, self.agent_id),
-                tool_rounds,
+            result = _parse_review_result(
+                response.content, self.work_item, attempt_id, self.agent_id
             )
+            anchors = _anchors_from_tool_results(
+                self.work_item, observed_calls, observed_results, self.sandbox
+            )
+            return _attach_evidence_ledger(result, anchors), tool_rounds
         raise RuntimeError("work item review loop exceeded max_tool_rounds")
 
     def _output_path(self, output_root: Path) -> Path:

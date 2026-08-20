@@ -2,6 +2,9 @@ import sys
 from pathlib import Path
 
 from compliance_review.code_map import (
+    CodeMapExplain,
+    CodeMapImpact,
+    CodeMapNeighbors,
     CodeMapPath,
     CodeMapQuery,
     GraphifyCodeMapProvider,
@@ -74,6 +77,21 @@ def test_graphify_query_requires_initialized_map(tmp_path: Path) -> None:
     assert result.error_code == "graph_not_initialized"
 
 
+def test_graphify_query_rejects_stale_index_state(tmp_path: Path) -> None:
+    graph_dir = tmp_path / "graphify-out"
+    graph_dir.mkdir()
+    (graph_dir / "graph.json").write_text("{}", encoding="utf-8")
+    (graph_dir / "index-state.json").write_text(
+        '{"code_state_id":"stale"}', encoding="utf-8"
+    )
+    provider = GraphifyCodeMapProvider(tmp_path, command=("echo",))
+
+    result = provider.query(CodeMapQuery(query="account deletion"))
+
+    assert result.status == "unavailable"
+    assert result.error_code == "graph_index_stale"
+
+
 def test_graphify_path_is_normalized_and_bounded(tmp_path: Path) -> None:
     fake_graphify = tmp_path / "fake_graphify.py"
     fake_graphify.write_text(
@@ -93,6 +111,51 @@ print('C.delete → S.delete → R.delete')
     assert result.truncated is True
     assert [node.symbol for node in result.nodes] == ["C.delete", "S.delete"]
     assert len(result.relations) == 1
+
+
+def test_graphify_explain_callers_callees_and_impact_are_bounded(tmp_path: Path) -> None:
+    fake_graphify = tmp_path / "fake_graphify.py"
+    fake_graphify.write_text(
+        """
+import sys
+command = sys.argv[1]
+if command == 'explain':
+    print('Node: AccountService.delete')
+    print('Source: service.py L42')
+    print('Connections (2):')
+    print('  --> UserRepository.delete [calls] [EXTRACTED]')
+    print('  <-- AccountController.delete [calls] [EXTRACTED]')
+elif command == 'affected':
+    print('NODE AccountController.delete [src=controller.py loc=L20]')
+    print('NODE AccountRoute [src=routes.py loc=L8]')
+    print('EDGE AccountRoute --calls [EXTRACTED]--> AccountController.delete at=routes.py:L8')
+""",
+        encoding="utf-8",
+    )
+    provider = GraphifyCodeMapProvider(
+        tmp_path,
+        command=(sys.executable, str(fake_graphify)),
+        require_index=False,
+    )
+
+    explained = provider.explain(CodeMapExplain(symbol="AccountService.delete"))
+    assert explained.status == "available"
+    assert explained.node is not None
+    assert explained.node.start_line == 42
+    assert len(explained.relations) == 2
+
+    callers = provider.neighbors(
+        CodeMapNeighbors(symbol="AccountService.delete", direction="callers")
+    )
+    callees = provider.neighbors(
+        CodeMapNeighbors(symbol="AccountService.delete", direction="callees")
+    )
+    assert [node.symbol for node in callers.nodes] == ["AccountController.delete"]
+    assert [node.symbol for node in callees.nodes] == ["UserRepository.delete"]
+
+    impact = provider.impact(CodeMapImpact(symbol="AccountService.delete"))
+    assert impact.status == "available"
+    assert [node.symbol for node in impact.nodes] == ["AccountController.delete", "AccountRoute"]
 
 
 def test_graphify_lifecycle_builds_code_only_map_with_fake_cli(tmp_path: Path) -> None:

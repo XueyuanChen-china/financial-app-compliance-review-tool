@@ -3,8 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Literal, Mapping, Protocol, Sequence
+from typing import Literal, Mapping, Optional, Protocol, Sequence
 
+from pydantic import Field
+
+from compliance_review.code_map import GraphifyLifecycle
 from compliance_review.collectors.base import CollectorResult
 from compliance_review.domain.models import (
     ApplicabilitySet,
@@ -15,6 +18,8 @@ from compliance_review.domain.models import (
     CoverageUnit,
     DiffFile,
     DiffResult,
+    ImpactValidationResult,
+    ImpactWorkItem,
     RegressionChange,
     RegressionComparison,
     RepositoryDiff,
@@ -25,13 +30,19 @@ from compliance_review.domain.models import (
     WorkItem,
 )
 from compliance_review.persistence import ArtifactStore
-from compliance_review.repository import GitRepository, RepositorySandbox
+from compliance_review.repository import (
+    GitRepository,
+    RepositorySandbox,
+    is_generated_repository_artifact,
+    is_repository_metadata,
+)
 from compliance_review.review.finalization import (
     ComplianceResolver,
     CoverageGate,
     ResultValidator,
-    is_automatable_surface,
 )
+from compliance_review.review.impact import ImpactRuntime, ImpactValidator, impact_to_coverage
+from compliance_review.review.manifest import ReviewWorkItemBuilder
 from compliance_review.review.models import (
     DiffReviewRunResult,
     ResultValidationResult,
@@ -69,6 +80,8 @@ class DiffReviewPlan(ContractModel):
     reuse: ReusePlan
     fingerprints: dict[str, str]
     review_work_item_ids: list[str]
+    impact_work_items: list[ImpactWorkItem] = Field(default_factory=list)
+    impact_validation: Optional[ImpactValidationResult] = None
 
 
 class DiffReviewPlanner:
@@ -81,6 +94,7 @@ class DiffReviewPlanner:
         previous_snapshot: Snapshot | None,
         previous_validation: ResultValidationResult | None = None,
         baseline_run_id: str | None = None,
+        impact_provider: ModelProvider | None = None,
     ) -> DiffReviewPlan:
         previous_revisions = previous_snapshot.repository_revisions if previous_snapshot else {}
         repository_diffs: list[RepositoryDiff] = []
@@ -88,11 +102,25 @@ class DiffReviewPlanner:
         errors: list[str] = []
         unmapped: list[str] = []
         for inventory in setup.inventories:
-            diff = GitRepository(Path(inventory.path)).diff(
-                inventory.repo_id,
-                previous_revisions.get(inventory.repo_id),
-                inventory.git_revision,
-            )
+            repository = GitRepository(Path(inventory.path))
+            current_state_id = repository.code_state_id()
+            if (
+                previous_snapshot is not None
+                and previous_snapshot.code_state_ids.get(inventory.repo_id) == current_state_id
+            ):
+                diff = RepositoryDiff(
+                    repo_id=inventory.repo_id,
+                    base_revision=previous_revisions.get(inventory.repo_id),
+                    head_revision=inventory.git_revision,
+                    comparable=True,
+                    code_state_id=current_state_id,
+                )
+            else:
+                diff = repository.diff(
+                    inventory.repo_id,
+                    previous_revisions.get(inventory.repo_id),
+                    inventory.git_revision,
+                )
             surface = inventory.detected_surface or inventory.declared_surface
             if surface is None:
                 unmapped.append(inventory.repo_id)
@@ -132,30 +160,77 @@ class DiffReviewPlanner:
             if setup.coverage is not None
             else {}
         )
-        impacts = [
-            CoverageImpact(
-                coverage_unit_id=unit.coverage_unit_id,
-                affected=_unit_affected(unit.surface, all_files, diff_result, setup.inventories),
-                reasons=_impact_reasons(unit.surface, all_files, diff_result, setup.inventories),
-                repository_ids=_repository_ids_for_surface(unit.surface, setup.inventories),
-            )
-            for unit in (setup.coverage.units if setup.coverage else [])
-        ]
-        impact_by_id = {item.coverage_unit_id: item for item in impacts}
-        previous_rows = {
-            row.row_id: row
-            for row in (previous_validation.rows if previous_validation else [])
-            if row.valid and row.row is not None and row.result_origin == "reviewed"
-        }
-        decisions: list[ReuseDecision] = []
-        reused: list[str] = []
-        review_units: set[str] = set()
-        terminal: list[str] = []
         work_item_by_unit = {
             unit_id: work_item
             for work_item in setup.work_items
             for unit_id in work_item.coverage_unit_ids
         }
+        previous_by_row = {
+            row.row_id: row for row in (previous_validation.rows if previous_validation else [])
+        }
+        candidate_items: list[ImpactWorkItem] = []
+        impacts: list[CoverageImpact] = []
+        for unit in setup.coverage.units if setup.coverage else []:
+            repository_ids = _repository_ids_for_surface(unit.surface, setup.inventories)
+            changed_files = [item for item in all_files if item.repo_id in repository_ids]
+            if unit.coverage_status != "planned" or not changed_files:
+                impacts.append(
+                    CoverageImpact(
+                        coverage_unit_id=unit.coverage_unit_id,
+                        affected=False,
+                        decision="unaffected",
+                        reasons=["no changed repository file for this reviewable surface"],
+                        repository_ids=repository_ids,
+                    )
+                )
+                continue
+            previous_row = previous_by_row.get(f"{unit.control_id}:{unit.surface}")
+            candidate_items.append(
+                ImpactWorkItem(
+                    impact_work_item_id=f"iwi.{unit.coverage_unit_id[3:]}",
+                    coverage_unit_id=unit.coverage_unit_id,
+                    control_id=unit.control_id,
+                    surface=unit.surface,
+                    repository_ids=repository_ids,
+                    evidence_requirement_ids=list(unit.evidence_requirement_ids),
+                    baseline_anchor_locations=(
+                        previous_row.anchor_locations if previous_row is not None else []
+                    ),
+                    changed_files=changed_files,
+                    code_state_ids={
+                        item.repo_id: (
+                            GitRepository(Path(item.path)).code_state_id() or "unavailable"
+                        )
+                        for item in setup.inventories
+                        if item.repo_id in repository_ids
+                    },
+                )
+            )
+        impact_work_items = {
+            item.coverage_unit_id: work_item_by_unit[item.coverage_unit_id]
+            for item in candidate_items
+            if item.coverage_unit_id in work_item_by_unit
+        }
+        impact_decisions = ImpactRuntime(impact_provider).run(
+            candidate_items, impact_work_items, setup.sandboxes
+        )
+        validated_impacts = ImpactValidator().validate(candidate_items, impact_decisions)
+        by_item = {item.coverage_unit_id: item for item in candidate_items}
+        impacts.extend(
+            impact_to_coverage(decision, by_item[decision.coverage_unit_id])
+            for decision in validated_impacts.decisions
+        )
+        impact_by_id = {item.coverage_unit_id: item for item in impacts}
+        previous_rows = {
+            row.row_id: row
+            for row in (previous_validation.rows if previous_validation else [])
+            if row.row is not None
+            and row.result_origin in {"reviewed", "carried_forward", "reused"}
+        }
+        decisions: list[ReuseDecision] = []
+        reused: list[str] = []
+        review_units: set[str] = set()
+        terminal: list[str] = []
         for unit in setup.coverage.units if setup.coverage else []:
             current_fp = fingerprints[unit.coverage_unit_id]
             impact = impact_by_id[unit.coverage_unit_id]
@@ -165,32 +240,45 @@ class DiffReviewPlanner:
                 else None
             )
             previous_row = previous_rows.get(f"{unit.control_id}:{unit.surface}")
-            reusable = unit.coverage_status in {"not_applicable", "not_required"} or (
+            has_surface_code_change = any(
+                item.repo_id in impact.repository_ids for item in all_files
+            )
+            reusable = unit.coverage_status in {
+                "not_applicable",
+                "not_required",
+                "manual_required",
+                "external_collection_required",
+            } or (
                 not impact.affected
                 and previous_snapshot is not None
                 and previous_snapshot.run_status == "completed"
-                and previous_fp == current_fp
+                and (has_surface_code_change or previous_fp == current_fp)
                 and previous_row is not None
-                and previous_row.row is not None
-                and previous_row.row.recommended_control_status == "pass"
-                and previous_row.row.evidence_status == "complete"
             )
             reasons = list(impact.reasons)
-            if unit.coverage_status in {"not_applicable", "not_required"}:
+            if unit.coverage_status in {
+                "not_applicable",
+                "not_required",
+                "manual_required",
+                "external_collection_required",
+            }:
                 reasons.append(
-                    "coverage unit is not applicable"
-                    if unit.coverage_status == "not_applicable"
-                    else "coverage unit is not required"
+                    {
+                        "not_applicable": "coverage unit is not applicable",
+                        "not_required": "coverage unit is not required",
+                        "manual_required": "coverage unit requires manual evidence",
+                        "external_collection_required": "coverage unit requires external evidence",
+                    }[unit.coverage_status]
                 )
                 terminal.append(unit.coverage_unit_id)
             elif reusable:
-                reasons.append("exact fingerprint and valid terminal PASS are available")
+                reasons.append("unchanged unit carries its prior validated review state")
                 reused.append(unit.coverage_unit_id)
             else:
                 if previous_snapshot is None:
                     reasons.append("no previous snapshot")
-                elif previous_fp != current_fp:
-                    reasons.append("reuse fingerprint changed")
+                elif not has_surface_code_change and previous_fp != current_fp:
+                    reasons.append("semantic input fingerprint changed")
                 elif previous_row is None:
                     reasons.append("previous valid review row is missing")
                 review_units.add(unit.coverage_unit_id)
@@ -236,6 +324,8 @@ class DiffReviewPlanner:
             reuse=reuse_plan,
             fingerprints=fingerprints,
             review_work_item_ids=sorted(selected_work_items),
+            impact_work_items=candidate_items,
+            impact_validation=validated_impacts,
         )
 
 
@@ -289,6 +379,8 @@ def repository_input_fingerprint(
         return stable_hash({"repo_id": inventory.repo_id, "missing": True})
     digest = hashlib.sha256()
     for relative in sandbox.list_files("**/*", limit=100_000):
+        if is_generated_repository_artifact(relative) or is_repository_metadata(relative):
+            continue
         digest.update(relative.encode("utf-8"))
         try:
             digest.update(sandbox.read_text(relative).encode("utf-8"))
@@ -301,6 +393,44 @@ def stable_hash(value: object) -> str:
     return hashlib.sha256(
         json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+
+
+def _refresh_graphify_indexes(
+    inventories: Sequence[RepositoryInventory],
+) -> dict[str, dict[str, str | bool | None]]:
+    """Refresh only existing stale maps before Impact agents use code navigation.
+
+    Graphify is an optional navigation cache. We never install it as part of a
+    review run; a failed refresh is recorded and its provider boundary will
+    return a structured degraded result, causing an unsafe ``unaffected``
+    decision to fail closed.
+    """
+    lifecycle = GraphifyLifecycle()
+    results: dict[str, dict[str, str | bool | None]] = {}
+    for inventory in inventories:
+        root = Path(inventory.path)
+        if not GraphifyLifecycle.graph_paths(root):
+            results[inventory.repo_id] = {
+                "status": "not_initialized",
+                "fresh": False,
+                "error_code": None,
+            }
+            continue
+        if GraphifyLifecycle.index_is_fresh(root):
+            results[inventory.repo_id] = {
+                "status": "fresh",
+                "fresh": True,
+                "error_code": None,
+            }
+            continue
+        refreshed = lifecycle.initialize(root, install_if_missing=False, force=True)
+        results[inventory.repo_id] = {
+            "status": refreshed.status,
+            "fresh": refreshed.status == "initialized"
+            and GraphifyLifecycle.index_is_fresh(root),
+            "error_code": refreshed.error_code,
+        }
+    return results
 
 
 def _repository_ids_for_surface(
@@ -405,10 +535,12 @@ class DiffReviewService:
         workspace_root: Path,
         runtime: DiffRuntimeProtocol,
         verifier_provider: ModelProvider | None = None,
+        impact_provider: ModelProvider | None = None,
     ) -> None:
         self.workspace_root = workspace_root.expanduser().resolve()
         self.runtime = runtime
         self.verifier_provider = verifier_provider
+        self.impact_provider = impact_provider
         self.store = ArtifactStore(self.workspace_root)
 
     def run(
@@ -433,21 +565,44 @@ class DiffReviewService:
                 raise DiffReviewError(
                     "previous validated rows are required for safe reuse"
                 ) from exc
+        graphify_indexes = _refresh_graphify_indexes(setup.inventories)
         plan = DiffReviewPlanner().plan(
             setup,
             controls,
             previous_snapshot,
             previous_validation,
             baseline_run_id=previous_snapshot.run_id,
+            impact_provider=self.impact_provider,
         )
         if not plan.reuse.complete:
             raise DiffReviewError("diff plan does not cover every current CoverageUnit")
         run_root = self.workspace_root / "runs" / setup.run_id
-        self.store.write_run_model(setup.run_id, "diff.json", plan.diff)
+        self.store.write_run_model(setup.run_id, "diff/diff.json", plan.diff)
         self.store.write_run_json(
-            setup.run_id, "impact.json", [item.model_dump(mode="json") for item in plan.impacts]
+            setup.run_id,
+            "diff/code-states.json",
+            {
+                repository.repo_id: {
+                    "code_state_id": repository.code_state_id,
+                    "revision": repository.head_revision,
+                }
+                for repository in plan.diff.repositories
+            },
         )
-        self.store.write_run_model(setup.run_id, "reuse-plan.json", plan.reuse)
+        self.store.write_run_json(setup.run_id, "diff/graphify-indexes.json", graphify_indexes)
+        self.store.write_run_json(
+            setup.run_id, "diff/impact-work-items.json",
+            [item.model_dump(mode="json") for item in plan.impact_work_items],
+        )
+        self.store.write_run_json(
+            setup.run_id, "diff/impact-decisions.json",
+            [item.model_dump(mode="json") for item in plan.impacts],
+        )
+        if plan.impact_validation is not None:
+            self.store.write_run_model(
+                setup.run_id, "diff/impact-validation.json", plan.impact_validation
+            )
+        self.store.write_run_model(setup.run_id, "diff/execution-plan.json", plan.reuse)
         review_units = set(plan.reuse.review_unit_ids)
         review_coverage = setup.coverage.model_copy(
             update={
@@ -457,6 +612,44 @@ class DiffReviewService:
             }
         )
         review_work_items = _filtered_work_items(setup.work_items, review_units)
+        work_item_builder = ReviewWorkItemBuilder()
+        review_work_items = [
+            work_item_builder.build_diff(
+                item,
+                baseline_context={
+                    "baseline_run_id": previous_snapshot.run_id,
+                    "previous_result_origin": _previous_origin(
+                        previous_validation, item.control_id, item.surface
+                    ),
+                },
+                change_context={
+                    "changed_files": [
+                        diff_file.path
+                        for diff_file in plan.diff.files
+                        if diff_file.repo_id in item.repository_ids
+                        or diff_file.repo_id == item.repository_id
+                    ],
+                    "changed_hunks": [
+                        diff_file.model_dump(mode="json")
+                        for diff_file in plan.diff.files
+                        if diff_file.repo_id in item.repository_ids
+                        or diff_file.repo_id == item.repository_id
+                    ],
+                },
+            )
+            for item in review_work_items
+        ]
+        for item in review_work_items:
+            self.store.write_run_model(setup.run_id, f"work_items/{item.work_item_id}.json", item)
+        self.store.write_run_json(
+            setup.run_id,
+            "diff/carried-forward-lineage.json",
+            [
+                item.model_dump(mode="json")
+                for item in plan.reuse.decisions
+                if item.coverage_unit_id in set(plan.reuse.reused_unit_ids)
+            ],
+        )
         review_sandboxes = {
             item.work_item_id: setup.sandboxes[item.work_item_id] for item in review_work_items
         }
@@ -503,6 +696,17 @@ class DiffReviewService:
             previous_manual_ids=sorted(previous_manual_ids),
             automated_evidence_regression_ids=sorted(automated_regressions),
         )
+        completed_work_item_ids = {
+            execution.work_item_id
+            for execution in summary.executions
+            if execution.execution_status == "completed"
+        }
+        completed_review_unit_ids = {
+            coverage_unit_id
+            for item in review_work_items
+            if item.work_item_id in completed_work_item_ids
+            for coverage_unit_id in item.coverage_unit_ids
+        }
         snapshot = Snapshot(
             contract="compliance_snapshot.v1",
             run_id=setup.run_id,
@@ -510,6 +714,9 @@ class DiffReviewService:
                 {item.repo_id: item.git_revision or "unversioned" for item in setup.inventories}
             ),
             mode="diff",
+            semantic_baseline_run_id=(
+                previous_snapshot.semantic_baseline_run_id or previous_snapshot.run_id
+            ),
             baseline_run_id=previous_snapshot.run_id,
             control_results=resolved,
             coverage_manifest_ref=f"runs/{setup.run_id}/coverage_manifest.json",
@@ -518,10 +725,22 @@ class DiffReviewService:
             ),
             ci_status=gate.ci_status,
             reviewed_rows=[
-                row.coverage_unit_id for row in gate.rows if row.result_origin == "reviewed"
+                row.coverage_unit_id
+                for row in gate.rows
+                if row.coverage_unit_id in completed_review_unit_ids
+                and row.evidence_status == "complete"
+            ],
+            reviewed_partial_rows=[
+                row.coverage_unit_id
+                for row in gate.rows
+                if row.coverage_unit_id in completed_review_unit_ids
+                if row.execution_status == "completed"
+                and row.evidence_status in {"partial", "missing"}
             ],
             reused_rows=[
-                row.coverage_unit_id for row in gate.rows if row.result_origin == "reused"
+                row.coverage_unit_id
+                for row in gate.rows
+                if row.result_origin in {"carried_forward", "reused"}
             ],
             missing_surfaces=setup.coverage.missing_surfaces,
             validation_flags=validation.flags,
@@ -529,6 +748,8 @@ class DiffReviewService:
             manual_review_existing_ids=gate.manual_review_existing_ids,
             manual_review_resolved_ids=gate.manual_review_resolved_ids,
             automated_evidence_regression_ids=gate.automated_evidence_regression_ids,
+            reviewer_work_items_completed=summary.completed,
+            reviewer_work_items_failed=summary.failed,
             run_status="completed",
             repository_revisions={
                 item.repo_id: item.git_revision or "unversioned" for item in setup.inventories
@@ -538,6 +759,10 @@ class DiffReviewService:
                 for item in setup.inventories
             },
             reuse_fingerprints=plan.fingerprints,
+            code_state_ids={
+                item.repo_id: GitRepository(Path(item.path)).code_state_id() or "unavailable"
+                for item in setup.inventories
+            },
         )
         policies = {item.control_id: item.missing_evidence_policy for item in controls.controls}
         regressions = compare_regression(snapshot, previous_snapshot, policies)
@@ -550,10 +775,12 @@ class DiffReviewService:
                 ]
             }
         )
-        from compliance_review.review.full_review import render_markdown_report
+        from compliance_review.review.diff_report import render_diff_report
 
         report_path = self.store.write_run_text(
-            setup.run_id, "report.md", render_markdown_report(snapshot, gate)
+            setup.run_id,
+            "report.md",
+            render_diff_report(snapshot, gate, plan, regressions),
         )
         self.store.write_run_model(setup.run_id, "review_summary.json", summary)
         self.store.write_run_model(setup.run_id, "result_validation.json", validation)
@@ -575,9 +802,9 @@ class DiffReviewService:
             coverage_gate=gate,
             snapshot=snapshot,
             report_path=report_path.as_posix(),
-            diff_path=(run_root / "diff.json").as_posix(),
-            impact_path=(run_root / "impact.json").as_posix(),
-            reuse_plan_path=(run_root / "reuse-plan.json").as_posix(),
+            diff_path=(run_root / "diff" / "diff.json").as_posix(),
+            impact_path=(run_root / "diff" / "impact-decisions.json").as_posix(),
+            reuse_plan_path=(run_root / "diff" / "execution-plan.json").as_posix(),
             regression_path=(run_root / "regressions.json").as_posix(),
         )
 
@@ -613,13 +840,7 @@ def merge_validations(
             rows.append(row)
         elif unit.coverage_unit_id in reused_ids:
             previous_row = previous_by_id.get(row_id)
-            if (
-                previous_row is None
-                or not previous_row.valid
-                or previous_row.row is None
-                or previous_row.row.evidence_status != "complete"
-                or previous_row.row.recommended_control_status != "pass"
-            ):
+            if previous_row is None:
                 errors.append(f"{row_id}:unsafe_reuse_row")
                 rows.append(
                     ValidatedReviewRow(
@@ -634,7 +855,13 @@ def merge_validations(
             else:
                 rows.append(
                     previous_row.model_copy(
-                        update={"result_origin": "reused", "previous_run_id": previous_run_id}
+                        update={
+                            "result_origin": "carried_forward",
+                            "previous_run_id": previous_run_id,
+                            "result_origin_run_id": (
+                                previous_row.result_origin_run_id or previous_run_id
+                            ),
+                        }
                     )
                 )
         elif unit.coverage_unit_id in terminal_ids:
@@ -678,6 +905,20 @@ def _filtered_work_items(work_items: Sequence[WorkItem], unit_ids: set[str]) -> 
     return filtered
 
 
+def _previous_origin(
+    validation: ResultValidationResult, control_id: str, surface: Surface
+) -> str | None:
+    row = next(
+        (
+            candidate
+            for candidate in validation.rows
+            if candidate.control_id == control_id and candidate.surface == surface
+        ),
+        None,
+    )
+    return row.result_origin if row is not None else None
+
+
 def _legacy_flag_set(validation: ResultValidationResult) -> SuspiciousReviewSet:
     return SuspiciousReviewSet(row_ids=sorted(validation.flags), reasons=validation.flags)
 
@@ -697,10 +938,10 @@ def _manual_review_ids(
     rows = {item.row_id: item for item in validation.rows}
     manual: set[str] = set()
     for unit in coverage.units:
-        if is_automatable_surface(unit.surface):
+        if unit.coverage_status in {"not_applicable", "not_required"}:
             continue
         row = rows.get(f"{unit.control_id}:{unit.surface}")
-        if row is None or row.row is None or row.row.evidence_status == "manual_required":
+        if row is not None and row.row is not None and row.row.evidence_status == "manual_required":
             manual.add(unit.coverage_unit_id)
     return manual
 
@@ -716,7 +957,7 @@ def _automated_evidence_regressions(
     decisions = {item.coverage_unit_id: item for item in plan.reuse.decisions}
     regressions: set[str] = set()
     for unit in coverage.units:
-        if not is_automatable_surface(unit.surface):
+        if unit.work_item_id is None:
             continue
         row_id = f"{unit.control_id}:{unit.surface}"
         old = previous_by_id.get(row_id)

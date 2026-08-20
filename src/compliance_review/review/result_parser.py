@@ -34,8 +34,16 @@ def parse_review_result(
     if isinstance(wrapped, dict):
         payload = wrapped
 
+    # Runtime identifiers are owned by the worker, not by the model. A retry
+    # may still echo identifiers from an earlier attempt in its context.
+    payload_for_validation = {
+        **payload,
+        "work_item_id": work_item.work_item_id,
+        "attempt_id": attempt_id,
+        "agent_id": agent_id,
+    }
     try:
-        result = ReviewResult.model_validate(payload)
+        result = ReviewResult.model_validate(payload_for_validation)
     except ValueError:
         result = _normalize_single_control_result(payload, work_item, attempt_id, agent_id)
 
@@ -49,9 +57,20 @@ def parse_review_result(
 def _normalize_single_control_result(
     payload: dict[str, Any], work_item: WorkItem, attempt_id: str, agent_id: str
 ) -> ReviewResult:
-    if payload.get("schema") != "review_result.v1" and payload.get(
-        "review_result_version"
-    ) != "review_result.v1":
+    recognized_fields = {
+        "schema",
+        "review_result_version",
+        "contract",
+        "control_id",
+        "surface",
+        "status",
+        "assessment",
+        "summary",
+        "findings",
+        "limitations",
+        "rows",
+    }
+    if not recognized_fields.intersection(payload):
         raise RuntimeError("invalid structured review result: unsupported JSON shape")
     control_id = payload.get("control_id")
     if control_id is None and len(work_item.control_ids) == 1:

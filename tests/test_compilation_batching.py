@@ -13,14 +13,19 @@ from compliance_review.compilation.batching import (
     merge_obligation_batches,
     validate_batch_coverage,
 )
-from compliance_review.compilation.llm import ObligationExtractor
+from compliance_review.compilation.llm import (
+    ObligationExtractor,
+    _patch_strict_condition_value_schema,
+)
 from compliance_review.compilation.models import (
     ComplianceSource,
+    ControlDraftSetTransport,
     Obligation,
     ObligationExtractionBatchResult,
     SectionCoverageDecision,
     SourceRegistry,
     SourceSection,
+    SourceSectionBatch,
 )
 from compliance_review.compilation.service import Phase2CompilationError, Phase2CompilationService
 from compliance_review.compilation.source_registry import SourceRegistryBuilder
@@ -41,6 +46,24 @@ def _registry_for_sections(*sections: SourceSection) -> SourceRegistry:
         sections=list(sections),
     )
     return SourceRegistry(version="1.0", sources=[source])
+
+
+def test_strict_compilation_schemas_type_applicability_condition_value() -> None:
+    for model in (ObligationExtractionBatchResult, ControlDraftSetTransport):
+        schema = _patch_strict_condition_value_schema(model.model_json_schema())
+        variants = schema["$defs"]["ApplicabilityCondition"]["anyOf"]
+        atom = next(
+            variant
+            for variant in variants
+            if variant["properties"]["kind"]["enum"] == ["atom"]
+        )
+        assert atom["properties"]["value"]["anyOf"] == [
+            {"type": "string"},
+            {"type": "boolean"},
+            {"type": "number"},
+            {"type": "array", "items": {"type": "string"}},
+        ]
+        assert atom["required"] == ["kind", "fact", "operator", "value"]
 
 
 def _obligation(obligation_id: str, section_id: str) -> Obligation:
@@ -209,6 +232,57 @@ def test_large_registry_uses_multiple_obligation_model_calls() -> None:
 
     assert len(provider.requests) == len(batches)
     assert len(results) == 2
+
+
+def test_obligation_model_schema_restricts_provenance_to_current_batch() -> None:
+    source_id = "policy-source-1234567890"
+    section_id = "section-001"
+    batch = SourceSectionBatch(
+        batch_id="batch-001",
+        source_id=source_id,
+        sections=[
+            SourceSection(
+                section_id=section_id,
+                title="Policy",
+                text="A requirement.",
+                ordinal=1,
+            )
+        ],
+        estimated_input_tokens=20,
+    )
+
+    def response(request: object) -> ModelResponse:
+        schema = request.response_schema  # type: ignore[attr-defined]
+        assert schema["properties"]["source_id"]["enum"] == [source_id]
+        assert schema["properties"]["batch_id"]["enum"] == [batch.batch_id]
+        assert schema["$defs"]["Obligation"]["properties"]["source_id"]["enum"] == [
+            source_id
+        ]
+        assert schema["$defs"]["Obligation"]["properties"]["source_section"]["enum"] == [
+            section_id
+        ]
+        return ModelResponse(
+            content=json.dumps(
+                {
+                    "contract": "obligation_extraction_batch.v1",
+                    "version": "1.0",
+                    "source_id": source_id,
+                    "batch_id": batch.batch_id,
+                    "section_decisions": [
+                        {
+                            "section_id": section_id,
+                            "decision": "no_obligation",
+                            "reason": "Informational text only.",
+                        }
+                    ],
+                    "obligations": [],
+                }
+            )
+        )
+
+    result = ObligationExtractor(StaticModelProvider(response)).extract(batch)
+
+    assert result.source_id == source_id
 
 
 def test_batch_planner_rejects_section_that_cannot_fit_budget() -> None:

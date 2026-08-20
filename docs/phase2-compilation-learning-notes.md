@@ -78,7 +78,7 @@ source_id
 source_section
 statement
 concepts
-applicability_expression
+applicability_condition
 required_surfaces
 source_refs
 ```
@@ -92,7 +92,7 @@ control_id
 module_id
 obligation_ids
 source_refs
-applicability_expression
+applicability_condition
 required_surfaces
 evidence_requirements
 missing_evidence_policy
@@ -112,19 +112,15 @@ Validator 不使用 LLM，负责拒绝：
 - 不存在的 `source_id` 或 `source_section`。
 - 非法 `required_surfaces`。
 - 不完整或多余的 `evidence_requirements`。
-- 不符合有限 DSL 的 `applicability_expression`。
+- 无法安全表示或结构不合法的 `applicability_condition`。
 - 空 Control Set。
 
-有限 DSL 当前只允许：
+结构化条件当前只允许四种节点：`atom`、`all_of`、`any_of` 和
+`unknown`。`atom` 只允许 `equals`、`includes` 两个操作符；旧版
+`applicability_expression` 只在迁移适配器中读取，无法无损转换时变为
+`unknown`，不会被当作新的规则语言。
 
-```text
-field == value
-field includes value
-value in field
-多个条件用 and 或 && 连接
-```
-
-只有 validation 通过，才会把 `ControlDraft[]` 转换为 `control_set.v1` 并写入 `setup/controls.json`。
+只有 validation 通过，才会把 `ControlDraft[]` 转换为 `control_set.v2` 并写入 `setup/controls.json`。
 
 ## 6. 产物和失败语义
 

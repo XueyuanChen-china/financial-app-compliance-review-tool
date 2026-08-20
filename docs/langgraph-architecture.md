@@ -82,13 +82,18 @@ Reviewer 的工具请求经过 `ScopedToolExecutor`，允许的工具为：
 ```text
 code_map_query       -> CodeMapProvider -> Graphify
 code_map_path        -> CodeMapProvider -> Graphify
+code_map_explain     -> Graphify explain
+code_map_callers     -> explain 有向 incoming calls/references
+code_map_callees     -> explain 有向 outgoing calls/references
+code_map_impact      -> Graphify affected
 get_collector_facts  -> 父流程注入的 CollectorResult
-search_code          -> git/repository search fallback
+search_code          -> git/repository search fallback（候选，不是证据）
 read_file            -> 精确源码验证
+capture_anchor       -> Sandbox 精确读取并铸造 Verified Anchor
 list_files           -> 有限目录 inventory
 ```
 
-Reviewer 不直接调用 shell 或 Graphify CLI。Tool Runtime 会在返回前执行 Work Item 的路径、结果数量、读取行数、Graphify budget 和总调用次数限制。Graphify 只负责导航，Collector 只提供预计算 Facts，最终合规状态仍由后续 Validator/Resolver 计算。
+Reviewer 不直接调用 shell 或 Graphify CLI。Tool Runtime 会在返回前执行 Work Item 的路径、结果数量、读取行数、Graphify budget 和总调用次数限制。Graphify/search 只产生候选位置；只有 `capture_anchor` 产生正式 Anchor。Collector 只有带准确路径、行号和原文的 source ref 才能进入 Anchor Ledger，否则只能作为 Fact 元数据。最终合规状态仍由后续 Validator/Resolver 计算。
 
 ## 4. ReviewerContextState
 

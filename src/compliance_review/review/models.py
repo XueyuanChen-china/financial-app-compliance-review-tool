@@ -8,6 +8,7 @@ from compliance_review.domain.models import (
     ControlStatus,
     ControlSurfaceResult,
     CoverageGateResult,
+    EvidenceAnchor,
     ResolvedControlResult,
     ReviewMode,
     ReviewResult,
@@ -27,7 +28,7 @@ class ExcludedControl(ReviewContractModel):
 
 
 class ReviewManifest(ReviewContractModel):
-    contract: Literal["review_manifest.v1"]
+    contract: Literal["review_manifest.v1", "review_manifest.v2"]
     run_id: str = Field(min_length=1)
     mode: ReviewMode
     default_max_concurrency: int = Field(default=3, ge=1, le=32)
@@ -46,6 +47,11 @@ class ToolCall(ReviewContractModel):
     name: Literal[
         "code_map_query",
         "code_map_path",
+        "code_map_explain",
+        "code_map_callers",
+        "code_map_callees",
+        "code_map_impact",
+        "capture_anchor",
         "get_collector_facts",
         "get_repository_inventory",
         "get_app_facts",
@@ -56,6 +62,29 @@ class ToolCall(ReviewContractModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
 
 
+class CandidateLocation(ReviewContractModel):
+    """Navigation-only location returned before exact source capture."""
+
+    result_kind: Literal["candidate_location"] = "candidate_location"
+    navigation_only: Literal[True] = True
+    source_tool: Literal[
+        "code_map_query",
+        "code_map_path",
+        "code_map_explain",
+        "code_map_callers",
+        "code_map_callees",
+        "code_map_impact",
+        "search_code",
+        "list_files",
+    ]
+    path: Optional[str] = None
+    symbol: Optional[str] = None
+    start_line: Optional[int] = Field(default=None, ge=1)
+    end_line: Optional[int] = Field(default=None, ge=1)
+    relation: Optional[str] = None
+    confidence: Optional[str] = None
+
+
 class ModelRequest(ReviewContractModel):
     work_item: WorkItem
     attempt_id: str = Field(min_length=1)
@@ -64,6 +93,9 @@ class ModelRequest(ReviewContractModel):
     tools: list[dict[str, Any]] = Field(default_factory=list)
     token_budget: int = Field(default=4000, ge=100)
     response_schema: Optional[dict[str, Any]] = None
+    reasoning_effort_override: Optional[
+        Literal["none", "minimal", "low", "medium", "high", "xhigh"]
+    ] = None
     request_kind: Literal[
         "review",
         "compression",
@@ -72,6 +104,7 @@ class ModelRequest(ReviewContractModel):
         "applicability",
         "review_finalization",
         "verification",
+        "impact",
     ] = "review"
 
 
@@ -168,11 +201,13 @@ class ValidatedReviewRow(ReviewContractModel):
     attempt_id: Optional[str] = None
     execution_status: Optional[Literal["completed", "failed"]] = None
     row: Optional[ControlSurfaceResult] = None
+    anchor_locations: list[str] = Field(default_factory=list)
     valid: bool
     flags: list[str] = Field(default_factory=list)
     suspicious: bool = False
-    result_origin: Literal["reviewed", "reused"] = "reviewed"
+    result_origin: Literal["reviewed", "reused", "carried_forward"] = "reviewed"
     previous_run_id: Optional[str] = None
+    result_origin_run_id: Optional[str] = None
     issues: list[ValidationIssue] = Field(default_factory=list)
 
 
@@ -233,6 +268,9 @@ class ScopedToolResult(ReviewContractModel):
     error: Optional[str] = None
     error_code: Optional[str] = None
     retryable: bool = False
+    # Internal only: this is excluded from serialized model/tool output so the
+    # model cannot manufacture or edit a verified anchor payload.
+    verified_anchor: Optional[EvidenceAnchor] = Field(default=None, exclude=True)
 
 
 def work_item_surface(work_item: WorkItem) -> Surface:

@@ -24,10 +24,10 @@ from compliance_review.review import (
     ReviewScheduler,
     StaticModelProvider,
 )
-from compliance_review.review.evidence import file_content_revision
 from compliance_review.review.langgraph_runtime import (
     _anchors_from_tool_results,
     _parse_compressed_memory,
+    _response_token_cost,
 )
 from compliance_review.review.models import (
     ModelRequest,
@@ -36,6 +36,7 @@ from compliance_review.review.models import (
     ToolCall,
     WorkerAttempt,
 )
+from compliance_review.review.prompt_policy import normalize_trusted_external_result
 from compliance_review.review.provider import tool_schemas
 from compliance_review.review.result_parser import parse_review_result
 from compliance_review.review.tools import (
@@ -63,6 +64,76 @@ def _work_item(work_item_id: str) -> WorkItem:
     )
 
 
+def test_trusted_external_material_normalizes_conservative_completed_result() -> None:
+    work_item = WorkItem(
+        work_item_id="trusted-play",
+        module_id="external",
+        surface="play_console",
+        external_evidence_policy="trusted_test_materials",
+        control_ids=["fin-001"],
+        allowed_roots=["materials"],
+    )
+    result = ReviewResult(
+        contract="review_result.v1",
+        work_item_id=work_item.work_item_id,
+        attempt_id="attempt-1",
+        execution_status="completed",
+        rows=[
+            ControlSurfaceResult(
+                control_id="fin-001",
+                surface="play_console",
+                evidence_status="partial",
+                recommended_control_status="indeterminate",
+                anchor_ids=["anchor-1"],
+                observed_evidence_strength="static_proof",
+                unsupported_inferences=["needs official export"],
+                gap_reasons=["owner material only"],
+            )
+        ],
+        agent_id="reviewer-1",
+    )
+
+    normalized = normalize_trusted_external_result(result, work_item)
+
+    row = normalized.rows[0]
+    assert row.evidence_status == "complete"
+    assert row.recommended_control_status == "pass"
+    assert row.observed_evidence_strength == "static_proof"
+    assert row.unsupported_inferences == []
+    assert row.gap_reasons == []
+
+
+def test_trusted_external_material_does_not_synthesize_anchor() -> None:
+    work_item = WorkItem(
+        work_item_id="trusted-regulator",
+        module_id="external",
+        surface="regulator_external",
+        external_evidence_policy="trusted_test_materials",
+        control_ids=["fin-001"],
+        allowed_roots=["materials"],
+    )
+    result = ReviewResult(
+        contract="review_result.v1",
+        work_item_id=work_item.work_item_id,
+        attempt_id="attempt-1",
+        execution_status="completed",
+        rows=[
+            ControlSurfaceResult(
+                control_id="fin-001",
+                surface="regulator_external",
+                evidence_status="missing",
+                recommended_control_status="indeterminate",
+            )
+        ],
+        agent_id="reviewer-1",
+    )
+
+    normalized = normalize_trusted_external_result(result, work_item)
+
+    assert normalized.rows[0].evidence_status == "missing"
+    assert normalized.rows[0].recommended_control_status == "indeterminate"
+
+
 def test_scoped_search_code_accepts_empty_root_as_all_allowed_roots() -> None:
     executor = ScopedToolExecutor(
         RepositorySandbox(FIXTURES),
@@ -80,7 +151,15 @@ def test_scoped_search_code_accepts_empty_root_as_all_allowed_roots() -> None:
     assert result.ok is True
     assert result.output == [
         {
+            "result_kind": "candidate_location",
+            "navigation_only": True,
+            "source_tool": "search_code",
             "path": "backend/app.py",
+            "symbol": None,
+            "start_line": 2,
+            "end_line": 2,
+            "relation": None,
+            "confidence": "search_match",
             "line_number": 2,
             "line_text": "@app.post('/api/loan/disburse')",
         }
@@ -134,6 +213,39 @@ def test_review_result_parser_accepts_wrapped_and_single_control_shapes() -> Non
     )
     implicit_result = parse_review_result(implicit_assignment, work_item, "attempt-3", "reviewer-3")
     assert implicit_result.rows[0].recommended_control_status == "fail"
+
+    mismatched_runtime_ids = json.dumps(
+        {
+            "contract": "review_result.v1",
+            "work_item_id": "old-work-item",
+            "attempt_id": "old-attempt",
+            "execution_status": "completed",
+            "rows": [
+                {
+                    "control_id": work_item.control_ids[0],
+                    "surface": work_item.surface,
+                    "evidence_status": "missing",
+                    "recommended_control_status": "indeterminate",
+                }
+            ],
+            "agent_id": "old-agent",
+        }
+    )
+    normalized = parse_review_result(
+        mismatched_runtime_ids, work_item, "attempt-4", "reviewer-4"
+    )
+    assert normalized.work_item_id == work_item.work_item_id
+    assert normalized.attempt_id == "attempt-4"
+    assert normalized.agent_id == "reviewer-4"
+
+    malformed_but_recognizable = parse_review_result(
+        json.dumps({"contract": "review_result.v1", "rows": [{"unexpected": True}]}),
+        work_item,
+        "attempt-5",
+        "reviewer-5",
+    )
+    assert malformed_but_recognizable.rows[0].recommended_control_status == "indeterminate"
+    assert malformed_but_recognizable.rows[0].evidence_status == "missing"
 
 
 def _review_json(request: ModelRequest, work_item: WorkItem, agent_id: str) -> str:
@@ -243,7 +355,10 @@ def test_openai_compatible_provider_uses_tools_then_strict_terminal_finalization
                             name="read_file",
                             arguments={"path": "backend/app.py", "start_line": 1, "line_count": 4},
                         )
-                    ]
+                    ],
+                    input_tokens=100,
+                    output_tokens=50,
+                    provider_metadata={"usage_available": True},
                 )
             # The candidate need not itself be schema-valid; finalization owns the
             # one strict result and must not re-enter the tool loop.
@@ -266,9 +381,88 @@ def test_openai_compatible_provider_uses_tools_then_strict_terminal_finalization
     assert [request.request_kind for request in calls] == [
         "review",
         "review",
+        "review",
         "review_finalization",
     ]
     assert calls[-1].tools == []
+
+
+def test_usage_tokens_are_authoritative_without_double_counting_text() -> None:
+    response = ModelResponse(
+        content="a long response that is already represented by output_tokens",
+        input_tokens=120,
+        output_tokens=30,
+        provider_metadata={"usage_available": True},
+    )
+
+    assert _response_token_cost(response, [{"role": "user", "content": "input"}], []) == 150
+
+
+def test_runtime_reserves_budget_for_forced_terminal_conclusion(tmp_path: Path) -> None:
+    item = _work_item("wi.forced-conclusion")
+    calls: list[ModelRequest] = []
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        calls.append(request)
+        if request.request_kind == "review":
+            if request.tools and request.tools[0]["function"]["name"] == "capture_anchor":
+                return ModelResponse(
+                    tool_calls=[
+                        ToolCall(
+                            call_id="capture-budget",
+                            name="capture_anchor",
+                            arguments={
+                                "path": "backend/app.py",
+                                "start_line": 2,
+                                "end_line": 4,
+                            },
+                        )
+                    ],
+                    input_tokens=40,
+                    output_tokens=20,
+                    provider_metadata={"usage_available": True},
+                )
+            return ModelResponse(
+                tool_calls=[
+                    ToolCall(
+                        call_id=f"read-{len(calls)}",
+                        name="read_file",
+                        arguments={"path": "backend/app.py", "line_count": 3},
+                    )
+                ],
+                input_tokens=100,
+                output_tokens=50,
+                provider_metadata={"usage_available": True},
+            )
+        assert request.request_kind == "review_finalization"
+        assert request.tools == []
+        return ModelResponse(content=_review_json(request, request.work_item, request.agent_id))
+
+    event_path = tmp_path / "events.jsonl"
+    summary = LangGraphReviewRuntime(
+        provider=StaticModelProvider(response_factory),
+        max_concurrency=1,
+        token_budget=700,
+        finalization_reserve_tokens=500,
+    ).run(
+        manifest_run_id="run-forced-conclusion",
+        work_items=[item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+        event_log_path=event_path,
+    )
+
+    assert summary.completed == 1
+    assert calls[-1].request_kind == "review_finalization"
+    assert any(
+        request.tools
+        and request.tools[0]["function"]["name"] == "capture_anchor"
+        for request in calls
+    )
+    events = [json.loads(line) for line in event_path.read_text().splitlines()]
+    model_rounds = [event for event in events if event["event_type"] == "review_model_round"]
+    assert any(event["forced_conclusion"] for event in model_rounds)
+    assert any(event["event_type"] == "review_tool_call" for event in events)
 
 
 def test_model_failure_retries_without_overwriting_attempt_history(tmp_path: Path) -> None:
@@ -621,6 +815,11 @@ def test_tool_schema_exposes_all_read_only_reviewer_tools() -> None:
     assert names == {
         "code_map_query",
         "code_map_path",
+        "code_map_explain",
+        "code_map_callers",
+        "code_map_callees",
+        "code_map_impact",
+        "capture_anchor",
         "get_collector_facts",
         "list_files",
         "search_code",
@@ -676,8 +875,8 @@ def test_work_items_have_independent_contexts_and_tool_histories(tmp_path: Path)
     )
 
     assert summary.completed == 2
-    first_a, second_a = request_log["wi.context-a"]
-    first_b, second_b = request_log["wi.context-b"]
+    first_a, second_a, _ = request_log["wi.context-a"]
+    first_b, second_b, _ = request_log["wi.context-b"]
     assert len(first_a.messages) == 2
     assert len(first_b.messages) == 2
     assert "wi.context-a" in first_a.messages[-1]["content"]
@@ -924,7 +1123,7 @@ def test_tool_budgets_remain_cumulative_across_model_rounds(tmp_path: Path) -> N
 
     assert summary.completed == 1
     assert summary.failed == 0
-    assert len(provider.requests) == 3
+    assert len(provider.requests) == 4
     assert "max_files_read exceeded" in provider.requests[2].messages[-1]["content"]
 
 
@@ -960,7 +1159,51 @@ def test_worker_can_complete_after_read_only_tool_call(tmp_path: Path) -> None:
 
     assert execution.completed == 1
     assert execution.executions[0].tool_rounds == 1
+    assert calls == 3
+
+
+def test_invalid_collector_fact_request_is_feedback_not_worker_failure(tmp_path: Path) -> None:
+    item = _work_item("wi.fact-feedback").model_copy(
+        update={"collector_fact_refs": ["fact.allowed"]}
+    )
+    calls = 0
+
+    def response_factory(request: ModelRequest) -> ModelResponse:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return ModelResponse(
+                tool_calls=[
+                    ToolCall(
+                        call_id="facts-invalid",
+                        name="get_collector_facts",
+                        arguments={"fact_ids": ["fact.not-allowed"]},
+                    )
+                ]
+            )
+        return ModelResponse(content=_review_json(request, request.work_item, request.agent_id))
+
+    event_path = tmp_path / "events.jsonl"
+    summary = LangGraphReviewRuntime(
+        provider=StaticModelProvider(response_factory), max_concurrency=1
+    ).run(
+        manifest_run_id="run-fact-feedback",
+        work_items=[item],
+        sandboxes={"backend_code": RepositorySandbox(FIXTURES)},
+        output_root=tmp_path / "work-items",
+        event_log_path=event_path,
+    )
+
+    assert summary.completed == 1
+    assert summary.attempts[0].status == "completed"
     assert calls == 2
+    events = [json.loads(line) for line in event_path.read_text().splitlines()]
+    assert any(
+        event["event_type"] == "review_tool_call"
+        and event["ok"] is False
+        and event["error_code"] == "worker_error"
+        for event in events
+    )
 
 
 def test_runtime_discards_provider_supplied_anchors_without_tool_provenance(
@@ -1043,7 +1286,7 @@ def test_langgraph_runtime_persists_parent_checkpoint(tmp_path: Path) -> None:
     assert '"runtime": "langgraph"' in events
 
 
-def test_anchor_generation_preserves_search_location_and_fact_provenance() -> None:
+def test_only_programmatic_capture_and_complete_facts_create_anchors() -> None:
     sandbox = RepositorySandbox(FIXTURES)
     work_item = _work_item("wi.anchor-contract")
     search_anchors = _anchors_from_tool_results(
@@ -1071,11 +1314,33 @@ def test_anchor_generation_preserves_search_location_and_fact_provenance() -> No
         ],
         sandbox,
     )
-    assert search_anchors[0].start_line == 3
-    assert search_anchors[0].end_line == 3
-    assert search_anchors[0].file_revision == file_content_revision(
-        (FIXTURES / "backend" / "app.py").read_bytes()
+    assert search_anchors == []
+    repeated_search_anchors = _anchors_from_tool_results(
+        work_item,
+        [
+            ToolCall(
+                call_id="search-2",
+                name="search_code",
+                arguments={"query": "loan/disburse"},
+            )
+        ],
+        [
+            ScopedToolResult(
+                call_id="search-2",
+                name="search_code",
+                ok=True,
+                output=[
+                    {
+                        "path": "backend/app.py",
+                        "line_number": 3,
+                        "line_text": "@app.post('/loan/disburse')",
+                    }
+                ],
+            )
+        ],
+        sandbox,
     )
+    assert repeated_search_anchors == []
 
     read_anchors = _anchors_from_tool_results(
         work_item,
@@ -1096,8 +1361,25 @@ def test_anchor_generation_preserves_search_location_and_fact_provenance() -> No
         ],
         sandbox,
     )
-    assert read_anchors[0].start_line == 3
-    assert read_anchors[0].end_line == 5
+    assert read_anchors == []
+
+    executor = ScopedToolExecutor(sandbox, work_item)
+    capture_call = ToolCall(
+        call_id="capture-1",
+        name="capture_anchor",
+        arguments={"path": "backend/app.py", "start_line": 3, "end_line": 4},
+    )
+    capture_result = executor.execute(capture_call)
+    capture_anchors = _anchors_from_tool_results(
+        work_item, [capture_call], [capture_result], sandbox
+    )
+    assert capture_result.ok is True
+    assert len(capture_anchors) == 1
+    assert capture_anchors[0].source_tool == "capture_anchor"
+    assert capture_anchors[0].repository_id == work_item.repository_id
+    assert capture_anchors[0].exact_snippet == (
+        "def disburse():\n    return payment_service.transfer()"
+    )
 
     fact_anchors = _anchors_from_tool_results(
         work_item,
@@ -1112,12 +1394,26 @@ def test_anchor_generation_preserves_search_location_and_fact_provenance() -> No
                         {
                             "fact_id": "fact.one",
                             "evidence_strength": "declared",
-                            "source_refs": [{"path": "backend/app.py", "start_line": 1}],
+                            "source_refs": [
+                                {
+                                    "path": "backend/app.py",
+                                    "start_line": 1,
+                                    "end_line": 1,
+                                    "exact_snippet": "# ruff: noqa: F821",
+                                }
+                            ],
                         },
                         {
                             "fact_id": "fact.two",
                             "evidence_strength": "server_code",
-                            "source_refs": [{"path": "backend/app.py", "start_line": 2}],
+                            "source_refs": [
+                                {
+                                    "path": "backend/app.py",
+                                    "start_line": 2,
+                                    "end_line": 2,
+                                    "exact_snippet": "@app.post('/api/loan/disburse')",
+                                }
+                            ],
                         },
                     ]
                 },
@@ -1130,3 +1426,56 @@ def test_anchor_generation_preserves_search_location_and_fact_provenance() -> No
         "declared",
         "server_code",
     ]
+
+    invalid_fact_anchors = _anchors_from_tool_results(
+        work_item,
+        [ToolCall(call_id="facts-2", name="get_collector_facts", arguments={})],
+        [
+            ScopedToolResult(
+                call_id="facts-2",
+                name="get_collector_facts",
+                ok=True,
+                output={
+                    "facts": [
+                        {
+                            "fact_id": "fact.path-only",
+                            "evidence_strength": "server_code",
+                            "source_refs": [{"path": "backend/app.py"}],
+                        },
+                        {
+                            "fact_id": "fact.wrong-snippet",
+                            "evidence_strength": "server_code",
+                            "source_refs": [
+                                {
+                                    "path": "backend/app.py",
+                                    "start_line": 2,
+                                    "end_line": 2,
+                                    "exact_snippet": "not the current source",
+                                }
+                            ],
+                        },
+                    ]
+                },
+            )
+        ],
+        sandbox,
+    )
+    assert invalid_fact_anchors == []
+
+
+def test_capture_anchor_rejects_generic_snippet(tmp_path: Path) -> None:
+    (tmp_path / "Manifest.xml").write_text("<uses-permission\n", encoding="utf-8")
+    item = _work_item("generic-anchor").model_copy(
+        update={"surface": "android_native", "allowed_roots": ["."]}
+    )
+    executor = ScopedToolExecutor(RepositorySandbox(tmp_path), item)
+    result = executor.execute(
+        ToolCall(
+            call_id="capture-generic",
+            name="capture_anchor",
+            arguments={"path": "Manifest.xml", "start_line": 1, "end_line": 1},
+        )
+    )
+
+    assert result.ok is False
+    assert result.error_code == "worker_error"

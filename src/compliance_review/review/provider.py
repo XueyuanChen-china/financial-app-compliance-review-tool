@@ -24,6 +24,7 @@ _STRUCTURED_REQUEST_KINDS = _COMPILATION_REQUEST_KINDS | {
     "applicability",
     "review_finalization",
     "verification",
+    "impact",
 }
 
 
@@ -62,14 +63,22 @@ class OpenAICompatibleProvider:
         model: str,
         api_key: str | None = None,
         base_url: str = "https://api.openai.com/v1/chat/completions",
-        timeout_seconds: float = 30.0,
+        timeout_seconds: float | None = None,
         compilation_timeout_seconds: float | None = None,
     ) -> None:
         self.supports_strict_finalization = True
         self.model = model
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
         self.base_url = base_url
-        self.timeout_seconds = timeout_seconds
+        # Review workers can make multi-step tool calls and final structured
+        # requests. Keep the transport timeout aligned with the runtime's
+        # 180-second model-call budget instead of failing at urllib's old
+        # 30-second default first.
+        self.timeout_seconds = (
+            timeout_seconds
+            if timeout_seconds is not None
+            else _env_float("COMPLIANCE_REVIEW_TIMEOUT_SECONDS", 180.0)
+        )
         self.compilation_timeout_seconds = compilation_timeout_seconds or _env_float(
             "COMPLIANCE_COMPILATION_TIMEOUT_SECONDS", 120.0
         )
@@ -112,6 +121,8 @@ class OpenAICompatibleProvider:
                 + ", ".join(f"{name}={value}" for name, value in invalid_modes.items())
                 + ")"
             )
+        if self.timeout_seconds <= 0:
+            raise ValueError("COMPLIANCE_REVIEW_TIMEOUT_SECONDS must be positive")
         if self.compilation_timeout_seconds <= 0:
             raise ValueError("COMPLIANCE_COMPILATION_TIMEOUT_SECONDS must be positive")
 
@@ -120,15 +131,20 @@ class OpenAICompatibleProvider:
             raise RuntimeError("OPENAI_API_KEY is required for OpenAICompatibleProvider")
         body = {
             "model": self.model,
-            "messages": request.messages,
+            "messages": _normalize_chat_tool_turns(request.messages),
             "temperature": 0,
         }
         if request.tools:
             body["tools"] = request.tools
             body["tool_choice"] = "auto"
-        reasoning_effort = self._reasoning_effort_for(request.request_kind)
+        reasoning_effort = self._reasoning_effort_for(
+            request.request_kind, request.reasoning_effort_override
+        )
         if reasoning_effort:
             body["reasoning_effort"] = reasoning_effort
+        # Structured requests keep their JSON Schema even when the model also
+        # has read-only tools available. The model may use tools first, but its
+        # eventual content is still constrained and locally validated.
         if request.request_kind in _STRUCTURED_REQUEST_KINDS:
             if request.response_schema:
                 if self._structured_mode_for(request.request_kind) == "json_schema":
@@ -172,7 +188,11 @@ class OpenAICompatibleProvider:
             raise RuntimeError(f"model provider request failed: {exc}") from exc
         return _parse_chat_completion(payload)
 
-    def _reasoning_effort_for(self, request_kind: str) -> str | None:
+    def _reasoning_effort_for(
+        self, request_kind: str, override: str | None = None
+    ) -> str | None:
+        if override:
+            return override
         if request_kind in _COMPILATION_REQUEST_KINDS:
             return self.compilation_reasoning_effort
         return self.reasoning_effort
@@ -245,6 +265,54 @@ def _strict_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _normalize_chat_tool_turns(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return a Chat Completions-valid transcript for function-call turns.
+
+    A tool result is valid only when it follows an assistant turn that declared
+    its call id.  Compatibility proxies commonly surface this as a vague 400,
+    so reject malformed transcripts locally and make function-call content
+    explicit for providers that require ``content: null``.
+    """
+
+    normalized: list[dict[str, Any]] = []
+    pending_call_ids: set[str] = set()
+    for index, message in enumerate(messages):
+        current = deepcopy(message)
+        role = current.get("role")
+        if role == "assistant":
+            raw_calls = current.get("tool_calls")
+            if isinstance(raw_calls, list) and raw_calls:
+                current.setdefault("content", None)
+                pending_call_ids = {
+                    str(call.get("id"))
+                    for call in raw_calls
+                    if isinstance(call, dict) and isinstance(call.get("id"), str)
+                }
+                if not pending_call_ids:
+                    raise ValueError(
+                        f"assistant tool-call message at index {index} has no valid call ids"
+                    )
+            elif pending_call_ids:
+                raise ValueError(
+                    "assistant message encountered before all prior tool calls received outputs"
+                )
+        elif role == "tool":
+            call_id = current.get("tool_call_id")
+            if not isinstance(call_id, str) or call_id not in pending_call_ids:
+                raise ValueError(
+                    f"tool result at index {index} does not match a prior assistant tool call"
+                )
+            pending_call_ids.remove(call_id)
+        elif pending_call_ids:
+            raise ValueError(
+                "non-tool message encountered before all prior tool calls received outputs"
+            )
+        normalized.append(current)
+    if pending_call_ids:
+        raise ValueError("assistant tool-call message is missing one or more tool outputs")
+    return normalized
+
+
 def _parse_chat_completion(payload: Any) -> ModelResponse:
     if not isinstance(payload, dict):
         raise RuntimeError("model provider response must be a JSON object")
@@ -286,7 +354,14 @@ def _parse_chat_completion(payload: Any) -> ModelResponse:
         tool_calls=tool_calls,
         input_tokens=int(usage_dict.get("prompt_tokens", 0) or 0),
         output_tokens=int(usage_dict.get("completion_tokens", 0) or 0),
-        provider_metadata={"id": payload.get("id")},
+        provider_metadata={
+            "id": payload.get("id"),
+            "usage_available": (
+                isinstance(usage, dict)
+                and "prompt_tokens" in usage
+                and "completion_tokens" in usage
+            ),
+        },
     )
 
 
@@ -305,6 +380,8 @@ def tool_schemas() -> list[dict[str, Any]]:
                     "required": ["query"],
                     "properties": {
                         "query": {"type": "string"},
+                        "surface": {"type": "string"},
+                        "repository_id": {"type": "string"},
                         "max_candidates": {"type": "integer", "minimum": 1, "maximum": 20},
                         "budget": {"type": "integer", "minimum": 100, "maximum": 10000},
                     },
@@ -322,8 +399,109 @@ def tool_schemas() -> list[dict[str, Any]]:
                     "properties": {
                         "source": {"type": "string"},
                         "target": {"type": "string"},
+                        "surface": {"type": "string"},
+                        "repository_id": {"type": "string"},
                         "max_hops": {"type": "integer", "minimum": 1, "maximum": 12},
                         "budget": {"type": "integer", "minimum": 100, "maximum": 10000},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "code_map_explain",
+                "description": "Explain one Graphify symbol and show bounded directed connections.",
+                "parameters": {
+                    "type": "object",
+                    "required": ["symbol"],
+                    "properties": {
+                        "symbol": {"type": "string"},
+                        "surface": {"type": "string"},
+                        "repository_id": {"type": "string"},
+                        "max_connections": {"type": "integer", "minimum": 1, "maximum": 20},
+                        "budget": {"type": "integer", "minimum": 100, "maximum": 10000},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "code_map_callers",
+                "description": (
+                    "Find bounded incoming call/reference relations for one Graphify symbol."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "required": ["symbol"],
+                    "properties": {
+                        "symbol": {"type": "string"},
+                        "surface": {"type": "string"},
+                        "repository_id": {"type": "string"},
+                        "max_neighbors": {"type": "integer", "minimum": 1, "maximum": 20},
+                        "budget": {"type": "integer", "minimum": 100, "maximum": 10000},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "code_map_callees",
+                "description": (
+                    "Find bounded outgoing call/reference relations for one Graphify symbol."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "required": ["symbol"],
+                    "properties": {
+                        "symbol": {"type": "string"},
+                        "surface": {"type": "string"},
+                        "repository_id": {"type": "string"},
+                        "max_neighbors": {"type": "integer", "minimum": 1, "maximum": 20},
+                        "budget": {"type": "integer", "minimum": 100, "maximum": 10000},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "code_map_impact",
+                "description": (
+                    "Find bounded reverse-impact candidates using Graphify affected traversal."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "required": ["symbol"],
+                    "properties": {
+                        "symbol": {"type": "string"},
+                        "surface": {"type": "string"},
+                        "repository_id": {"type": "string"},
+                        "max_nodes": {"type": "integer", "minimum": 1, "maximum": 40},
+                        "depth": {"type": "integer", "minimum": 1, "maximum": 6},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "capture_anchor",
+                "description": (
+                    "Capture an exact source range as a verified immutable evidence anchor. "
+                    "Use only after navigation and read_file verification."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "required": ["path", "start_line", "end_line"],
+                    "properties": {
+                        "path": {"type": "string"},
+                        "surface": {"type": "string"},
+                        "repository_id": {"type": "string"},
+                        "start_line": {"type": "integer", "minimum": 1},
+                        "end_line": {"type": "integer", "minimum": 1},
                     },
                 },
             },
@@ -336,6 +514,8 @@ def tool_schemas() -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "surface": {"type": "string"},
+                        "repository_id": {"type": "string"},
                         "collector_id": {"type": "string"},
                         "fact_ids": {"type": "array", "items": {"type": "string"}},
                         "fact_type": {"type": "string"},
@@ -352,6 +532,8 @@ def tool_schemas() -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "surface": {"type": "string"},
+                        "repository_id": {"type": "string"},
                         "pattern": {"type": "string"},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 60},
                     },
@@ -368,6 +550,8 @@ def tool_schemas() -> list[dict[str, Any]]:
                     "required": ["query"],
                     "properties": {
                         "query": {"type": "string"},
+                        "surface": {"type": "string"},
+                        "repository_id": {"type": "string"},
                         "root": {"type": "string"},
                         "file_globs": {"type": "array", "items": {"type": "string"}},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 40},
@@ -385,6 +569,8 @@ def tool_schemas() -> list[dict[str, Any]]:
                     "required": ["path"],
                     "properties": {
                         "path": {"type": "string"},
+                        "surface": {"type": "string"},
+                        "repository_id": {"type": "string"},
                         "start_line": {"type": "integer", "minimum": 1},
                         "line_count": {"type": "integer", "minimum": 1, "maximum": 200},
                     },

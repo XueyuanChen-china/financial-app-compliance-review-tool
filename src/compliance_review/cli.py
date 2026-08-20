@@ -21,6 +21,7 @@ from compliance_review.collectors import (
 )
 from compliance_review.config.loader import ConfigLoadError, load_controls, load_profile
 from compliance_review.domain.models import ControlSet, Snapshot, Surface
+from compliance_review.persistence import ArtifactStore
 from compliance_review.repository import GitRepository, ReadOnlyRepositoryTools, RepositorySandbox
 from compliance_review.review import (
     OpenAICompatibleProvider,
@@ -28,6 +29,10 @@ from compliance_review.review import (
 )
 from compliance_review.review.diff_review import DiffReviewService
 from compliance_review.review.full_review import FullReviewService
+from compliance_review.review.input_baseline import (
+    collect_review_input_baseline,
+    load_input_baseline,
+)
 from compliance_review.review.langgraph_runtime import LangGraphReviewRuntime
 from compliance_review.review.models import ReviewManifest
 from compliance_review.review.redaction import redact_sensitive_text
@@ -140,6 +145,13 @@ def init_graphify(
             help="Compliance material path to register in workspace setup",
         ),
     ] = None,
+    material_surface: Annotated[
+        Optional[list[str]],
+        typer.Option(
+            "--material-surface",
+            help="Evidence surface mapping, repeat as material_path=surface",
+        ),
+    ] = None,
     repository_surface: Annotated[
         Optional[list[str]],
         typer.Option(
@@ -159,6 +171,7 @@ def init_graphify(
     """Initialize a Workspace, or use legacy Graphify repository initialization."""
     repository = repository or []
     material = material or []
+    material_surface = material_surface or []
     repository_surface = repository_surface or []
     if workspace is not None or repository or material or repository_surface or profile_model:
         if workspace is None:
@@ -174,8 +187,22 @@ def init_graphify(
                 else item
                 for item in repositories
             ]
+            material_surface_map: dict[str, Surface] = {
+                Path(raw_path).expanduser().resolve().as_posix(): (
+                    TypeAdapter(Surface).validate_python(raw_surface)
+                )
+                for raw_path, raw_surface in (
+                    item.split("=", 1) for item in material_surface if "=" in item
+                )
+            }
+            if any("=" not in item for item in material_surface):
+                raise ValueError("material surface must use material_path=surface")
             materials = [
-                WorkspaceMaterial(path=path.expanduser().resolve().as_posix()) for path in material
+                WorkspaceMaterial(
+                    path=path.expanduser().resolve().as_posix(),
+                    surface=material_surface_map.get(path.expanduser().resolve().as_posix()),
+                )
+                for path in material
             ]
             provider = (
                 OpenAICompatibleProvider(profile_model, base_url=profile_base_url)
@@ -364,12 +391,28 @@ def prepare_review(
         Optional[str], typer.Option(help="Stable run ID; generated when omitted")
     ] = None,
     max_concurrency: Annotated[int, typer.Option(help="Maximum parallel Reviewer work items")] = 3,
+    answer: Annotated[
+        Optional[list[str]],
+        typer.Option("--answer", help="Applicability answer as fact_key=json-value; repeatable"),
+    ] = None,
 ) -> None:
-    """Compile confirmed setup state into a Runtime-ready review handoff."""
+    """Compile setup state into a Runtime-ready review handoff."""
+    answers: dict[str, object] = {}
+    for item in answer or []:
+        if "=" not in item:
+            raise typer.BadParameter("--answer must use fact_key=json-value")
+        key, raw_value = item.split("=", 1)
+        if not key:
+            raise typer.BadParameter("--answer fact_key cannot be empty")
+        try:
+            answers[key] = json.loads(raw_value)
+        except json.JSONDecodeError:
+            answers[key] = raw_value
     try:
         result = ReviewSetupService(workspace).compile(
             run_id=run_id,
             max_concurrency=max_concurrency,
+            human_answers=answers,
         )
     except (OSError, ValueError, ReviewSetupError) as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -384,6 +427,19 @@ def prepare_review(
                 ),
                 "unknown_controls": (
                     result.coverage.unknown_control_ids if result.coverage else []
+                ),
+                "applicability_status": (
+                    result.applicability_resolution.status
+                    if result.applicability_resolution
+                    else "unknown"
+                ),
+                "pending_applicability_questions": (
+                    [
+                        question.model_dump(mode="json")
+                        for question in result.applicability_resolution.pending_questions
+                    ]
+                    if result.applicability_resolution
+                    else []
                 ),
                 "missing_surfaces": (result.coverage.missing_surfaces if result.coverage else []),
                 "manifest": f"runs/{result.run_id}/manifest.json",
@@ -534,6 +590,8 @@ def run_review(
                 )
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         raise typer.BadParameter(str(exc)) from exc
+    except typer.Exit:
+        raise
     except Exception as exc:
         typer.echo(f"RUNTIME_ERROR={redact_sensitive_text(str(exc))}", err=True)
         raise typer.Exit(code=2) from exc
@@ -601,7 +659,12 @@ def full_review(
 @app.command("diff-review")
 def diff_review(
     workspace: Annotated[Path, typer.Argument(help="Workspace root")],
-    baseline_run_id: Annotated[str, typer.Option(help="Completed baseline run ID")],
+    baseline_run_id: Annotated[
+        str,
+        typer.Option(
+            help="Completed previous Full or Diff run ID; becomes the direct result/code baseline"
+        ),
+    ],
     model: Annotated[str, typer.Option(help="OpenAI-compatible model name")] = DEFAULT_MODEL,
     base_url: Annotated[
         str, typer.Option(help="OpenAI-compatible chat completions URL")
@@ -612,26 +675,77 @@ def diff_review(
     """Run deterministic Git impact planning, safe reuse, and incremental review."""
     try:
         workspace = workspace.expanduser().resolve()
+        try:
+            previous_snapshot = Snapshot.model_validate(
+                json.loads(
+                    (workspace / "runs" / baseline_run_id / "snapshot.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+            )
+            semantic_baseline_run_id = (
+                previous_snapshot.semantic_baseline_run_id
+                or (previous_snapshot.run_id if previous_snapshot.mode == "full" else None)
+            )
+            if semantic_baseline_run_id is None:
+                typer.echo("FULL_REVIEW_REQUIRED=true")
+                typer.echo(
+                    json.dumps(
+                        {
+                            "full_review_required": True,
+                            "reasons": [
+                                "previous Diff run has no semantic Full baseline; "
+                                "run a new full review"
+                            ],
+                        },
+                        indent=2,
+                    )
+                )
+                raise typer.Exit(code=3)
+            baseline_inputs = load_input_baseline(workspace, semantic_baseline_run_id)
+        except OSError:
+            typer.echo("FULL_REVIEW_REQUIRED=true")
+            typer.echo(
+                json.dumps(
+                    {
+                        "full_review_required": True,
+                        "reasons": [
+                            "baseline has no review-input-baseline.json; run a new full review"
+                        ],
+                    },
+                    indent=2,
+                )
+            )
+            raise typer.Exit(code=3) from None
+        current_inputs = collect_review_input_baseline(workspace, semantic_baseline_run_id)
+        preflight = baseline_inputs.compare(current_inputs.artifacts)
+        if preflight.full_review_required:
+            typer.echo("FULL_REVIEW_REQUIRED=true")
+            typer.echo(json.dumps(preflight.model_dump(mode="json"), indent=2))
+            raise typer.Exit(code=3)
         provider = OpenAICompatibleProvider(model=model, base_url=base_url)
-        setup = ReviewSetupService(workspace, applicability_provider=provider).compile(
+        setup = ReviewSetupService(workspace).compile_diff_from_baseline(
+            semantic_baseline_run_id,
             run_id=run_id,
-            mode="diff",
             max_concurrency=max_concurrency,
+        )
+        ArtifactStore(workspace).write_run_json(
+            setup.run_id or run_id or "diff-preflight",
+            "diff/preflight.json",
+            preflight.model_dump(mode="json"),
         )
         controls = ControlSet.model_validate(
             json.loads((workspace / "setup" / "controls.json").read_text(encoding="utf-8"))
         )
-        snapshot = Snapshot.model_validate(
-            json.loads(
-                (workspace / "runs" / baseline_run_id / "snapshot.json").read_text(encoding="utf-8")
-            )
-        )
         result = DiffReviewService(
             workspace,
             LangGraphReviewRuntime(provider=provider, max_concurrency=max_concurrency),
-        ).run(setup, controls, snapshot)
+            impact_provider=provider,
+        ).run(setup, controls, previous_snapshot)
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         raise typer.BadParameter(str(exc)) from exc
+    except typer.Exit:
+        raise
     except Exception as exc:
         typer.echo(f"RUNTIME_ERROR={redact_sensitive_text(str(exc))}", err=True)
         raise typer.Exit(code=2) from exc
@@ -644,8 +758,12 @@ def diff_review(
             {
                 "run_id": result.snapshot.run_id,
                 "baseline_run_id": result.snapshot.baseline_run_id,
+                "semantic_baseline_run_id": result.snapshot.semantic_baseline_run_id,
                 "ci_status": result.snapshot.ci_status,
-                "reviewed": len(result.snapshot.reviewed_rows),
+                "reviewed": len(
+                    set(result.snapshot.reviewed_rows)
+                    | set(result.snapshot.reviewed_partial_rows)
+                ),
                 "reused": len(result.snapshot.reused_rows),
                 "report": result.report_path,
             },

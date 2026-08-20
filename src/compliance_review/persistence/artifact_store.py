@@ -78,11 +78,46 @@ class ArtifactStore:
     def write_applicability(self, result: BaseModel) -> Path:
         return self._write_model("setup/applicability.json", result)
 
+    def write_applicability_resolution(self, result: BaseModel) -> Path:
+        return self._write_model("setup/applicability_resolution.json", result)
+
+    def write_applicability_answers(self, answers: BaseModel) -> Path:
+        return self._write_model("setup/applicability_answers.json", answers)
+
+    def write_applicability_checkpoint(self, checkpoint: BaseModel) -> Path:
+        return self._write_model("setup/applicability_resolution_checkpoint.json", checkpoint)
+
+    def remove_legacy_applicability_discovery_artifacts(self) -> None:
+        """Remove only the superseded Discovery artifacts during migration."""
+        for relative in (
+            "setup/applicability_discovery.json",
+            "setup/applicability_discovery_results.json",
+            "setup/applicability_recheck.json",
+        ):
+            target = self._confined_target(relative)
+            if target.is_file():
+                target.unlink()
+
+    def write_applicability_profile(self, profile: BaseModel) -> Path:
+        return self._write_model("setup/applicability_profile.json", profile)
+
     def write_coverage_units(self, result: BaseModel) -> Path:
         return self._write_model("setup/coverage_units.json", result)
 
+    def write_applicability_discovery(self, result: BaseModel) -> Path:
+        return self._write_model("setup/applicability_discovery.json", result)
+
+    def write_applicability_discovery_results(self, result: BaseModel) -> Path:
+        return self._write_model("setup/applicability_discovery_results.json", result)
+
+    def write_applicability_recheck(self, value: Any) -> Path:
+        return self._write_json("setup/applicability_recheck.json", value)
+
     def write_review_manifest(self, run_id: str, manifest: BaseModel) -> Path:
         return self._write_model(f"runs/{run_id}/manifest.json", manifest)
+
+    def write_review_input_baseline(self, run_id: str, baseline: BaseModel) -> Path:
+        return self._write_model(f"runs/{run_id}/review-input-baseline.json", baseline)
 
     def write_run_model(self, run_id: str, name: str, value: BaseModel) -> Path:
         return self._write_model(f"runs/{run_id}/{name}", value)

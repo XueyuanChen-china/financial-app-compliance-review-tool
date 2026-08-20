@@ -23,9 +23,9 @@ class ReviewScheduler:
         token_budget: int = 4000,
         checkpointer: object | None = None,
         max_attempts: int = 2,
-        model_timeout_seconds: float = 30.0,
-        tool_timeout_seconds: float = 5.0,
-        attempt_timeout_seconds: float = 90.0,
+        model_timeout_seconds: float = 180.0,
+        tool_timeout_seconds: float = 20.0,
+        attempt_timeout_seconds: float = 300.0,
     ) -> None:
         self.runtime = LangGraphReviewRuntime(
             provider=provider,

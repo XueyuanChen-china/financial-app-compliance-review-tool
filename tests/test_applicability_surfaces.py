@@ -11,6 +11,7 @@ from compliance_review.compilation.models import (
     SourceSection,
 )
 from compliance_review.domain.models import (
+    ApplicabilityCondition,
     ApplicabilityProfile,
     ApplicabilityProfileFact,
     Control,
@@ -133,7 +134,7 @@ def _compile(profile: ApplicabilityProfile, requirements: list[dict[str, object]
     return applicability, coverage
 
 
-def test_android_only_disclosure_does_not_create_h5_gap() -> None:
+def test_android_only_profile_marks_absent_h5_candidate_not_required() -> None:
     applicability, coverage = _compile(
         _profile(["android_native"]),
         [_requirement("android_native"), _not_required("frontend_h5")],
@@ -146,7 +147,7 @@ def test_android_only_disclosure_does_not_create_h5_gap() -> None:
     assert coverage.missing_surfaces == []
 
 
-def test_mobile_and_web_control_blocks_when_h5_surface_is_missing() -> None:
+def test_absent_h5_candidate_is_not_a_missing_surface() -> None:
     _, coverage = _compile(
         _profile(["android_native"]),
         [_requirement("android_native"), _requirement("frontend_h5")],
@@ -154,11 +155,11 @@ def test_mobile_and_web_control_blocks_when_h5_surface_is_missing() -> None:
 
     by_surface = {unit.surface: unit for unit in coverage.units}
     assert by_surface["android_native"].coverage_status == "planned"
-    assert by_surface["frontend_h5"].coverage_status == "missing_surface"
-    assert coverage.missing_surfaces == ["frontend_h5"]
+    assert by_surface["frontend_h5"].coverage_status == "not_required"
+    assert coverage.missing_surfaces == []
 
 
-def test_offered_web_surface_can_be_explicitly_not_required_for_this_control() -> None:
+def test_applicability_cannot_cancel_unconditional_required_surface() -> None:
     profile = _profile(["android_native", "frontend_h5"])
     profile.confirmed_facts["evidence_surfaces"] = ApplicabilityProfileFact(
         value=["android_native", "frontend_h5"], source="human_confirmed"
@@ -178,7 +179,7 @@ def test_offered_web_surface_can_be_explicitly_not_required_for_this_control() -
     _, coverage = _compile(profile, [_requirement("android_native"), requirement])
 
     assert coverage.missing_surfaces == []
-    assert coverage.units[1].coverage_status == "not_required"
+    assert coverage.units[1].coverage_status == "planned"
 
 
 def test_invalid_source_reference_is_conservative_unknown() -> None:
@@ -209,7 +210,7 @@ def test_invalid_source_reference_is_conservative_unknown() -> None:
     assert result.unknown_control_ids == [control.control_id]
 
 
-def test_invalid_profile_reference_is_conservative_unknown_surface() -> None:
+def test_model_profile_reference_cannot_override_profile_surface_set() -> None:
     bad_requirement = _not_required("frontend_h5")
     bad_requirement["profile_fact_refs"] = [
         {"field_name": "evidence_surfaces", "expected_value": "false"}
@@ -217,21 +218,21 @@ def test_invalid_profile_reference_is_conservative_unknown_surface() -> None:
     _, coverage = _compile(
         _profile(["android_native"]), [_requirement("android_native"), bad_requirement]
     )
-    assert coverage.units[1].coverage_status == "unknown_applicability"
+    assert coverage.units[1].coverage_status == "not_required"
 
 
 @pytest.mark.parametrize("source", ["inferred", "unresolved"])
-def test_untrusted_profile_source_is_conservative_unknown_surface(source: str) -> None:
+def test_untrusted_profile_source_still_uses_profile_surface_set(source: str) -> None:
     profile = _profile(["android_native"])
     profile.confirmed_facts["evidence_surfaces"] = ApplicabilityProfileFact(
         value=["android_native"], source=source  # type: ignore[arg-type]
     )
     requirement = _not_required("frontend_h5")
     _, coverage = _compile(profile, [_requirement("android_native"), requirement])
-    assert coverage.units[1].coverage_status == "unknown_applicability"
+    assert coverage.units[1].coverage_status == "not_required"
 
 
-def test_deterministic_profile_source_is_trusted_for_surface_requirement() -> None:
+def test_deterministic_profile_source_marks_absent_candidate_not_required() -> None:
     profile = _profile(["android_native"])
     profile.confirmed_facts["evidence_surfaces"] = ApplicabilityProfileFact(
         value=["android_native"], source="deterministic"
@@ -241,6 +242,54 @@ def test_deterministic_profile_source_is_trusted_for_surface_requirement() -> No
         [_requirement("android_native"), _not_required("frontend_h5")],
     )
     assert coverage.units[1].coverage_status == "not_required"
+
+
+def test_control_defined_surface_condition_resolves_h5_from_app_profile() -> None:
+    control = _control().model_copy(
+        update={
+            "evidence_requirements": {
+                "android_native": EvidenceRequirement(
+                    minimum_strength="static_proof", rationale="Native disclosure."
+                ),
+                "frontend_h5": EvidenceRequirement(
+                    minimum_strength="static_proof",
+                    rationale="H5 disclosure when the app has an H5 surface.",
+                    condition=ApplicabilityCondition(
+                        kind="atom",
+                        fact="evidence_surfaces",
+                        operator="includes",
+                        value="frontend_h5",
+                    ),
+                ),
+            }
+        }
+    )
+    controls = ControlSet(contract="control_set.v2", version="1.0", controls=[control])
+    profile = _profile(["android_native"])
+    applicability = ApplicabilityEngine(_provider([])).evaluate(profile, controls)
+    coverage = CoverageUnitBuilder().build(profile, controls, applicability)
+
+    decision = applicability.decisions[0]
+    assert decision.resolved_required_surfaces == ["android_native"]
+    by_surface = {unit.surface: unit for unit in coverage.units}
+    assert by_surface["android_native"].coverage_status == "planned"
+    assert by_surface["frontend_h5"].coverage_status == "not_required"
+
+    profile_with_h5 = _profile(["android_native", "frontend_h5"])
+    applicability_with_h5 = ApplicabilityEngine(_provider([])).evaluate(
+        profile_with_h5, controls
+    )
+    coverage_with_h5 = CoverageUnitBuilder().build(
+        profile_with_h5, controls, applicability_with_h5
+    )
+    assert applicability_with_h5.decisions[0].resolved_required_surfaces == [
+        "android_native",
+        "frontend_h5",
+    ]
+    assert (
+        {unit.surface: unit for unit in coverage_with_h5.units}["frontend_h5"].coverage_status
+        == "planned"
+    )
 
 
 def test_semantic_payload_contains_absent_surface_and_policy_context() -> None:

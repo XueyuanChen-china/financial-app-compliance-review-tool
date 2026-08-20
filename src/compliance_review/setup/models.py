@@ -4,7 +4,13 @@ from typing import Any, Literal, Optional
 
 from pydantic import Field, model_validator
 
-from compliance_review.domain.models import Confidence, ContractModel, Fact, Surface
+from compliance_review.domain.models import (
+    Confidence,
+    ContractModel,
+    ExternalEvidencePolicy,
+    Fact,
+    Surface,
+)
 
 ProvenanceSource = Literal[
     "declared",
@@ -26,11 +32,17 @@ class WorkspaceRepository(ContractModel):
 class WorkspaceMaterial(ContractModel):
     path: str = Field(min_length=1)
     source_family: str = Field(default="other", min_length=1)
+    # A material is routed by its evidence surface, not by a hard-coded
+    # source-family-to-workflow mapping.
+    surface: Optional[Surface] = None
+    provenance: dict[str, str] = Field(default_factory=dict)
+    limitations: list[str] = Field(default_factory=list)
 
 
 class ComplianceWorkspace(ContractModel):
     contract: Literal["workspace.v1"] = "workspace.v1"
     workspace_root: str = Field(min_length=1)
+    external_evidence_policy: ExternalEvidencePolicy = "strict"
     repositories: list[WorkspaceRepository] = Field(default_factory=list)
     materials: list[WorkspaceMaterial] = Field(default_factory=list)
 
@@ -99,7 +111,7 @@ class AppProfile(ContractModel):
 
 class ProfileConfirmation(ContractModel):
     contract: Literal["app_profile_confirmation.v1"] = "app_profile_confirmation.v1"
-    status: Literal["awaiting_confirmation", "confirmed"]
+    status: Literal["awaiting_confirmation", "confirmed", "deferred_to_applicability"]
     required_fields: list[str] = Field(default_factory=list)
     conflicts: list[str] = Field(default_factory=list)
     confirmed_fields: list[str] = Field(default_factory=list)

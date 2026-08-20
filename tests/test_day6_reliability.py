@@ -54,7 +54,7 @@ def test_unique_anchor_relocation_succeeds() -> None:
     assert result.new_start_line == 2
 
 
-def test_ambiguous_anchor_relocation_is_rejected() -> None:
+def test_exact_declared_location_wins_over_duplicate_snippet() -> None:
     anchor = _anchor("const consent = true;")
     current = "const consent = true;\nconst other = 1;\nconst consent = true;\n"
 
@@ -65,7 +65,9 @@ def test_ambiguous_anchor_relocation_is_rejected() -> None:
         anchor.file_revision,
     )
 
-    assert result.status == "ambiguous"
+    assert result.status == "relocated"
+    assert result.new_start_line == 1
+    assert result.new_end_line == 1
 
 
 def test_missing_anchor_relocation_is_rejected() -> None:

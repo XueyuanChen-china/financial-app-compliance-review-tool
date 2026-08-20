@@ -2,23 +2,32 @@
 
 ## Scope
 
-The first real smoke run used one Google Play financial-services policy source,
-the Mifos Mobile Android repository, and the Apache Fineract repository. It
-intentionally excluded H5/WebView, Play Console, regulator, and other external
-evidence surfaces.
+The latest real end-to-end run used one Google Play financial-services policy
+source, the Mifos Mobile Android repository, and the Apache Fineract repository.
+It treated H5/WebView, Play Console, regulator, and other external surfaces
+according to the AppProfile instead of silently pretending they were present.
 
 ## Verified Outcome
 
-`day7-smoke-final-13` completed all four Android Reviewer Work Items and
-generated a Snapshot and Markdown report. The final CI status is `BLOCK`, which
-is the correct result because required evidence surfaces are missing and the
-available static evidence does not prove every control completely.
+`mifos-real-final-v4` generated a Snapshot and Markdown report with 12
+obligations, 12 controls, 38 coverage units, and 2 formal Reviewer Work Items:
+one Android and one backend-code Work Item. The final CI status is `BLOCK`,
+which is the correct result because several applicability decisions remain
+unknown, required surfaces are missing or manual-only, and the available
+static evidence is partial rather than complete.
 
 ## Reliability Lessons
 
 - Chat Completions tool-call arguments must be replayed as JSON strings, not
-  Python dictionaries. The relay accepted the initial tool call but returned
-  HTTP 502 on the following request when this contract was violated.
+  Python dictionaries. Every assistant tool-call message must also retain
+  `content: null`, and every tool result must match a preceding call id. The
+  Provider now validates this transcript before sending it, because a
+  Chat-Completions-to-Responses relay otherwise reports a vague HTTP 400 such
+  as `No tool call found for function call output`.
+- The configured `gpt-5.6-luna` relay does not support reasoning effort
+  `minimal`; supported values are `none`, `low`, `medium`, `high`, `xhigh`, and
+  `max`. The project uses `medium` for navigation, `low` for capture passes,
+  and a 180-second transport timeout by default.
 - Tool outputs need independent bounds. Search, inventory, collector-fact and
   file-read results now have small limits so a single broad query cannot consume
   the Reviewer context.
@@ -43,7 +52,8 @@ evidence units.
 
 ## Verification
 
-- `pytest -q`: 141 passed
-- `ruff check .`: passed
-- `mypy`: 54 source files, no issues
-- `git diff --check`: passed
+- targeted Phase 2 regression tests: passed
+- real Mifos full review: completed and produced a report
+- `ruff check src tests`: passed
+- `mypy src`: passed with no issues
+- full `pytest -q`: passed

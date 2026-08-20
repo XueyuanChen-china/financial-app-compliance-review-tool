@@ -28,18 +28,19 @@ Review Manifest
 
 - `app_profile.yaml`
 - `controls.yaml`
-- Control 的 `applicability_expression`
+- Control 的结构化 `applicability_condition`
 - Control 的 `required_surfaces`
 
 生成 `review_manifest.v1`。
 
-一个 Work Item 的粒度是：
+正式 Reviewer Work Item 的粒度是：
 
 ```text
-module_id x evidence_surface
+control_id x evidence_surface
 ```
 
-同一个 module 和 surface 下的多个 Controls 会被合并到一个 Work Item，但每个 Control 仍然必须在最终结果中单独有一行。
+同一个 module 和 surface 下的多个 Controls 不再合并。每个 Work Item 只绑定一个
+Control 和一个 Coverage Unit，避免大模块扩大上下文并降低逐项审查质量。
 
 Manifest 还记录：
 
@@ -122,10 +123,15 @@ Reviewer 只能通过项目自己的 Tool Runtime 请求以下只读工具：
 ```text
 code_map_query       # Graphify 语义导航
 code_map_path        # Graphify 节点关系路径
+code_map_explain     # 解释节点及其有向连接
+code_map_callers     # 查询调用者/入向关系
+code_map_callees     # 查询被调用者/出向关系
+code_map_impact      # 查询受影响节点候选
 get_collector_facts  # 读取预计算确定性 Facts
 search_code          # 精确搜索 fallback
 read_file            # 候选源码验证
 list_files           # 有限目录 inventory
+capture_anchor       # 生成经过校验的不可变代码证据
 ```
 
 Reviewer 不直接获得 shell 或 Graphify CLI 权限。调用链是：
@@ -140,6 +146,10 @@ Reviewer LLM
 `ScopedToolExecutor` 会检查工具白名单、路径边界、文件读取数量、单次读取行数、搜索/list/Graphify 结果数量、Graphify budget 和 Work Item 总 tool call 数量。
 
 如果工具调用越界，不会读取文件，而是返回结构化失败 Tool Result，让 Reviewer 继续决定是否返回 `indeterminate`。Graphify 没有找到节点也不能证明代码不存在，必须用 `search_code` 和 `read_file` 做 fallback 验证。
+
+Chat Completions 工具回合必须保持完整的消息配对：assistant 的 function call
+之后必须跟随对应的 tool result，assistant 工具消息显式带有 `content: null`。
+Provider 会在发送前校验 call id，避免不完整的消息链被中转服务误报为 HTTP 400。
 
 ## 7. Token Budget
 
