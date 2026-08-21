@@ -98,6 +98,7 @@ def test_trusted_external_material_normalizes_conservative_completed_result() ->
     row = normalized.rows[0]
     assert row.evidence_status == "complete"
     assert row.recommended_control_status == "pass"
+    assert row.confidence == "high"
     assert row.observed_evidence_strength == "static_proof"
     assert row.unsupported_inferences == []
     assert row.gap_reasons == []
@@ -1159,7 +1160,9 @@ def test_worker_can_complete_after_read_only_tool_call(tmp_path: Path) -> None:
 
     assert execution.completed == 1
     assert execution.executions[0].tool_rounds == 1
-    assert calls == 3
+    # One call requests the read-only tool and the next returns the structured
+    # conclusion. The runtime does not need an extra no-op model round.
+    assert calls == 2
 
 
 def test_invalid_collector_fact_request_is_feedback_not_worker_failure(tmp_path: Path) -> None:

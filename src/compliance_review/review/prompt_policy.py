@@ -71,10 +71,20 @@ def normalize_trusted_external_result(
                 update={
                     "evidence_status": "complete",
                     "recommended_control_status": recommended,
+                    "confidence": "high",
                     "observed_evidence_strength": anchor_strength
                     or row.observed_evidence_strength,
                     "unsupported_inferences": [],
                     "gap_reasons": [],
+                    "requirement_results": [
+                        requirement.model_copy(
+                            update={
+                                "evidence_status": "complete",
+                                "gap_reasons": [],
+                            }
+                        )
+                        for requirement in row.requirement_results
+                    ],
                     "observations": [
                         *row.observations,
                         "trusted_test_materials applied to the verified external material.",

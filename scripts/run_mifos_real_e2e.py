@@ -64,7 +64,12 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--max-concurrency", type=int, default=2)
-    parser.add_argument("--token-budget", type=int, default=64000)
+    parser.add_argument("--token-budget", type=int, default=600_000)
+    parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=float(os.environ.get("COMPLIANCE_REVIEW_TIMEOUT_SECONDS", "180")),
+    )
     return parser.parse_args()
 
 
@@ -92,7 +97,7 @@ def main() -> None:
     provider = OpenAICompatibleProvider(
         model=args.model,
         base_url=args.base_url,
-        timeout_seconds=180.0,
+        timeout_seconds=args.timeout_seconds,
     )
 
     setup_service = ReviewSetupService(

@@ -75,7 +75,6 @@ class ResultValidator:
                 or result.attempt_id != execution.attempt_id
                 or result.agent_id != execution.agent_id
                 or result.execution_status != execution.execution_status
-                or execution.execution_status != "completed"
             )
             if identity_mismatch:
                 execution_issues[execution.attempt_id].append(
@@ -287,6 +286,36 @@ class ResultValidator:
                                 "evidence requirement.",
                             )
                         )
+                if unit.acceptance_criteria:
+                    actual_criterion_ids = [
+                        item.criterion_id for item in selected_row.criterion_results
+                    ]
+                    criterion_ids = set(actual_criterion_ids)
+                    expected_criterion_ids = {
+                        item.criterion_id for item in unit.acceptance_criteria
+                    }
+                    if (
+                        len(actual_criterion_ids) != len(criterion_ids)
+                        or criterion_ids != expected_criterion_ids
+                    ):
+                        issues.append(
+                            _error(
+                                "criterion_result_coverage_mismatch",
+                                "Reviewer must return exactly one result for every assigned "
+                                "acceptance criterion.",
+                            )
+                        )
+                    for criterion_result in selected_row.criterion_results:
+                        if criterion_result.status in {"satisfied", "not_satisfied"} and not (
+                            criterion_result.anchor_ids or criterion_result.fact_ids
+                        ):
+                            issues.append(
+                                _error(
+                                    "criterion_result_without_evidence",
+                                    f"Criterion result has no evidence: "
+                                    f"{criterion_result.criterion_id}.",
+                                )
+                            )
                 cited_strengths: list[EvidenceStrength] = []
                 for anchor_id in selected_row.anchor_ids:
                     if (selected_execution.attempt_id, anchor_id) in duplicate_anchor_ids:
@@ -687,6 +716,10 @@ class CoverageGate:
         rows: list[CoverageManifestRow] = []
         blocking: list[str] = []
         warnings: list[str] = []
+        blocking.extend(
+            f"uncovered_control:{control_id}:no_selected_proof_route"
+            for control_id in coverage.uncovered_control_ids
+        )
         for unit in coverage.units:
             row_id = f"{unit.control_id}:{unit.surface}"
             validated = validated_by_id.get(row_id)

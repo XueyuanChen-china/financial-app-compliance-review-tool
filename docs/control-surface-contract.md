@@ -7,18 +7,21 @@ therefore produces policy-level candidate evidence surfaces, not the final
 review queue.
 
 ```text
-policy source -> obligation -> Control candidates
-                         + EvidenceRequirement.condition
+policy source -> obligation -> atomic EvidenceClaim
+                         + candidate ProofRoute[]
                          -> Applicability Resolver
-                         -> resolved_required_surfaces
+                         -> selected route IDs
                          -> CoverageUnit / WorkItem
 ```
 
-`candidate_surfaces` answers: "Which evidence surfaces could be relevant to
-this policy requirement?"
+`EvidenceClaim` answers: "What independently verifiable statement must be
+proven?"
 
-`resolved_required_surfaces` answers: "Which of those surfaces are required
-for this application after reading the confirmed AppProfile?"
+`ProofRoute` answers: "Which surface can prove this claim, at what strength,
+and with what limits?"
+
+`selected_route_ids` answers: "Which candidate route is active for this
+application after reading the confirmed AppProfile?"
 
 The final value is produced by deterministic validation of the structured
 Applicability result. The Reviewer cannot add, remove, or reinterpret a
@@ -27,41 +30,44 @@ surface requirement.
 ## Conditional surface example
 
 ```yaml
-candidate_surfaces:
-  - android_native
-  - frontend_h5
-evidence_requirements:
-  android_native:
-    minimum_strength: static_proof
-    rationale: Native user-facing disclosure.
-  frontend_h5:
-    minimum_strength: static_proof
-    rationale: H5 disclosure when the app has an H5 surface.
-    condition:
-      kind: atom
-      fact: evidence_surfaces
-      operator: includes
-      value: frontend_h5
+evidence_claims:
+  - claim_id: disclosure-entry
+    statement: A disclosure entry exists before the relevant action.
+    proof_route_policy: any_one
+    proof_routes:
+      - route_id: android-disclosure
+        surface: android_native
+        claim_to_prove: Native disclosure entry exists.
+        expected_evidence_strength: static_proof
+        why_this_surface: The app may deliver the disclosure through native UI.
+        proof_limits:
+          - Static code does not prove runtime display.
+      - route_id: h5-disclosure
+        surface: frontend_h5
+        claim_to_prove: H5 disclosure entry exists.
+        expected_evidence_strength: static_proof
+        why_this_surface: Use only when H5 is configured.
+        proof_limits:
+          - Static code does not prove runtime display
 ```
 
 If the profile confirms only `android_native`, the resolver emits:
 
 ```yaml
-resolved_required_surfaces:
-  - android_native
-not_required_surfaces:
-  - frontend_h5
+selected_route_ids:
+  - android-disclosure
 ```
 
-The legacy `required_surfaces` field remains readable and mirrors
-`candidate_surfaces` during migration. Runtime planning must use the resolved
-surface decisions, not that compatibility field.
+The legacy `required_surfaces`, `candidate_surfaces`, and keyed
+`evidence_requirements` fields remain readable for old artifacts. New runtime
+planning uses selected proof routes and does not create units for unselected
+surfaces.
 
 ## fin-001 guidance
 
 The regional financial-services control should not unconditionally require
-H5, backend API documentation, and backend source code. Its candidate
-requirements should be separated into:
+H5, backend API documentation, and backend source code. Its evidence claims
+and candidate proof routes should be separated into:
 
 - user-facing disclosure: `android_native` or conditional `frontend_h5`;
 - target-region/listing evidence: `play_console` and `regulator_external`;

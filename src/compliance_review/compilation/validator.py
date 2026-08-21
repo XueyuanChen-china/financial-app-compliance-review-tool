@@ -114,6 +114,7 @@ class ControlValidator:
                 f"control {draft.control_id}: {message}"
                 for message in validate_applicability_condition(draft.applicability_condition)
             )
+            linked_id_set = set(draft.obligation_ids)
             if set(draft.surface_candidates) != set(draft.evidence_requirements):
                 errors.append(
                     f"control {draft.control_id} evidence requirements must cover exactly "
@@ -121,7 +122,62 @@ class ControlValidator:
                 )
             if not draft.evidence_requirements:
                 errors.append(f"control {draft.control_id} has no evidence requirements")
-            linked_id_set = set(draft.obligation_ids)
+            claim_ids = [claim.claim_id for claim in draft.evidence_claims]
+            if len(claim_ids) != len(set(claim_ids)):
+                errors.append(f"control {draft.control_id} has duplicate evidence claim IDs")
+            for claim in draft.evidence_claims:
+                if not claim.proof_routes:
+                    errors.append(
+                        f"control {draft.control_id} claim {claim.claim_id} has no proof routes"
+                    )
+                unknown_claim_obligations = set(claim.obligation_ids) - linked_id_set
+                if unknown_claim_obligations:
+                    errors.append(
+                        f"control {draft.control_id} claim {claim.claim_id} references obligations "
+                        "outside the control: "
+                        + ", ".join(sorted(unknown_claim_obligations))
+                    )
+                route_ids = [route.route_id for route in claim.proof_routes]
+                if len(route_ids) != len(set(route_ids)):
+                    errors.append(
+                        f"control {draft.control_id} claim {claim.claim_id} has duplicate route IDs"
+                    )
+                for route in claim.proof_routes:
+                    criterion_ids = [
+                        criterion.criterion_id for criterion in route.acceptance_criteria
+                    ]
+                    if not route.acceptance_criteria:
+                        errors.append(
+                            f"control {draft.control_id} route {route.route_id} has no "
+                            "acceptance criteria"
+                        )
+                    if len(criterion_ids) != len(set(criterion_ids)):
+                        errors.append(
+                            f"control {draft.control_id} route {route.route_id} has duplicate "
+                            "acceptance criterion IDs"
+                        )
+                    for criterion in route.acceptance_criteria:
+                        if criterion.criterion_type == "absence" and not criterion.scope.strip():
+                            errors.append(
+                                f"control {draft.control_id} route {route.route_id} absence "
+                                f"criterion {criterion.criterion_id} has no scope"
+                            )
+                    if (
+                        route.surface == "backend_api_doc"
+                        and route.expected_evidence_strength not in {"declared", "server_doc"}
+                    ):
+                        errors.append(
+                            f"control {draft.control_id} route {route.route_id} cannot require "
+                            "code or runtime proof from backend_api_doc"
+                        )
+                    if (
+                        route.execution_mode == "automated"
+                        and route.expected_evidence_strength == "runtime_proof"
+                    ):
+                        errors.append(
+                            f"control {draft.control_id} route {route.route_id} requires "
+                            "runtime proof but is marked automated"
+                        )
             for surface in draft.surface_candidates:
                 requirement = draft.evidence_requirements.get(surface)
                 if requirement is None:
@@ -198,7 +254,7 @@ class ControlValidator:
                         f"{obligation.obligation_id}"
                     )
                 missing_surfaces = set(obligation.required_surfaces) - set(draft.surface_candidates)
-                if missing_surfaces:
+                if missing_surfaces and not draft.evidence_claims:
                     errors.append(
                         f"control {draft.control_id} narrows required surfaces of obligation "
                         f"{obligation.obligation_id}: {sorted(missing_surfaces)}"

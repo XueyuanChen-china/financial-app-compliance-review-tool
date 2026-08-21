@@ -54,9 +54,10 @@ def build_profile_draft(
         ]
         for surface in surfaces
     }
+    material_roots: dict[str, list[str]] = {}
     for material in materials:
         if material.surface is not None:
-            roots.setdefault(material.surface, []).append(material.path)
+            material_roots.setdefault(material.surface, []).append(material.path)
     evidence = [
         ProfileEvidence(
             repo_id=fact.repo_id,
@@ -87,6 +88,11 @@ def build_profile_draft(
             value=roots,
             source="deterministic",
             confidence="high",
+        ),
+        "material_roots": AppProfileField(
+            value=material_roots,
+            source="deterministic",
+            confidence="high" if material_roots else "low",
         ),
     }
     # Profile is intentionally provisional.  Business/legal questions are

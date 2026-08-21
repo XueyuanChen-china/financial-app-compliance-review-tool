@@ -32,7 +32,7 @@ DEFAULT_BASE_WORKSPACE = (
 )
 DEFAULT_OUTPUT_ROOT = PROJECT_ROOT / "test_outputs/mifos-simulated-pakistan-full"
 DEFAULT_EXTERNAL_MATERIAL_ROOT = (
-    DEFAULT_OUTPUT_ROOT / "setup/synthetic_materials"
+    PROJECT_ROOT / "test_inputs/external_materials/mifos-pakistan"
 )
 DEFAULT_BACKEND_API_DOC = PROJECT_ROOT / "test_inputs/backend_api_doc/fineract/fineract.json"
 
@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--max-concurrency", type=int, default=3)
-    parser.add_argument("--token-budget", type=int, default=64000)
+    parser.add_argument("--token-budget", type=int, default=600_000)
     parser.add_argument(
         "--external-evidence-policy",
         choices=["strict", "trusted_test_materials"],
@@ -252,6 +252,22 @@ def prepare_workspace(
     ]
     fields["evidence_surfaces"]["source"] = "human_confirmed"
     fields["evidence_surfaces"]["evidence"] = []
+    fields["material_roots"] = {
+        "value": {
+            "play_console": [
+                (material_root / "play_console_submission_test.md").as_posix(),
+                (material_root / "external_materials_manifest.json").as_posix(),
+            ],
+            "regulator_external": [
+                (material_root / "secp_nbfc_license_test.md").as_posix(),
+                (material_root / "external_materials_manifest.json").as_posix(),
+            ],
+            "backend_api_doc": [backend_api_doc.as_posix()],
+        },
+        "source": "deterministic",
+        "confidence": "high",
+        "evidence": [],
+    }
     profile["status"] = "confirmed"
     _write_json(profile_path, profile)
 

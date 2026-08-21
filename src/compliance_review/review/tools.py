@@ -235,7 +235,7 @@ class ScopedToolExecutor:
             and len(self.read_paths) >= self.work_item.max_files_read
         ):
             raise ValueError("work item max_files_read exceeded")
-        total_lines = len(self.sandbox.read_text(canonical_path).splitlines())
+        total_lines = self.sandbox.count_lines(canonical_path)
         if start_line > total_lines or end_line > total_lines:
             raise ValueError("capture_anchor line range is outside the current file")
         self.read_paths.add(canonical_path)

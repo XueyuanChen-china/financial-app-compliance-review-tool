@@ -15,6 +15,8 @@ from compliance_review.domain.models import (
     ApplicabilitySet,
     Control,
     ControlSet,
+    CoverageSet,
+    CoverageUnit,
     EvidenceRequirement,
     ProfileFactRef,
     SourceRef,
@@ -602,6 +604,85 @@ def test_external_surface_uses_registered_material_without_surface_hardcoding(
     )
     assert unavailable_coverage.units[0].coverage_status == "missing_surface"
     assert unavailable_plan.work_items == []
+
+
+def test_claim_routes_on_same_control_surface_get_unique_work_item_ids(
+    tmp_path: Path,
+) -> None:
+    profile = _applicability_profile_for_test(
+        evidence_surfaces=["frontend_h5"],
+        roots={"frontend_h5": (FIXTURES / "frontend").as_posix()},
+    )
+    control = Control(
+        control_id="control.multi-claim",
+        module_id="disclosure",
+        title="Multiple claims on one surface",
+        severity="high",
+        applicability_expression="unknown",
+        required_surfaces=["frontend_h5"],
+        minimum_evidence_strength={"frontend_h5": "static_proof"},
+        missing_evidence_policy="block",
+        source_refs=[{"url": "https://example.test/policy"}],
+        reuse_invalidation_keys=["control_version"],
+        evidence_requirements={
+            "frontend_h5": EvidenceRequirement(
+                minimum_strength="static_proof", rationale="Inspect both claims."
+            )
+        },
+    )
+    controls = ControlSet(contract="control_set.v2", version="1.0", controls=[control])
+    coverage = CoverageSet(
+        profile_version=profile.version,
+        control_version=controls.version,
+        units=[
+            CoverageUnit(
+                coverage_unit_id="cu.control.multi-claim.claim-a.route-a",
+                control_id=control.control_id,
+                module_id=control.module_id,
+                surface="frontend_h5",
+                applicability_status="applicable",
+                coverage_status="planned",
+                required_evidence_strength="static_proof",
+                reason="route selected",
+                claim_id="claim-a",
+                route_id="route-a",
+            ),
+            CoverageUnit(
+                coverage_unit_id="cu.control.multi-claim.claim-b.route-b",
+                control_id=control.control_id,
+                module_id=control.module_id,
+                surface="frontend_h5",
+                applicability_status="applicable",
+                coverage_status="planned",
+                required_evidence_strength="static_proof",
+                reason="route selected",
+                claim_id="claim-b",
+                route_id="route-b",
+            ),
+        ],
+    )
+    inventory = RepositoryInventory(
+        repo_id="web",
+        path=(FIXTURES / "frontend").as_posix(),
+        detected_surface="frontend_h5",
+        detected_surfaces=["frontend_h5"],
+        surface_status="confirmed",
+    )
+
+    plan = WorkItemPlanner().plan(
+        profile,
+        controls,
+        coverage,
+        AppFactSet(inventory_ids=["web"]),
+        [inventory],
+        tmp_path / "run",
+    )
+
+    assert len(plan.work_items) == 2
+    assert len({item.work_item_id for item in plan.work_items}) == 2
+    assert {item.coverage_unit_id for item in plan.work_items} == {
+        unit.coverage_unit_id for unit in coverage.units
+    }
 
 
 def _applicability_profile_for_test(

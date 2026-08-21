@@ -28,22 +28,25 @@ UNKNOWN 不等于 FALSE。它表示当前 Profile 信息不足，不能据此漏
 
 ## 3. Coverage Unit
 
-Coverage Unit 的固定定义是：
+新 Control 的 Coverage Unit 定义是：
 
 ```text
-Coverage Unit = Control × Required Surface
+Coverage Unit = Control × EvidenceClaim × Selected ProofRoute
 ```
 
-例如一个 Control 要求 `frontend_h5`、`android_native` 和 `backend_code`，即使后端代码当前缺失，也必须生成三个 Coverage Unit。后端缺失会被标成 `missing_surface`，而不是从分母中删除。
+例如一个 Control 的“披露入口” Claim 同时有 Android 和 H5 两条候选路线，
+但当前 AppProfile 只确认 Android，则只生成 Android route 的 Coverage Unit。
+未选中的 H5 路线不会伪装成 `missing_surface`。
 
-Coverage Unit 由脚本确定性生成，LLM 不参与增删，因此数量可以从 Control Set 反算。
+Coverage Unit 由脚本根据 Applicability 的 `selected_route_ids` 确定性生成，
+LLM 不参与增删，因此数量可以从 Control、Claim、Route 和画像反算。
 
 ## 4. WorkItem Planner
 
 正式 Reviewer WorkItem 按以下键建立：
 
 ```text
-Control × Surface
+Control × EvidenceClaim × Selected ProofRoute
 ```
 
 每个正式 `compliance_review` WorkItem 只携带一个 Control 和一个 Coverage Unit，同时保留：
@@ -53,6 +56,7 @@ Control × Surface
 - `collector_fact_refs`
 - `target_hints`
 - `allowed_roots`
+- `resolved_context`：画像中与当前 Control/Claim 相关的已确认上下文
 - 工具轮数、文件数和单文件行数限制
 
 WorkItem 是执行上下文，不改变 Coverage 分母。这样可以并发调度 Reviewer，同时避免一个大模块吞并多个控制项，保留每个 Control × Surface 的完整审查账本。

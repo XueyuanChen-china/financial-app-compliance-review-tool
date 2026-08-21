@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--max-concurrency", type=int, default=1)
-    parser.add_argument("--token-budget", type=int, default=64000)
+    parser.add_argument("--token-budget", type=int, default=600_000)
     parser.add_argument("--test-jurisdiction", default="Pakistan")
     parser.add_argument(
         "--test-business-type",

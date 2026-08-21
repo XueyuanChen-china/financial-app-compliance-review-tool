@@ -8,7 +8,7 @@
 
 ## 能力概览
 
-- **Multi-Agent Review**：基于 LangGraph 编排 Applicability Agent、Impact Agent 和 Reviewer Agent，按 `Control × Evidence Surface` 拆分独立 Work Item，并限制并行度。
+- **Multi-Agent Review**：基于 LangGraph 编排 Applicability Agent、Impact Agent 和 Reviewer Agent，按 `Control × Evidence Claim × Selected Proof Route` 拆分独立 Work Item，并限制并行度。
 - **ReAct + Tool Calling**：Reviewer 通过受控只读工具进行代码导航、文件读取、事实查询和证据捕获，不直接获得 Shell 权限。
 - **Graphify Code Map**：支持语义查询、关系路径、节点解释、Callers/Callees 和影响分析，用于定位跨文件代码关系。
 - **证据可追溯**：代码证据必须经过 `capture_anchor` 生成，程序校验路径、行号、原文 Hash、仓库版本和引用关系。

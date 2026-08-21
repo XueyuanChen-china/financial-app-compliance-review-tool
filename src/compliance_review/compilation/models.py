@@ -5,9 +5,11 @@ from typing import Any, Literal, Optional
 from pydantic import Field, model_validator
 
 from compliance_review.domain.models import (
+    AcceptanceCriterion,
     ApplicabilityCondition,
     ContractModel,
     ControlSet,
+    EvidenceClaim,
     EvidenceRequirement,
     EvidenceStrength,
     Severity,
@@ -133,9 +135,10 @@ class ControlDraft(ContractModel):
     applicability_condition: ApplicabilityCondition
     candidate_surfaces: list[Surface] = Field(default_factory=list)
     required_surfaces: list[Surface] = Field(default_factory=list)
-    evidence_requirements: dict[Surface, EvidenceRequirement] = Field(min_length=1)
+    evidence_requirements: dict[Surface, EvidenceRequirement] = Field(default_factory=dict)
     missing_evidence_policy: Literal["warn", "block"]
     reuse_invalidation_keys: list[str] = Field(min_length=1)
+    evidence_claims: list[EvidenceClaim] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -154,8 +157,10 @@ class ControlDraft(ContractModel):
 
     @model_validator(mode="after")
     def validate_surface_contract(self) -> "ControlDraft":
-        if not self.candidate_surfaces:
+        if not self.candidate_surfaces and not self.evidence_claims:
             raise ValueError("ControlDraft must declare at least one candidate surface")
+        if not self.evidence_requirements and not self.evidence_claims:
+            raise ValueError("ControlDraft must declare evidence requirements or claims")
         return self
 
     @property
@@ -185,6 +190,26 @@ class ControlEvidenceRequirementItem(ContractModel):
     condition: Optional[ApplicabilityCondition] = None
 
 
+class ControlProofRouteItem(ContractModel):
+    route_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    surface: Surface
+    claim_to_prove: str = Field(min_length=1)
+    expected_evidence_strength: EvidenceStrength
+    why_this_surface: str = Field(min_length=1)
+    acceptance_criteria: list[AcceptanceCriterion] = Field(min_length=1)
+    proof_limits: list[str] = Field(min_length=1)
+    execution_mode: Literal["automated", "manual_or_external"] = "automated"
+    condition: Optional[ApplicabilityCondition] = None
+
+
+class ControlEvidenceClaimItem(ContractModel):
+    claim_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    statement: str = Field(min_length=1)
+    proof_route_policy: Literal["any_one", "all_selected"] = "any_one"
+    obligation_ids: list[str] = Field(min_length=1)
+    proof_routes: list[ControlProofRouteItem] = Field(min_length=1)
+
+
 class ControlDraftTransport(ContractModel):
     """Structured-output shape that avoids arbitrary JSON object property names."""
 
@@ -193,7 +218,8 @@ class ControlDraftTransport(ContractModel):
     title: str = Field(min_length=1)
     severity: Literal["critical", "high", "medium", "low"]
     obligation_ids: list[str] = Field(min_length=1)
-    evidence_requirements: list[ControlEvidenceRequirementItem] = Field(min_length=1)
+    evidence_requirements: list[ControlEvidenceRequirementItem] = Field(default_factory=list)
+    evidence_claims: list[ControlEvidenceClaimItem] = Field(default_factory=list)
     missing_evidence_policy: Literal["warn", "block"]
     reuse_invalidation_keys: list[str] = Field(min_length=1)
 

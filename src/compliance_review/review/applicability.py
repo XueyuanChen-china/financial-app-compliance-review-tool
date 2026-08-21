@@ -847,6 +847,9 @@ class ApplicabilityValidator:
                 for item in surface_requirements
                 if item.decision == "required"
             ]
+            selected_route_ids, unknown_route_ids = _select_claim_route_ids(
+                control, surface_requirements, profile
+            )
             if decision.decision == "not_applicable" and (
                 not decision.source_refs
                 or not decision.profile_fact_refs
@@ -868,6 +871,8 @@ class ApplicabilityValidator:
                             "confidence": "low",
                             "surface_requirements": surface_requirements,
                             "resolved_required_surfaces": resolved_required_surfaces,
+                            "selected_route_ids": selected_route_ids,
+                            "unknown_route_ids": unknown_route_ids,
                         }
                     )
                 )
@@ -887,6 +892,8 @@ class ApplicabilityValidator:
                             "confidence": "low",
                             "surface_requirements": surface_requirements,
                             "resolved_required_surfaces": resolved_required_surfaces,
+                            "selected_route_ids": selected_route_ids,
+                            "unknown_route_ids": unknown_route_ids,
                         }
                     )
                 )
@@ -896,6 +903,8 @@ class ApplicabilityValidator:
                     update={
                         "surface_requirements": surface_requirements,
                         "resolved_required_surfaces": resolved_required_surfaces,
+                        "selected_route_ids": selected_route_ids,
+                        "unknown_route_ids": unknown_route_ids,
                     }
                 )
             )
@@ -937,6 +946,30 @@ class SemanticApplicabilityEvaluator:
                     "obligations": _obligation_context(control, obligations or [], source_registry),
                     "candidate_evidence_surfaces": list(control.surface_candidates),
                     "candidate_surfaces": list(control.surface_candidates),
+                    "evidence_claims": [
+                        {
+                            "claim_id": claim.claim_id,
+                            "statement": claim.statement,
+                            "proof_route_policy": claim.proof_route_policy,
+                            "proof_routes": [
+                                {
+                                    "route_id": route.route_id,
+                                    "surface": route.surface,
+                                    "claim_to_prove": route.claim_to_prove,
+                                    "expected_evidence_strength": route.expected_evidence_strength,
+                                    "why_this_surface": route.why_this_surface,
+                                    "proof_limits": route.proof_limits,
+                                    "condition": (
+                                        route.condition.model_dump(mode="json")
+                                        if route.condition is not None
+                                        else None
+                                    ),
+                                }
+                                for route in claim.proof_routes
+                            ],
+                        }
+                        for claim in control.evidence_claims
+                    ],
                 }
                 for control in controls.controls
             ],
@@ -968,8 +1001,9 @@ class SemanticApplicabilityEvaluator:
                         "not a final review denominator. The validator resolves candidates against "
                         "the confirmed AppProfile delivery surfaces and any Control-defined "
                         "structured EvidenceRequirement condition. Do not invent a surface. The "
-                        "validator, not the model, computes final "
-                        "resolved_required_surfaces."
+                        "validator, not the model, computes final resolved_required_surfaces "
+                        "and selected_route_ids from the confirmed profile. Do not invent "
+                        "route IDs or treat a policy candidate as an app-specific requirement."
                     ),
                 },
                 {
@@ -1133,6 +1167,54 @@ def _validated_surface_requirements(
             )
         )
     return normalized
+
+
+def _select_claim_route_ids(
+    control: Control,
+    surface_requirements: list[SurfaceRequirementDecision],
+    profile: ApplicabilityProfile,
+) -> tuple[list[str], list[str]]:
+    """Select policy proof routes using only confirmed delivery surfaces.
+
+    The model decides control applicability. This small deterministic step
+    selects the routes that can actually be reviewed for the current profile;
+    it never promotes a missing surface into a required implementation.
+    """
+    if not control.evidence_claims:
+        return [], []
+    status_by_surface = {item.surface: item.decision for item in surface_requirements}
+    selected: list[str] = []
+    unknown: list[str] = []
+    for claim in control.evidence_claims:
+        eligible = []
+        unresolved = []
+        for route in claim.proof_routes:
+            if route.surface not in profile.evidence_surfaces:
+                continue
+            if status_by_surface.get(route.surface) == "not_required":
+                continue
+            condition_result = (
+                _evaluate_condition(route.condition, profile)
+                if route.condition is not None
+                else True
+            )
+            if condition_result is False:
+                continue
+            if condition_result is None:
+                unresolved.append(route.route_id)
+            else:
+                eligible.append(route.route_id)
+        if claim.proof_route_policy == "any_one":
+            if eligible:
+                selected.append(eligible[0])
+            elif unresolved:
+                selected.append(unresolved[0])
+                unknown.append(unresolved[0])
+        else:
+            selected.extend(eligible)
+            selected.extend(unresolved)
+            unknown.extend(unresolved)
+    return selected, unknown
 
 
 def _unknown_surface_requirement(surface: Surface, reason: str) -> SurfaceRequirementDecision:

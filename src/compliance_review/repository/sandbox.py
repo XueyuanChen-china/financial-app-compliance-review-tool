@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from itertools import islice
 from pathlib import Path
 
 SENSITIVE_NAMES = {
@@ -8,6 +9,7 @@ SENSITIVE_NAMES = {
     "service-account.json",
 }
 SENSITIVE_SUFFIXES = (".pem", ".key", ".p12", ".jks", ".keystore")
+MAX_READABLE_FILE_BYTES = 10_000_000
 
 
 class SandboxViolation(ValueError):
@@ -34,7 +36,9 @@ class RepositorySandbox:
             raise SandboxViolation(f"path leaves repository root: {relative_path}") from exc
         return resolved
 
-    def read_bytes(self, relative_path: str | Path, max_bytes: int = 1_000_000) -> bytes:
+    def read_bytes(
+        self, relative_path: str | Path, max_bytes: int = MAX_READABLE_FILE_BYTES
+    ) -> bytes:
         path = self.resolve(relative_path)
         if is_sensitive_path(path.relative_to(self.root).as_posix()):
             raise SandboxViolation(f"sensitive file is not readable: {relative_path}")
@@ -44,8 +48,49 @@ class RepositorySandbox:
             raise SandboxViolation(f"file exceeds read limit: {relative_path}")
         return path.read_bytes()
 
-    def read_text(self, relative_path: str | Path, max_bytes: int = 1_000_000) -> str:
+    def read_text(
+        self, relative_path: str | Path, max_bytes: int = MAX_READABLE_FILE_BYTES
+    ) -> str:
         return self.read_bytes(relative_path, max_bytes=max_bytes).decode("utf-8", errors="replace")
+
+    def read_text_range(
+        self,
+        relative_path: str | Path,
+        *,
+        start_line: int,
+        line_count: int,
+        max_bytes: int = MAX_READABLE_FILE_BYTES,
+    ) -> str:
+        """Read only a bounded line range without materializing the whole file."""
+        if start_line < 1 or line_count < 1:
+            raise ValueError("start_line and line_count must be positive")
+        path = self.resolve(relative_path)
+        relative = path.relative_to(self.root).as_posix()
+        if is_sensitive_path(relative):
+            raise SandboxViolation(f"sensitive file is not readable: {relative_path}")
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        if path.stat().st_size > max_bytes:
+            raise SandboxViolation(f"file exceeds read limit: {relative_path}")
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            return "".join(islice(handle, start_line - 1, start_line - 1 + line_count))
+
+    def count_lines(
+        self,
+        relative_path: str | Path,
+        max_bytes: int = MAX_READABLE_FILE_BYTES,
+    ) -> int:
+        """Count lines through a bounded stream, without loading file contents."""
+        path = self.resolve(relative_path)
+        relative = path.relative_to(self.root).as_posix()
+        if is_sensitive_path(relative):
+            raise SandboxViolation(f"sensitive file is not readable: {relative_path}")
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        if path.stat().st_size > max_bytes:
+            raise SandboxViolation(f"file exceeds read limit: {relative_path}")
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            return sum(1 for _ in handle)
 
     def list_files(self, pattern: str = "*", limit: int = 500) -> list[str]:
         if limit < 1:

@@ -11,11 +11,15 @@ from compliance_review.compilation.models import (
     SourceSection,
 )
 from compliance_review.domain.models import (
+    AcceptanceCriterion,
     ApplicabilityCondition,
     ApplicabilityProfile,
     ApplicabilityProfileFact,
+    ApplicabilitySet,
     Control,
     ControlSet,
+    EvidenceClaim,
+    EvidenceProofRoute,
     EvidenceRequirement,
     ProfileFactRef,
     SourceRef,
@@ -157,6 +161,120 @@ def test_absent_h5_candidate_is_not_a_missing_surface() -> None:
     assert by_surface["android_native"].coverage_status == "planned"
     assert by_surface["frontend_h5"].coverage_status == "not_required"
     assert coverage.missing_surfaces == []
+
+
+def test_claim_routes_only_create_units_selected_for_present_surfaces() -> None:
+    profile = _profile(["android_native"])
+    source_ref = SourceRef(source_id="policy-1", source_section="section-1")
+    claim = EvidenceClaim(
+        claim_id="disclosure-entry",
+        statement="A disclosure entry exists before the relevant action.",
+        obligation_ids=["obl.disclosure"],
+        source_refs=[source_ref],
+        proof_route_policy="any_one",
+        proof_routes=[
+            EvidenceProofRoute(
+                route_id="android-route",
+                surface="android_native",
+                claim_to_prove="Native disclosure entry exists.",
+                    expected_evidence_strength="static_proof",
+                    why_this_surface="The app has a native delivery path.",
+                    acceptance_criteria=[
+                        AcceptanceCriterion(
+                            criterion_id="android-entry",
+                            criterion_type="presence",
+                            statement="A native disclosure entry exists.",
+                            scope="Production Android UI code.",
+                        )
+                    ],
+                    proof_limits=["Does not prove runtime display."],
+            ),
+            EvidenceProofRoute(
+                route_id="h5-route",
+                surface="frontend_h5",
+                claim_to_prove="H5 disclosure entry exists.",
+                    expected_evidence_strength="static_proof",
+                    why_this_surface="Only applicable when H5 is configured.",
+                    acceptance_criteria=[
+                        AcceptanceCriterion(
+                            criterion_id="h5-entry",
+                            criterion_type="presence",
+                            statement="An H5 disclosure entry exists.",
+                            scope="Production H5 routes and components.",
+                        )
+                    ],
+                    proof_limits=["Not selected when H5 is absent."],
+            ),
+        ],
+    )
+    control = Control(
+        control_id="control.claim-route",
+        module_id="loan_disclosure",
+        title="Claim route fixture",
+        severity="high",
+        applicability_condition=ApplicabilityCondition.unknown(
+            "the product profile determines delivery"
+        ),
+        candidate_surfaces=["android_native", "frontend_h5"],
+        required_surfaces=["android_native", "frontend_h5"],
+        minimum_evidence_strength={
+            "android_native": "static_proof",
+            "frontend_h5": "static_proof",
+        },
+        missing_evidence_policy="block",
+        source_refs=[source_ref],
+        reuse_invalidation_keys=["control_version"],
+        obligation_ids=["obl.disclosure"],
+        evidence_requirements={
+            "android_native": EvidenceRequirement(
+                minimum_strength="static_proof",
+                rationale="Native route summary.",
+                obligation_ids=["obl.disclosure"],
+                source_refs=[source_ref],
+            ),
+            "frontend_h5": EvidenceRequirement(
+                minimum_strength="static_proof",
+                rationale="H5 route summary.",
+                obligation_ids=["obl.disclosure"],
+                source_refs=[source_ref],
+            ),
+        },
+        evidence_claims=[claim],
+    )
+    controls = ControlSet(contract="control_set.v2", version="1.0", controls=[control])
+    applicability = ApplicabilitySet(
+        profile_version=profile.version,
+        control_version=controls.version,
+        decisions=[
+            {
+                "control_id": control.control_id,
+                "decision": "applicable",
+                "reason": "The product is in scope.",
+                "source_refs": [source_ref],
+                "selected_route_ids": ["android-route"],
+                "surface_requirements": [
+                    {
+                        "surface": "android_native",
+                        "decision": "required",
+                        "reason": "Configured delivery surface.",
+                    },
+                    {
+                        "surface": "frontend_h5",
+                        "decision": "not_required",
+                        "reason": "H5 is absent from the confirmed profile.",
+                    },
+                ],
+            }
+        ],
+    )
+
+    coverage = CoverageUnitBuilder().build(
+        profile, controls, applicability, available_surfaces={"android_native"}
+    )
+
+    assert [unit.route_id for unit in coverage.units] == ["android-route"]
+    assert all(unit.surface == "android_native" for unit in coverage.units)
+    assert not any(unit.surface == "frontend_h5" for unit in coverage.units)
 
 
 def test_applicability_cannot_cancel_unconditional_required_surface() -> None:

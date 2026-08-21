@@ -19,6 +19,8 @@ from compliance_review.collectors.base import CollectorResult
 from compliance_review.domain.models import (
     ControlSurfaceResult,
     EvidenceAnchor,
+    EvidenceCriterionResult,
+    EvidenceRequirementResult,
     EvidenceStrength,
     ReviewerEvidenceStatus,
     ReviewResult,
@@ -66,7 +68,7 @@ from compliance_review.review.result_parser import parse_review_result
 from compliance_review.review.tools import ScopedToolExecutor, serialize_tool_result
 
 ProviderFactory = Callable[[WorkItem], ModelProvider]
-_DEFAULT_REVIEW_TOKEN_BUDGET = 64000
+_DEFAULT_REVIEW_TOKEN_BUDGET = 600_000
 _DEFAULT_FINALIZATION_RESERVE_TOKENS = 10000
 _FORCED_CONCLUSION_INSTRUCTION = (
     "Stop using tools now. Return the most conservative terminal review_result.v1 "
@@ -349,7 +351,14 @@ class LangGraphReviewRuntime:
                     "finalization_reserve_tokens", self.finalization_reserve_tokens
                 ),
                         },
-                        config={"max_concurrency": 1},
+                        config={
+                            "max_concurrency": 1,
+                            # A model/tool round traverses more than one graph
+                            # node. Keep the framework ceiling above the
+                            # WorkItem budget so max_tool_rounds, not LangGraph's
+                            # default recursion limit, decides when to stop.
+                            "recursion_limit": max(64, work_item.max_tool_rounds * 4 + 8),
+                        },
                     )
                     terminal = WorkerExecution.model_validate(reviewer_state["execution"])
                 except Exception as exc:
@@ -493,6 +502,11 @@ def _build_reviewer_graph(
             "did not succeed, do not cite that location; mark evidence partial or missing "
             "and explain the gap instead. Never treat read_file, search_code, or code-map "
             "responses as formal anchors. "
+            "For every acceptance criterion in the Work Item, return exactly one "
+            "criterion_results entry using its criterion_id. Use satisfied only when the "
+            "criterion is supported by the allowed evidence; use not_satisfied when the "
+            "evidence contradicts it; use insufficient_evidence when the bounded search "
+            "cannot establish it. Do not add, remove, or rewrite criteria. "
             "A simple exact collector fact may skip code map navigation only when it "
             "fully answers the fact without a relationship claim. "
             "Avoid repository-wide searches, prefer multiple small reads, and stop once "
@@ -985,12 +999,21 @@ def _build_reviewer_graph(
                 context,
                 _anchors_from_tool_results(work_item, response.tool_calls, tool_results, sandbox),
             )
+            at_round_limit = tool_rounds >= work_item.max_tool_rounds
             return {
                 "messages": messages,
                 "context": context.model_dump(),
                 "tool_rounds": tool_rounds,
                 "tokens_used": used,
                 "tool_calls_used": executor.tool_calls,
+                # The final tool round is still useful: its reads/captures
+                # have already been executed above. Do not start another tool
+                # round merely because the model returned another navigation
+                # call; let the next model call be terminal.
+                "force_conclusion": state.get("force_conclusion", False) or at_round_limit,
+                "capture_pass_pending": (
+                    False if at_round_limit else state.get("capture_pass_pending", False)
+                ),
                 "read_paths": sorted(executor.read_paths),
                 "navigation_performed": state.get("navigation_performed", False)
                 or any(
@@ -1283,6 +1306,9 @@ def _finalize_terminal_result(
                                     "ledger ID. Never rewrite its path, line range, snippet, "
                                     "hash, or revision. "
                                     "Never claim runtime proof from static evidence. "
+                                    "Return exactly one criterion_results entry for every "
+                                    "acceptance criterion in the Work Item. Preserve each "
+                                    "criterion_id exactly and cite only anchors from the ledger. "
                                     "Do not call tools or begin a new investigation."
                                 ),
                             },
@@ -1549,6 +1575,22 @@ def _failure_result(
                 evidence_status="missing",
                 recommended_control_status="indeterminate",
                 gap_reasons=[error],
+                requirement_results=[
+                    EvidenceRequirementResult(
+                        requirement_id=requirement_id,
+                        evidence_status="missing",
+                        gap_reasons=[error],
+                    )
+                    for requirement_id in work_item.evidence_requirement_ids
+                ],
+                criterion_results=[
+                    EvidenceCriterionResult(
+                        criterion_id=criterion.criterion_id,
+                        status="insufficient_evidence",
+                        gap_reasons=[error],
+                    )
+                    for criterion in work_item.acceptance_criteria
+                ],
             )
             for control_id in work_item.control_ids
         ],
@@ -1587,6 +1629,24 @@ def _bounded_inconclusive_result(
                 observations=[
                     "Bounded static investigation ended before a model conclusion; "
                     "manual follow-up is required."
+                ],
+                requirement_results=[
+                    EvidenceRequirementResult(
+                        requirement_id=requirement_id,
+                        evidence_status=evidence_status,
+                        anchor_ids=relevant_anchor_ids,
+                        gap_reasons=[reason],
+                    )
+                    for requirement_id in work_item.evidence_requirement_ids
+                ],
+                criterion_results=[
+                    EvidenceCriterionResult(
+                        criterion_id=criterion.criterion_id,
+                        status="insufficient_evidence",
+                        anchor_ids=relevant_anchor_ids,
+                        gap_reasons=[reason],
+                    )
+                    for criterion in work_item.acceptance_criteria
                 ],
             )
             for control_id in work_item.control_ids

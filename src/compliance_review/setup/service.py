@@ -229,14 +229,25 @@ class ReviewSetupService:
             field = fields.get(field_name)
             if field is None or field.value is None or field.value == "unknown":
                 missing.append(field_name)
-        if repository_surfaces:
+        repository_surface_roots: dict[str, list[str]] = {}
+        for inventory in inventories:
+            surface = inventory.detected_surface or inventory.declared_surface
+            if surface is not None:
+                repository_surface_roots.setdefault(surface, []).append(inventory.path)
+        material_surface_roots: dict[str, list[str]] = {}
+        for material in workspace.materials:
+            if material.surface is not None and Path(material.path).expanduser().exists():
+                material_surface_roots.setdefault(material.surface, []).append(material.path)
+
+        if repository_surfaces or material_surface_roots:
+            existing_surfaces = fields["evidence_surfaces"].value
+            existing_surface_values = (
+                existing_surfaces if isinstance(existing_surfaces, list) else []
+            )
             selected_surfaces = sorted(
-                {
-                    surface
-                    for inventory in inventories
-                    for surface in [inventory.detected_surface or inventory.declared_surface]
-                    if surface is not None
-                }
+                set(existing_surface_values)
+                | set(repository_surface_roots)
+                | set(material_surface_roots)
             )
             fields["evidence_surfaces"] = fields["evidence_surfaces"].model_copy(
                 update={
@@ -247,16 +258,21 @@ class ReviewSetupService:
             )
             fields["repository_roots"] = fields["repository_roots"].model_copy(
                 update={
-                    "value": {
-                        surface: [
-                            inventory.path
-                            for inventory in inventories
-                            if surface in [inventory.detected_surface or inventory.declared_surface]
-                        ]
-                        for surface in selected_surfaces
-                    },
+                    "value": repository_surface_roots,
                     "source": "human_confirmed",
                     "confidence": "high",
+                }
+            )
+            material_field = fields.get("material_roots")
+            if material_field is None:
+                material_field = AppProfileField(
+                    value={}, source="deterministic", confidence="low"
+                )
+            fields["material_roots"] = material_field.model_copy(
+                update={
+                    "value": material_surface_roots,
+                    "source": "human_confirmed",
+                    "confidence": "high" if material_surface_roots else "low",
                 }
             )
         confirmed = profile.model_copy(update={"status": "confirmed", "fields": fields})
@@ -762,6 +778,19 @@ def _to_applicability_profile(
                 roots[surface] = str(raw_root[0])
             elif isinstance(raw_surface, str) and isinstance(raw_root, str):
                 roots[surface] = raw_root
+    raw_material_roots = profile.value_for("material_roots", {})
+    if isinstance(raw_material_roots, dict):
+        for raw_surface, raw_root in raw_material_roots.items():
+            if not isinstance(raw_surface, str):
+                continue
+            try:
+                material_surface: Surface = TypeAdapter(Surface).validate_python(raw_surface)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(raw_root, list) and raw_root:
+                roots.setdefault(material_surface, str(raw_root[0]))
+            elif isinstance(raw_root, str):
+                roots.setdefault(material_surface, raw_root)
     for inventory in inventories:
         inventory_surface = inventory.detected_surface or inventory.declared_surface
         if inventory_surface is not None:

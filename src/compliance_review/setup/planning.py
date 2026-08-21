@@ -468,8 +468,81 @@ class CoverageUnitBuilder:
         decision_by_control = {item.control_id: item for item in applicability.decisions}
         units: list[CoverageUnit] = []
         missing_surfaces: set[Surface] = set()
+        uncovered_control_ids: list[str] = []
         for control in controls.controls:
             decision = decision_by_control[control.control_id]
+            if control.evidence_claims:
+                route_by_id = {
+                    route.route_id: (claim, route)
+                    for claim in control.evidence_claims
+                    for route in claim.proof_routes
+                }
+                for route_id in decision.selected_route_ids:
+                    claim_route = route_by_id.get(route_id)
+                    if claim_route is None or decision.decision == "not_applicable":
+                        continue
+                    claim, route = claim_route
+                    route_applicability_unknown = route_id in decision.unknown_route_ids
+                    requirement_available = route.surface in available_surfaces
+                    if route.execution_mode == "manual_or_external":
+                        claim_coverage_status: CoverageUnitStatus = "manual_required"
+                        reason = "selected proof route requires manual or external evidence"
+                    elif not requirement_available:
+                        claim_coverage_status = "missing_surface"
+                        missing_surfaces.add(route.surface)
+                        reason = (
+                            f"selected proof route requires surface {route.surface}, but no "
+                            "registered source is available"
+                        )
+                    elif decision.decision == "unknown" or route_applicability_unknown:
+                        claim_coverage_status = "unknown_applicability"
+                        reason = (
+                            "selected proof route applicability is unknown; retained for "
+                            "bounded review"
+                            if route_applicability_unknown
+                            else "control applicability is unknown; selected proof route "
+                            "retained for bounded review"
+                        )
+                    else:
+                        claim_coverage_status = "planned"
+                        reason = "Applicability selected this proof route for the confirmed profile"
+                    requirement = control.evidence_requirements.get(route.surface)
+                    unit_id = f"cu.{control.control_id}.{claim.claim_id}.{route.route_id}"
+                    units.append(
+                        CoverageUnit(
+                            coverage_unit_id=unit_id,
+                            control_id=control.control_id,
+                            module_id=control.module_id,
+                            surface=route.surface,
+                            applicability_status=decision.decision,
+                            coverage_status=claim_coverage_status,
+                            required_evidence_strength=route.expected_evidence_strength,
+                            reason=reason,
+                            evidence_requirement_rationale=route.claim_to_prove,
+                            obligation_ids=list(claim.obligation_ids),
+                            source_refs=list(claim.source_refs),
+                            evidence_requirement_ids=(
+                                [
+                                    requirement.requirement_id
+                                    or f"req.{control.control_id}.{route.surface}"
+                                ]
+                                if requirement is not None
+                                else []
+                            ),
+                            claim_id=claim.claim_id,
+                            route_id=route.route_id,
+                            claim_statement=claim.statement,
+                            proof_scope=route.claim_to_prove,
+                            acceptance_criteria=list(route.acceptance_criteria),
+                            proof_limits=list(route.proof_limits),
+                            execution_mode=route.execution_mode,
+                        )
+                        )
+                if decision.decision != "not_applicable" and not decision.selected_route_ids:
+                    uncovered_control_ids.append(control.control_id)
+                # A selected route is the complete denominator for a claim. Do
+                # not fall back to all policy candidate surfaces for new controls.
+                continue
             surface_requirements = {
                 item.surface: item for item in decision.surface_requirements
             }
@@ -568,10 +641,9 @@ class CoverageUnitBuilder:
             units=units,
             excluded_control_ids=list(applicability.excluded_control_ids),
             unknown_control_ids=list(applicability.unknown_control_ids),
+            uncovered_control_ids=sorted(uncovered_control_ids),
             missing_surfaces=sorted(missing_surfaces),
         )
-
-
 class WorkItemPlanner:
     """Create one bounded WorkItem for each reviewable Control x Surface unit."""
 
@@ -664,6 +736,15 @@ class WorkItemPlanner:
             safe_repository_id = _safe_identifier(id_prefix)
             safe_control_id = _safe_identifier(unit.control_id)
             work_item_id = f"wi.{safe_repository_id}.{safe_control_id}.{surface}"
+            if unit.claim_id or unit.route_id:
+                safe_claim_id = _safe_identifier(unit.claim_id or "claim")
+                safe_route_id = _safe_identifier(unit.route_id or "route")
+                work_item_id = f"{work_item_id}.{safe_claim_id}.{safe_route_id}"
+            if work_item_id in sandboxes:
+                raise ValueError(
+                    "duplicate WorkItem identity for coverage unit "
+                    f"{unit.coverage_unit_id}: {work_item_id}"
+                )
             sandboxes[work_item_id] = sandbox
             control_list = [controls_by_id[unit.control_id] for unit in units]
             repository_id_set = set(repository_ids)
@@ -688,7 +769,31 @@ class WorkItemPlanner:
                     ),
                     control_ids=[unit.control_id for unit in units],
                     coverage_unit_ids=[unit.coverage_unit_id for unit in units],
+                    acceptance_criteria=[
+                        criterion
+                        for unit in units
+                        for criterion in unit.acceptance_criteria
+                    ],
                     evidence_requirement_ids=list(unit.evidence_requirement_ids),
+                    resolved_context={
+                        "jurisdiction": profile.jurisdiction,
+                        "business_type": list(profile.business_type),
+                        "self_lending": profile.self_lending,
+                        "evidence_surfaces": list(profile.evidence_surfaces),
+                        "applicability_status": unit.applicability_status,
+                        "applicability_reason": unit.reason,
+                        "claim_id": unit.claim_id,
+                        "claim_statement": unit.claim_statement,
+                        "route_id": unit.route_id,
+                        "proof_scope": unit.proof_scope,
+                        "acceptance_criteria": [
+                            criterion.model_dump(mode="json")
+                            for unit in units
+                            for criterion in unit.acceptance_criteria
+                        ],
+                        "proof_limits": list(unit.proof_limits),
+                        "profile_fact_refs": sorted(profile.confirmed_facts),
+                    },
                     collector_fact_refs=fact_refs,
                     allowed_roots=allowed_roots,
                     target_hints={
@@ -715,6 +820,13 @@ class WorkItemPlanner:
                         "evidence_requirement_ids": list(unit.evidence_requirement_ids),
                         "evidence_requirement_rationale": [
                             unit.evidence_requirement_rationale for unit in units
+                        ],
+                        "claim_ids": [unit.claim_id for unit in units if unit.claim_id],
+                        "claim_statements": [
+                            unit.claim_statement for unit in units if unit.claim_statement
+                        ],
+                        "proof_limits": [
+                            limit for unit in units for limit in unit.proof_limits
                         ],
                         "repository_ids": repository_ids,
                         "evidence_source_kind": [

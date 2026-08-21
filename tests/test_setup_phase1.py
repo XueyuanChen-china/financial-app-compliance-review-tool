@@ -10,7 +10,7 @@ from compliance_review.repository import RepositorySandbox
 from compliance_review.review.models import ModelResponse, ToolCall
 from compliance_review.review.provider import StaticModelProvider
 from compliance_review.setup.app_facts import collect_app_facts
-from compliance_review.setup.models import WorkspaceRepository
+from compliance_review.setup.models import WorkspaceMaterial, WorkspaceRepository
 from compliance_review.setup.profile import ProfileAgent
 from compliance_review.setup.repository_inventory import build_repository_inventory
 from compliance_review.setup.service import ReviewSetupService
@@ -152,6 +152,53 @@ def test_confirmation_persists_repository_surface_in_workspace(tmp_path: Path) -
     assert workspace["repositories"][0]["declared_surface"] == "frontend_h5"
     profile = json.loads((tmp_path / "workspace" / "setup" / "app_profile.json").read_text())
     assert profile["fields"]["evidence_surfaces"]["source"] == "human_confirmed"
+
+
+def test_profile_confirmation_preserves_registered_material_surfaces(tmp_path: Path) -> None:
+    material_path = tmp_path / "play-console.md"
+    material_path.write_text("verified listing", encoding="utf-8")
+    service = ReviewSetupService(tmp_path / "workspace")
+    service.initialize(
+        [
+            WorkspaceRepository(
+                repo_id="android",
+                path=(FIXTURES / "android").as_posix(),
+            )
+        ],
+        [
+            WorkspaceMaterial(
+                path=material_path.as_posix(),
+                source_family="google_play",
+                surface="play_console",
+            )
+        ],
+    )
+
+    service.confirm_profile(
+        {
+            "app_name": "Example Loan",
+            "package_name": "com.example.loan",
+            "jurisdiction": "Pakistan",
+            "business_type": ["personal_loan"],
+            "self_lending": True,
+        },
+        {"android": "android_native"},
+    )
+
+    profile = json.loads(
+        (tmp_path / "workspace" / "setup" / "app_profile.json").read_text()
+    )
+    fields = profile["fields"]
+    assert set(fields["evidence_surfaces"]["value"]) == {
+        "android_native",
+        "play_console",
+    }
+    assert fields["repository_roots"]["value"] == {
+        "android_native": [(FIXTURES / "android").as_posix()]
+    }
+    assert fields["material_roots"]["value"] == {
+        "play_console": [material_path.as_posix()]
+    }
 
 
 def test_confirmation_rejects_unresolved_repository_surface(tmp_path: Path) -> None:

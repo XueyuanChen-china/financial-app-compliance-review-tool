@@ -29,6 +29,17 @@ def test_sandbox_hides_sensitive_files() -> None:
         sandbox.read_text(".env")
 
 
+def test_repository_sandbox_reads_large_bounded_documents(tmp_path: Path) -> None:
+    document = tmp_path / "api.json"
+    document.write_text("header\n" + ("x\n" * 550_000), encoding="utf-8")
+
+    sandbox = RepositorySandbox(tmp_path)
+    content = sandbox.read_text_range("api.json", start_line=1, line_count=2)
+
+    assert content == "header\nx\n"
+    assert sandbox.count_lines("api.json") == 550_001
+
+
 def test_search_code_works_without_git() -> None:
     tools = ReadOnlyRepositoryTools(RepositorySandbox(FIXTURES))
 

@@ -1,0 +1,25 @@
+{
+  "contract": "external_materials.v1",
+  "material_status": "verified_external_materials",
+  "not_validated_as_official": false,
+  "materials": [
+    {
+      "material_id": "verified.play_console.mifos-pakistan.001",
+      "surface": "play_console",
+      "path": "play_console_submission_test.md",
+      "source_kind": "play_console_submission_record",
+      "evidence_strength": "declared",
+      "verification_status": "verified_by_owner",
+      "limitations": []
+    },
+    {
+      "material_id": "verified.regulator_external.secp.mifos-pakistan.001",
+      "surface": "regulator_external",
+      "path": "secp_nbfc_license_test.md",
+      "source_kind": "country_regulator_license_record",
+      "evidence_strength": "declared",
+      "verification_status": "verified_by_owner",
+      "limitations": []
+    }
+  ]
+}

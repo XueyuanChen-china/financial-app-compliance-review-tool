@@ -76,8 +76,10 @@ class FullReviewService:
             controls = adapt_control_set(controls.model_dump(mode="json"))
         if controls.version != setup.manifest.source_control_version:
             raise FullReviewError("Control Set version does not match the compiled Review Manifest")
-        expected_control_ids = {unit.control_id for unit in setup.coverage.units} | set(
-            setup.coverage.excluded_control_ids
+        expected_control_ids = (
+            {unit.control_id for unit in setup.coverage.units}
+            | set(setup.coverage.excluded_control_ids)
+            | set(setup.coverage.uncovered_control_ids)
         )
         actual_control_ids = {control.control_id for control in controls.controls}
         if actual_control_ids != expected_control_ids:
@@ -85,11 +87,20 @@ class FullReviewService:
                 "Control Set control IDs do not match the compiled coverage denominator"
             )
         expected_surfaces = {(unit.control_id, unit.surface) for unit in setup.coverage.units}
+        selected_claim_controls = {
+            control.control_id for control in controls.controls if control.evidence_claims
+        }
         actual_surfaces = {
             (control.control_id, surface)
             for control in controls.controls
+            if control.control_id not in selected_claim_controls
             for surface in control.surface_candidates
         }
+        actual_surfaces.update(
+            (unit.control_id, unit.surface)
+            for unit in setup.coverage.units
+            if unit.control_id in selected_claim_controls
+        )
         if actual_surfaces != expected_surfaces:
             raise FullReviewError(
                 "Control Set required surfaces do not match the compiled coverage denominator"
@@ -203,6 +214,7 @@ class FullReviewService:
                 setup.applicability.decisions if setup.applicability is not None else []
             ),
             missing_surfaces=setup.coverage.missing_surfaces,
+            uncovered_control_ids=setup.coverage.uncovered_control_ids,
             validation_flags=validation.flags,
             manual_review_existing_ids=gate.manual_review_existing_ids,
             automated_evidence_regression_ids=gate.automated_evidence_regression_ids,
@@ -558,14 +570,38 @@ def render_markdown_report(
         if row.evidence_status in {"manual_required", "external_collection_required"}
     ]
     incomplete_rows = [
-        row for row in coverage_gate.rows if row.evidence_status in {"partial", "missing"}
+        row
+        for row in coverage_gate.rows
+        if row.execution_status == "completed"
+        and row.evidence_status in {"partial", "missing"}
+    ]
+    execution_failed_rows = [
+        row for row in coverage_gate.rows if row.execution_status == "failed"
+    ]
+    pending_rows = [
+        row
+        for row in coverage_gate.rows
+        if row.execution_status in {"pending", "running"}
+        and row.evidence_status in {"partial", "missing"}
     ]
     not_applicable_controls = [
         decision
         for decision in snapshot.applicability_decisions
         if decision.decision == "not_applicable"
     ]
-    flagged_rows = sorted(coverage_gate.validation_flags)
+    actionable_flags = {
+        row_id: [flag for flag in flags if flag not in _ADVISORY_VALIDATION_FLAGS]
+        for row_id, flags in coverage_gate.validation_flags.items()
+    }
+    actionable_flags = {
+        row_id: flags for row_id, flags in actionable_flags.items() if flags
+    }
+    advisory_flag_rows = {
+        row_id: flags
+        for row_id, flags in coverage_gate.validation_flags.items()
+        if any(flag in _ADVISORY_VALIDATION_FLAGS for flag in flags)
+    }
+    flagged_rows = sorted(actionable_flags)
     ci_status = _REPORT_CI_STATUS[snapshot.ci_status]
     applicability_counts = Counter(
         decision.decision for decision in snapshot.applicability_decisions
@@ -601,7 +637,9 @@ def render_markdown_report(
         f"| 阻断控制项 | `{len(blocking_controls)}` | 失败或证据不足，当前不能建议提交 |",
         f"| 代码/证据必改项 | `{len(flagged_rows)}` | 存在确定性校验标记的覆盖单元 |",
         f"| 需人工或外部材料 | `{len(manual_rows)}` | Play Console、监管材料等非代码证据 |",
-        f"| 自动化证据未完整 | `{len(incomplete_rows)}` | 已执行但证据不完整，或证据面缺失 |",
+        f"| 自动化证据未完整 | `{len(incomplete_rows)}` | 已执行但证据不完整 |",
+        f"| 未执行/缺失证据面 | `{len(pending_rows)}` | 尚未执行或证据面不可用，不计入已执行统计 |",
+        f"| Reviewer 执行失败 | `{len(execution_failed_rows)}` | Worker 未能完成本次审查 |",
         f"| 已通过控制项 | `{len(passed_controls)}` | 最终 Control 状态为通过 |",
         f"| 不适用控制项 | `{len(not_applicable_controls)}` | 详情放在报告末尾 |",
         "",
@@ -634,6 +672,10 @@ def render_markdown_report(
         )
     elif incomplete_rows:
         lines.append("当前没有独立校验标记，但仍有自动化证据未完整，不能直接提交。")
+    elif advisory_flag_rows:
+        lines.append(
+            f"- 无确定性必改标记；另有 `{len(advisory_flag_rows)}` 个审慎提示，详见运行质量附录。"
+        )
     else:
         lines.append("- 无")
 
@@ -666,12 +708,16 @@ def render_markdown_report(
         "",
         "### 1. 代码与配置",
         "",
-        "- 处理 `fin-007` 已验证的敏感权限问题，并重新运行 Android 权限审查。",
-        "- 为 `fin-001`、`fin-003`、`fin-006` 补充可精确定位的披露、贷款条款和后端合规实现证据。",
+        "- 根据上方必改项中的确定性校验标记，补充精确代码证据或修复对应实现，随后重新审查受影响的 Coverage Unit。",
         "",
         "### 2. API 与后端材料",
         "",
-        f"- 补充后端 API 文档；当前缺失证据面：{_display_surfaces(snapshot.missing_surfaces)}。",
+        f"- 当前缺失证据面：{_display_surfaces(snapshot.missing_surfaces)}。"
+        + (
+            " 如涉及后端 API 文档，请补充与当前 Claim 对应的接口语义。"
+            if "backend_api_doc" in snapshot.missing_surfaces
+            else " 当前没有被判定为缺失的后端 API 文档面。"
+        ),
         "",
         "### 3. 平台与监管材料",
         "",
@@ -693,7 +739,7 @@ def render_markdown_report(
             "",
             "## 证据覆盖台账（附录 A）",
             "",
-            "完整记录每个 Control × Surface 的执行状态，包含不适用和无需执行单元。",
+            "完整记录每个已选 Proof Route Coverage Unit 的执行状态，包含不适用和无需执行单元。",
             "",
             "| 覆盖单元 | 证据面 | 执行情况 | 证据状态 | 控制结论 | 处理结果 | 缺口/说明 |",
             "|---|---|---|---|---|---|---|",
@@ -761,13 +807,19 @@ def render_markdown_report(
             f"`{snapshot.reviewer_work_items_failed}` |",
             f"| 已验证完整证据单元 | `{len(snapshot.reviewed_rows)}` |",
             f"| 已执行但证据未完整单元 | `{len(snapshot.reviewed_partial_rows)}` |",
+            f"| 未执行/缺失证据面单元 | `{len(pending_rows)}` |",
+            f"| Reviewer 执行失败单元 | `{len(execution_failed_rows)}` |",
             f"| 复用单元 | `{len(snapshot.reused_rows)}` |",
+            f"| 未激活证明路径的控制项 | `{len(snapshot.uncovered_control_ids)}` |",
             "",
             f"- Reviewer WorkItem 完成 / 失败：`{snapshot.reviewer_work_items_completed}` / "
             f"`{snapshot.reviewer_work_items_failed}`",
             f"- 已验证完整证据单元：`{len(snapshot.reviewed_rows)}`",
             f"- 已执行但证据未完整单元：`{len(snapshot.reviewed_partial_rows)}`",
+            f"- 未执行/缺失证据面单元：`{len(pending_rows)}`",
+            f"- Reviewer 执行失败单元：`{len(execution_failed_rows)}`",
             f"- 复用单元：`{len(snapshot.reused_rows)}`",
+            f"- 未激活证明路径的控制项：`{len(snapshot.uncovered_control_ids)}`",
             f"- 覆盖台账：**{_REPORT_BOOLEAN[coverage_gate.complete]}**",
         ]
     )
@@ -873,6 +925,7 @@ def render_markdown_report(
             f"{applicability_counts.get('unknown', 0)}`",
             f"- CoverageUnit 总数：`{len(coverage_gate.rows)}`",
             f"- CoverageGate 行数：`{len(coverage_gate.rows)}`",
+            f"- 未激活证明路径的控制项：`{len(snapshot.uncovered_control_ids)}`",
             "",
             "## 不适用控制项（附录 D）",
             "",
@@ -993,6 +1046,7 @@ _REPORT_EVIDENCE_STATUS = {
     "not_required": "不要求",
     "not_applicable": "不适用",
 }
+_ADVISORY_VALIDATION_FLAGS = {"high_severity_pass", "minimum_threshold_pass"}
 _REPORT_ORIGIN = {
     "reviewed": "本次审查",
     "carried_forward": "沿用前次结果",

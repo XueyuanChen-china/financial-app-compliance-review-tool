@@ -27,9 +27,11 @@ class ReadOnlyRepositoryTools:
     def read_file(self, path: str, start_line: int = 1, line_count: int = 300) -> str:
         if start_line < 1 or line_count < 1:
             raise ValueError("start_line and line_count must be positive")
-        lines = self.sandbox.read_text(path).splitlines()
-        start = start_line - 1
-        return "\n".join(lines[start : start + line_count])
+        return self.sandbox.read_text_range(
+            path,
+            start_line=start_line,
+            line_count=line_count,
+        ).rstrip("\n")
 
     def search_code(
         self,

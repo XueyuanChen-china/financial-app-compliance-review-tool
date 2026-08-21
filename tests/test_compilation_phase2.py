@@ -23,7 +23,13 @@ from compliance_review.compilation.validator import (
     ControlValidator,
     validate_applicability_expression,
 )
-from compliance_review.domain.models import EvidenceRequirement, SourceRef
+from compliance_review.domain.models import (
+    AcceptanceCriterion,
+    EvidenceClaim,
+    EvidenceProofRoute,
+    EvidenceRequirement,
+    SourceRef,
+)
 from compliance_review.review.models import ModelResponse
 from compliance_review.review.provider import StaticModelProvider
 
@@ -174,6 +180,58 @@ def test_phase2_compiles_traceable_controls_with_two_structured_calls(tmp_path: 
     control = result.controls.controls[0]
     assert control.obligation_ids == ["obl.loan.disclosure"]
     assert control.source_refs[0].source_id == result.source_registry.sources[0].source_id
+
+
+def test_control_claim_routes_are_policy_candidates_not_required_surfaces() -> None:
+    source_ref = SourceRef(source_id="policy-1", source_section="section-1")
+    route = EvidenceProofRoute(
+        route_id="android-disclosure",
+        surface="android_native",
+        claim_to_prove="A native disclosure entry exists.",
+        expected_evidence_strength="static_proof",
+        why_this_surface="The app may deliver the disclosure through native UI.",
+        acceptance_criteria=[
+            AcceptanceCriterion(
+                criterion_id="native-entry",
+                criterion_type="presence",
+                statement="A native disclosure entry is present.",
+                scope="Production Android UI code.",
+            )
+        ],
+        proof_limits=["Static code cannot prove the dialog was shown at runtime."],
+    )
+    claim = EvidenceClaim(
+        claim_id="disclosure-entry",
+        statement="The app provides a disclosure entry before the relevant action.",
+        obligation_ids=["obl.loan.disclosure"],
+        source_refs=[source_ref],
+        proof_routes=[route],
+    )
+    control = ControlDraft(
+        control_id="loan.disclosure",
+        module_id="loan",
+        title="Disclosure entry",
+        severity="high",
+        obligation_ids=["obl.loan.disclosure"],
+        source_refs=[source_ref],
+        applicability_condition={"kind": "unknown", "reason": "profile-dependent"},
+        candidate_surfaces=["android_native"],
+        required_surfaces=["android_native"],
+        evidence_requirements={
+            "android_native": EvidenceRequirement(
+                minimum_strength="static_proof",
+                rationale="The selected route can prove the static entry.",
+                obligation_ids=["obl.loan.disclosure"],
+                source_refs=[source_ref],
+            )
+        },
+        missing_evidence_policy="block",
+        reuse_invalidation_keys=["control_version"],
+        evidence_claims=[claim],
+    )
+
+    assert control.evidence_claims[0].proof_routes[0].surface == "android_native"
+    assert control.candidate_surfaces == ["android_native"]
 
 
 def test_phase2_accepts_mixed_obligation_and_no_obligation_sections(tmp_path: Path) -> None:

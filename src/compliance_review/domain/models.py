@@ -218,6 +218,74 @@ class EvidenceRequirement(ContractModel):
     condition: Optional[ApplicabilityCondition] = None
 
 
+ProofRoutePolicy = Literal["any_one", "all_selected"]
+ProofExecutionMode = Literal["automated", "manual_or_external"]
+AcceptanceCriterionType = Literal[
+    "presence",
+    "absence",
+    "content",
+    "relationship",
+    "consistency",
+]
+
+
+class AcceptanceCriterion(ContractModel):
+    """One observable condition a selected proof route must address."""
+
+    criterion_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    criterion_type: AcceptanceCriterionType
+    statement: str = Field(min_length=1)
+    scope: str = Field(min_length=1)
+
+
+class EvidenceProofRoute(ContractModel):
+    """One bounded way to prove an atomic evidence claim.
+
+    Routes are policy design metadata. Applicability selects routes for the
+    current profile; a route is not itself proof that the surface exists.
+    """
+
+    route_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    surface: Surface
+    claim_to_prove: str = Field(min_length=1)
+    expected_evidence_strength: EvidenceStrength
+    why_this_surface: str = Field(min_length=1)
+    acceptance_criteria: list[AcceptanceCriterion] = Field(min_length=1)
+    proof_limits: list[str] = Field(min_length=1)
+    execution_mode: ProofExecutionMode = "automated"
+    condition: Optional[ApplicabilityCondition] = None
+
+
+class EvidenceClaim(ContractModel):
+    """Atomic statement whose truth can be reviewed independently."""
+
+    claim_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    statement: str = Field(min_length=1)
+    proof_route_policy: ProofRoutePolicy = "any_one"
+    obligation_ids: list[str] = Field(min_length=1)
+    source_refs: list[SourceRef] = Field(min_length=1)
+    proof_routes: list[EvidenceProofRoute] = Field(min_length=1)
+
+    @field_validator("proof_routes")
+    @classmethod
+    def unique_route_ids(cls, value: list[EvidenceProofRoute]) -> list[EvidenceProofRoute]:
+        ids = [route.route_id for route in value]
+        if len(ids) != len(set(ids)):
+            raise ValueError("evidence claim proof route IDs must be unique")
+        return value
+
+    @field_validator("proof_routes")
+    @classmethod
+    def unique_criterion_ids(cls, value: list[EvidenceProofRoute]) -> list[EvidenceProofRoute]:
+        for route in value:
+            ids = [criterion.criterion_id for criterion in route.acceptance_criteria]
+            if len(ids) != len(set(ids)):
+                raise ValueError(
+                    f"evidence route {route.route_id} acceptance criterion IDs must be unique"
+                )
+        return value
+
+
 class Control(ContractModel):
     control_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
     module_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
@@ -235,6 +303,7 @@ class Control(ContractModel):
     reuse_invalidation_keys: list[str] = Field(min_length=1)
     obligation_ids: list[str] = Field(default_factory=list)
     evidence_requirements: dict[Surface, EvidenceRequirement] = Field(default_factory=dict)
+    evidence_claims: list[EvidenceClaim] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -254,7 +323,17 @@ class Control(ContractModel):
     @model_validator(mode="after")
     def validate_surface_contract(self) -> "Control":
         if not self.candidate_surfaces:
+            if self.evidence_claims:
+                return self
             raise ValueError("Control must declare at least one candidate surface")
+        if self.evidence_claims:
+            route_surfaces = {
+                route.surface
+                for claim in self.evidence_claims
+                for route in claim.proof_routes
+            }
+            if not route_surfaces.issubset(set(self.candidate_surfaces)):
+                raise ValueError("candidate surfaces must include every proof route surface")
         return self
 
     @property
@@ -351,6 +430,8 @@ class ApplicabilityDecision(ContractModel):
     technical_fact_refs: list[str] = Field(default_factory=list)
     surface_requirements: list[SurfaceRequirementDecision] = Field(default_factory=list)
     resolved_required_surfaces: list[Surface] = Field(default_factory=list)
+    selected_route_ids: list[str] = Field(default_factory=list)
+    unknown_route_ids: list[str] = Field(default_factory=list)
     unresolved_conditions: list[str] = Field(default_factory=list)
     confidence: Confidence = "medium"
 
@@ -490,6 +571,13 @@ class CoverageUnit(ContractModel):
     obligation_ids: list[str] = Field(default_factory=list)
     source_refs: list[SourceRef] = Field(default_factory=list)
     evidence_requirement_ids: list[str] = Field(default_factory=list)
+    claim_id: Optional[str] = None
+    route_id: Optional[str] = None
+    claim_statement: Optional[str] = None
+    proof_scope: Optional[str] = None
+    acceptance_criteria: list[AcceptanceCriterion] = Field(default_factory=list)
+    proof_limits: list[str] = Field(default_factory=list)
+    execution_mode: Optional[ProofExecutionMode] = None
     work_item_id: Optional[str] = None
 
 
@@ -500,6 +588,7 @@ class CoverageSet(ContractModel):
     units: list[CoverageUnit] = Field(default_factory=list)
     excluded_control_ids: list[str] = Field(default_factory=list)
     unknown_control_ids: list[str] = Field(default_factory=list)
+    uncovered_control_ids: list[str] = Field(default_factory=list)
     missing_surfaces: list[Surface] = Field(default_factory=list)
 
 
@@ -590,6 +679,10 @@ class WorkItem(ContractModel):
     baseline_context: Optional[dict[str, Any]] = None
     change_context: Optional[dict[str, Any]] = None
     evidence_requirement_ids: list[str] = Field(default_factory=list)
+    acceptance_criteria: list[AcceptanceCriterion] = Field(default_factory=list)
+    # Compact, parent-resolved context. Reviewers consume this instead of
+    # reinterpreting the complete AppProfile or policy baseline.
+    resolved_context: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_work_item_scope(self) -> "WorkItem":
@@ -662,11 +755,20 @@ class ControlSurfaceResult(ContractModel):
     gap_reasons: list[str] = Field(default_factory=list)
     observations: list[str] = Field(default_factory=list)
     requirement_results: list["EvidenceRequirementResult"] = Field(default_factory=list)
+    criterion_results: list["EvidenceCriterionResult"] = Field(default_factory=list)
 
 
 class EvidenceRequirementResult(ContractModel):
     requirement_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
     evidence_status: ReviewerEvidenceStatus
+    anchor_ids: list[str] = Field(default_factory=list)
+    fact_ids: list[str] = Field(default_factory=list)
+    gap_reasons: list[str] = Field(default_factory=list)
+
+
+class EvidenceCriterionResult(ContractModel):
+    criterion_id: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    status: Literal["satisfied", "not_satisfied", "insufficient_evidence"]
     anchor_ids: list[str] = Field(default_factory=list)
     fact_ids: list[str] = Field(default_factory=list)
     gap_reasons: list[str] = Field(default_factory=list)
@@ -744,6 +846,7 @@ class Snapshot(ContractModel):
     reviewer_work_items_failed: int = Field(default=0, ge=0)
     applicability_decisions: list[ApplicabilityDecision] = Field(default_factory=list)
     missing_surfaces: list[Surface] = Field(default_factory=list)
+    uncovered_control_ids: list[str] = Field(default_factory=list)
     regressions: list[str] = Field(default_factory=list)
     validation_flags: dict[str, list[str]] = Field(default_factory=dict)
     manual_review_new_ids: list[str] = Field(default_factory=list)

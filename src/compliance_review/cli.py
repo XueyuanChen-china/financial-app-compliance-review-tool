@@ -541,7 +541,9 @@ def run_review(
         str, typer.Option(help="OpenAI-compatible chat completions URL")
     ] = DEFAULT_BASE_URL,
     max_concurrency: Annotated[int, typer.Option(help="Maximum parallel workers")] = 3,
-    token_budget: Annotated[int, typer.Option(help="Per-work-item Reviewer token budget")] = 64000,
+    token_budget: Annotated[
+        int, typer.Option(help="Per-work-item Reviewer token budget")
+    ] = 600_000,
     checkpoint_db: Annotated[
         Optional[Path], typer.Option(help="Optional SQLite checkpoint database")
     ] = None,
@@ -607,7 +609,9 @@ def full_review(
     ] = DEFAULT_BASE_URL,
     run_id: Annotated[Optional[str], typer.Option(help="Stable run identifier")] = None,
     max_concurrency: Annotated[int, typer.Option(help="Maximum parallel Reviewer work items")] = 3,
-    token_budget: Annotated[int, typer.Option(help="Per-work-item Reviewer token budget")] = 64000,
+    token_budget: Annotated[
+        int, typer.Option(help="Per-work-item Reviewer token budget")
+    ] = 600_000,
 ) -> None:
     """Run setup handoff, parallel review, deterministic resolution, and report."""
     try:
