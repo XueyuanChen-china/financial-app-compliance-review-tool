@@ -1,154 +1,165 @@
 # Financial App Compliance Review Tool
 
-一个面向金融类 App 的、可接入 CI 的增量合规审查工具。系统把法规控制项、App 适用性画像和多个技术证据面编译成结构化审查任务，再由 LangGraph 并行调度 Reviewer，最后由普通程序完成证据校验、控制项裁决、覆盖门禁、快照和报告生成。
+面向金融类 App 的多智能体合规审查工具。系统将法规材料编译为结构化 Control，结合 App 画像、Android/后端代码、API 文档和外部材料生成可追溯的审查任务，并输出证据、风险结论和 CI 门禁状态。
 
-核心原则是：**Agent 负责调查和提出建议，确定性代码负责验证、裁决和 CI 决定。**
+核心设计原则：
 
-## 当前状态
+> Agent 负责调查和提出建议，确定性程序负责验证证据、裁决状态和生成最终结论。
 
-当前主链路已经覆盖：
+## 能力概览
 
-- Phase 1：Workspace、App Profile、Repository Inventory 和 Collector Facts
-- Phase 2：政策材料切分、Batch 编排、Obligation 提取和 Control 编译
-- Phase 3：Control x Evidence Surface 覆盖规划
-- Phase 4：LangGraph 并行 Reviewer、受控代码工具和 Graphify Code Map
-- Phase 5：结果校验、Coverage Gate、Full Review、Diff Review、Snapshot 和 CI 状态
-- 运行可靠性：attempt artifacts、失败重试、stale running 恢复和敏感信息脱敏
-- 报告：固定中文 Markdown 模板，机器字段填充，不使用 Agent 自由文本决定最终状态
+- **Multi-Agent Review**：基于 LangGraph 编排 Applicability Agent、Impact Agent 和 Reviewer Agent，按 `Control × Evidence Surface` 拆分独立 Work Item，并限制并行度。
+- **ReAct + Tool Calling**：Reviewer 通过受控只读工具进行代码导航、文件读取、事实查询和证据捕获，不直接获得 Shell 权限。
+- **Graphify Code Map**：支持语义查询、关系路径、节点解释、Callers/Callees 和影响分析，用于定位跨文件代码关系。
+- **证据可追溯**：代码证据必须经过 `capture_anchor` 生成，程序校验路径、行号、原文 Hash、仓库版本和引用关系。
+- **全量与增量审查**：Full Review 建立完整基线；Diff Review 根据 Git 变更和影响分析仅重审受影响的 Coverage Unit，并复用其他有效结果。
+- **确定性门禁**：Validator、Resolver 和 Coverage Gate 对模型结果进行 schema、证据一致性和覆盖完整性校验，最终输出 `PASS`、`WARN` 或 `BLOCK`。
+- **中文审查报告**：报告包含 Control 结论、证据覆盖、未覆盖面、人工复核要求、阻断原因和机器产物路径。
 
-`SuspiciousRouter`、`TargetedVerifier` 和 `VerifierResult` 仍保留为旧产物/调用方的兼容模型，但不参与当前 Full Review 或 Diff Review 的权威判定。
+## 技术栈
+
+Python、LangGraph、Pydantic、Graphify、OpenAI-compatible API、SQLite Checkpoint、Pytest、Ruff、Mypy。
+
+## 工作流
+
+```text
+Policy Sources
+      |
+      v
+Obligations -> Controls -> Applicability Resolution
+                                  |
+                                  v
+                       Coverage Units / Work Items
+                                  |
+                 +----------------+----------------+
+                 v                v                v
+             Reviewer         Reviewer         Reviewer
+                 +----------------+----------------+
+                                  v
+                         Evidence Validator
+                                  v
+                         Resolver / Gate
+                                  v
+                         Snapshot / Report
+```
+
+系统支持以下证据面：
+
+`frontend_h5`、`android_native`、`backend_api_doc`、`backend_code`、`play_console`、`regulator_external`。
+
+外部人工材料不会被伪装成代码证据；缺失或未经验证的证据会保留为明确的覆盖缺口。
 
 ## 快速开始
+
+### 安装
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
 compliance-review --help
-pytest
-ruff check .
-mypy
 ```
 
-## 正常流程
-
-### 1. 初始化 Workspace
-
-登记代码仓库和政策材料，生成带 provenance 的 App Profile draft：
+### 初始化审查项目
 
 ```bash
 compliance-review init ./my-review \
   --repository mobile=/path/to/mobile-repository \
   --repository backend=/path/to/backend-repository \
-  --material /path/to/privacy-standard.md
+  --material /path/to/policy.md
 ```
 
-如果 jurisdiction、business type 或 self-lending 等字段无法从材料确定，初始化会停在 `awaiting_confirmation`，不会自行编造结论。
+初始化阶段只登记仓库、材料和画像事实。无法可靠确认的 jurisdiction、business type 或其他适用性信息会保留为待确认状态，不会由模型自行编造。
 
-### 2. 生成并执行 Reviewer
-
-```bash
-compliance-review build-manifest \
-  --profile examples/app-profile.yaml \
-  --controls examples/mvp-controls.yaml \
-  --run-id review-2026-01 \
-  --output runs/review-2026-01/review-manifest.json
-
-compliance-review run-review \
-  --manifest runs/review-2026-01/review-manifest.json \
-  --output-root runs/review-2026-01/work-items \
-  --model <model-name> \
-  --checkpoint-db runs/review-2026-01/review-checkpoints.sqlite \
-  --thread-id review-2026-01
-```
-
-### 3. 运行完整审查或增量审查
+### 执行 Full Review
 
 ```bash
 compliance-review full-review ./my-review \
-  --model <model-name> \
+  --model gpt-5.6-luna \
   --max-concurrency 3
+```
 
+### 执行 Diff Review
+
+```bash
 compliance-review diff-review ./my-review \
   --baseline-run-id <completed-run-id> \
-  --model <model-name> \
+  --model gpt-5.6-luna \
   --max-concurrency 3
 ```
 
-命令会根据 Coverage Gate 返回 CI 状态：`PASS` 返回 0，`WARN` 返回 0，`BLOCK` 返回 1。
+Diff Review 要求法规、Control、画像、Applicability、仓库映射和外部材料与 Full 基线一致。非代码输入发生变化时，系统会要求重新执行 Full Review；代码变化则由 Impact Agent 分析受影响范围。
 
-每次运行的核心产物包括：
+## 模型配置
 
-```text
-runs/<run_id>/result_validation.json
-runs/<run_id>/coverage_manifest.json
-runs/<run_id>/snapshot.json
-runs/<run_id>/report.md
+复制 `.env.example` 为本地 `.env`，不要提交真实密钥：
+
+```dotenv
+OPENAI_API_KEY=
+COMPLIANCE_REVIEW_MODEL=gpt-5.6-luna
+COMPLIANCE_REVIEW_BASE_URL=https://api.openai.com/v1/chat/completions
+COMPLIANCE_REVIEW_REASONING_EFFORT=high
+COMPLIANCE_REVIEW_TIMEOUT_SECONDS=180
 ```
 
-增量运行还会保存输入基线与影响决策，便于审计“为什么重审或继承”：
+项目通过 OpenAI-compatible Chat Completions 适配器调用模型。`gpt-5.6-luna` 支持的 reasoning effort 为 `none`、`low`、`medium`、`high`、`xhigh` 和 `max`，不支持 `minimal`。工具回合会保留完整的 assistant function call 与对应 tool result，并兼容 Chat Completions 到 Responses 的中转服务。
 
-```text
-runs/<run_id>/review-input-baseline.json       # Full Review 的非代码输入指纹
-runs/<run_id>/diff/preflight.json              # Diff 输入一致性检查
-runs/<run_id>/diff/diff.json                   # Git 文件和 hunk 差异
-runs/<run_id>/diff/impact-work-items.json      # 候选 CoverageUnit
-runs/<run_id>/diff/impact-decisions.json       # Agent + Validator 影响结论
-runs/<run_id>/diff/carried-forward-lineage.json
+## Graphify
+
+Graphify 用于代码导航，不直接决定合规结论。Reviewer 通过项目封装的 `CodeMapProvider` 使用 Graphify，不直接执行 Graphify CLI。
+
+初始化目标代码仓库的代码图：
+
+```bash
+uv tool install graphifyy
+graphify extract /path/to/repository --code-only
 ```
 
-Diff Review 只接受同一套法规、Control、画像、Applicability、仓库映射和外部材料的 Full 基线；任一非代码输入变化会输出 `FULL_REVIEW_REQUIRED=true` 并退出，不会静默扩大重审范围。代码变化时，最多三个 Impact Agent 并行判断候选 `CoverageUnit`，未受影响的 Unit 原样继承此前的状态、证据覆盖和阻断信息；受影响 Unit 才重新生成 Reviewer WorkItem。
+查询示例：
 
-报告使用中文固定结构，包含控制项结论、证据覆盖台账、人工复核变化、自动化证据退化、校验标记、阻断原因和机器产物路径。
-
-## 架构摘要
-
-```text
-Controls + Applicability Profile
-              |
-              v
-        Parent LangGraph
-              |
-        Build Work Items
-              |
-     +--------+--------+
-     v        v        v
- Reviewer  Reviewer  Reviewer
-     +--------+--------+
-              v
-   Result Validator
-              v
-   Compliance Resolver
-              v
-       Coverage Gate
-              v
-    Snapshot + Report
+```bash
+compliance-review code-map-query \
+  --repo /path/to/repository \
+  --query "account deletion workflow" \
+  --surface backend_code
 ```
 
-覆盖单位固定为：
+Graphify 返回的是候选节点和关系。即使 Graphify 没有找到节点，也不能据此证明代码不存在；系统会结合 `search_code`、`read_file` 和 `capture_anchor` 进行精确验证。
+
+## 证据边界
+
+Reviewer 可使用以下受控只读工具：
+
+- `code_map_query`、`code_map_path`、`code_map_explain`
+- `code_map_callers`、`code_map_callees`、`code_map_impact`
+- `get_collector_facts`、`list_files`、`search_code`、`read_file`
+- `capture_anchor`
+
+Graphify、搜索和目录列表只产生导航候选，不能直接进入最终 Evidence。代码证据必须经过精确读取和 Anchor 校验，最终结果只引用验证通过的 `anchor_id`。模型不能自行编写路径、行号、代码片段或证据 Hash。
+
+## 产物
+
+每次运行都会在 `runs/<run_id>/` 下生成机器可读产物和 Markdown 报告，主要包括：
 
 ```text
-Control x Required Evidence Surface
+result_validation.json
+coverage_manifest.json
+snapshot.json
+report.md
 ```
 
-当前支持的证据面包括 `frontend_h5`、`android_native`、`backend_api_doc`、`backend_code`、`play_console` 和 `regulator_external`。外部人工证据不会伪装成自动化代码证据；缺失的自动化证据会进入 CI 阻断策略。
+Diff Review 还会生成：
 
-## 工具边界
+```text
+diff/diff.json
+diff/impact-work-items.json
+diff/impact-decisions.json
+diff/carried-forward-lineage.json
+```
 
-Reviewer 只能通过受控工具读取当前 Work Item：
+## 本地验证
 
-- `code_map_query`、`code_map_path`：通过 `CodeMapProvider` 调用本地 Graphify
-- `code_map_explain`、`code_map_callers`、`code_map_callees`：解释节点并查询有向调用关系
-- `code_map_impact`：通过 Graphify `affected` 做受限影响分析
-- `search_code`、`read_file`、`list_files`：精确检索和验证源码
-- `capture_anchor`：由程序读取精确行范围并生成不可变 Verified Anchor
-- `get_collector_facts`：读取 Manifest、Dependency、API 文档等确定性事实
-
-Reviewer 不拥有 unrestricted shell，也不能修改源码、Controls、Snapshot 或最终报告。Graphify/search 只负责代码导航，不能直接形成 Evidence；Reviewer 必须先 `read_file` 验证，再调用 `capture_anchor`，最终只引用 `anchor_id`。Graphify 负责代码导航，不代表代码已经满足某个合规控制项。
-
-## 本地质量检查
-
-当前仓库不绑定目标项目的 CI，也没有内置 GitHub Actions workflow。提交前在本地执行：
+本仓库不绑定被审查项目的 CI，也不内置 GitHub Actions。提交前执行：
 
 ```bash
 pytest
@@ -157,41 +168,25 @@ mypy src
 git diff --check
 ```
 
-如果将工具接入被审查项目的 CI，应由目标项目自己的 workflow 调用这些命令；审查工具只负责返回 `PASS`、`WARN` 或 `BLOCK` 及退出码。
+接入目标项目时，可以在目标项目自己的 CI 中调用上述检查和审查 CLI，并根据退出码处理 `PASS`、`WARN` 或 `BLOCK`。
 
-## 模型中转配置
+## 项目结构
 
-项目使用 OpenAI-compatible Chat Completions 适配器。将 `.env.example` 复制为项目本地 `.env` 后配置模型和中转地址，不要提交真实密钥：
-
-```dotenv
-COMPLIANCE_REVIEW_MODEL=gpt-5.6-luna
-COMPLIANCE_REVIEW_BASE_URL=https://api.openai.com/v1/chat/completions
-COMPLIANCE_REVIEW_REASONING_EFFORT=high
-COMPLIANCE_REVIEW_TIMEOUT_SECONDS=180
+```text
+src/compliance_review/       核心领域模型、Agent Runtime、工具和报告
+tests/                       单元测试、契约测试和端到端测试
+scripts/                     示例项目和真实审查运行脚本
+docs/                        架构、设计决策和开发文档
+test_inputs/                 测试用政策和 API 输入
 ```
 
-`gpt-5.6-luna` 支持的 reasoning effort 是 `none`、`low`、`medium`、`high`、`xhigh` 和 `max`，不支持 `minimal`。如果使用中转服务，应以该服务实际支持的枚举为准。Reviewer 的工具回合会保留完整的 assistant function call 和对应 tool result，并在发送时使用 `content: null`，以兼容 Chat Completions 到 Responses 的中转层。
+## 当前边界
 
-## 测试阶段验收
+- 这是静态和材料型合规审查工具，不替代律师意见、监管确认或真实运行时测试。
+- Graphify 是代码导航能力，不是合规判断引擎。
+- 静态代码、API 文档和外部声明不能自动升级为运行时证明。
+- 最终状态必须经过确定性校验和 Coverage Gate，模型不能绕过门禁直接生成 PASS。
 
-自动化测试覆盖 schema、Collectors、工具边界、Full/Diff Review、Coverage Gate、报告和 durable attempt 恢复。进入真实模型测试时，还应完成一次人工恢复演示：
-
-1. 启动同一个 `full-review`，指定固定 `--run-id`、`--checkpoint-db` 和 `--thread-id`。
-2. 在 Reviewer 执行期间终止进程。
-3. 使用相同参数重新执行。
-4. 检查 `runs/<run_id>/reviewer_results/**/attempts/` 和 `worker-events.jsonl`：已完成 Work Item 不应重复执行，未完成 Work Item 应创建新的 attempt，最终 Snapshot 和中文报告应正常生成。
-
-这项真实进程级验收不由普通单元测试替代，完成后再记录为发布演示结果。
-
-## 目录与学习资料
-
-- `src/compliance_review/`：领域模型、Collectors、LangGraph Runtime、Validator、Resolver 和报告
-- `tests/`：领域契约、Collector、Full/Diff Review、恢复和集成测试
-- `docs/day1-learning-notes.md` 至 `docs/day5-learning-notes.md`：分阶段学习记录
-- `docs/implementation-plan.md`：整体实施计划
-- `docs/langgraph-architecture.md`：LangGraph 编排说明
-- `docs/graphify-provider.md`：Graphify Provider 说明
-
-## 许可
+## License
 
 MIT
